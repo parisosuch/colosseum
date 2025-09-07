@@ -8,7 +8,7 @@ export default function Home() {
         <LandmarkIcon size={48} />
         <h1>Welcome to Colosseum.</h1>
       </div>
-      <p>Account creation is currently invite only.</p>
+      <p className="text-muted-foreground">Account creation is currently invite only.</p>
       <Link href='/auth/login' className="flex flex-row items-center justify-center mt-4 space-x-1">
         <p className="underline">Login</p>
         <ArrowRight size={16} />

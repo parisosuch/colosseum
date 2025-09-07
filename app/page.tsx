@@ -25,11 +25,13 @@ const NoAuthView = () => (
 export default async function Home() {
   const supabase = await createClient();
 
-  const { data } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center">
-      {!data.user ? <NoAuthView /> : null}
+      {!user ? <NoAuthView /> : null}
     </main>
   );
 }

@@ -1,0 +1,26 @@
+import { SupabaseClient } from "@supabase/supabase-js";
+
+export type Channel = {
+  id: number;
+  created_at: string;
+  title: string;
+  description?: string;
+  private: boolean;
+  owner_id: string;
+  updated_at?: string;
+};
+
+export async function getUserChannels(
+  supabase: SupabaseClient,
+  user_id: string
+): Promise<Channel[] | []> {
+  const { data, error } = await supabase
+    .from("channel")
+    .select("*")
+    .eq("owner_id", user_id);
+
+  if (!data) {
+    return [];
+  }
+  return data;
+}

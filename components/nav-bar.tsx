@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { LandmarkIcon, ArrowRight } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import Link from "next/link";
+import { ThemeSwitcher } from "./theme-switcher";
 
 export default async function NavBar() {
   const supabase = await createClient();
@@ -34,12 +35,15 @@ export default async function NavBar() {
       <Link href="/">
         <LandmarkIcon />
       </Link>
-      <Avatar>
-        <AvatarImage src={userProfile.avatar_url} />
-        <AvatarFallback>
-          {userProfile.handle.charAt(0).toUpperCase()}
-        </AvatarFallback>
-      </Avatar>
+      <div className="flex flex-row space-x-2 items-center">
+        <Avatar>
+          <AvatarImage src={userProfile.avatar_url} />
+          <AvatarFallback>
+            {userProfile.handle.charAt(0).toUpperCase()}
+          </AvatarFallback>
+        </Avatar>
+        <ThemeSwitcher />
+      </div>
     </nav>
   );
 }

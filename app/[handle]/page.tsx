@@ -1,6 +1,4 @@
-import { getUserProfile, UserProfile } from "@/lib/colosseum/user";
 import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
 
 type PageProps = {
   params: { handle: string };

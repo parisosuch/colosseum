@@ -27,8 +27,13 @@ export default async function UserPage({ params }: PageProps) {
   }
 
   if (!user) {
-    return <div>Not authenticated</div>;
+    return <div>Not authenticated view.</div>;
+  }
+  const match = data?.user_id === user!.id;
+
+  if (match) {
+    return <div>User match view.</div>;
   }
 
-  return <div>{data?.user_id === user!.id ? "Match" : "No match"}</div>;
+  return <div>User no match view.</div>;
 }

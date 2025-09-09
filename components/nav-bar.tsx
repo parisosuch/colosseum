@@ -1,6 +1,7 @@
 import { getUserProfile } from "@/lib/colosseum/user";
 import { createClient } from "@/lib/supabase/server";
 import { LandmarkIcon, ArrowRight } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import Link from "next/link";
 
 export default async function NavBar() {
@@ -29,10 +30,12 @@ export default async function NavBar() {
   return (
     <nav className="w-full flex justify-between p-4">
       <LandmarkIcon />
-      <Link
-        href="/auth/login"
-        className="flex flex-row items-center justify-center space-x-1"
-      ></Link>
+      <Avatar>
+        <AvatarImage src={userProfile.avatar_url} />
+        <AvatarFallback>
+          {userProfile.handle.charAt(0).toUpperCase()}
+        </AvatarFallback>
+      </Avatar>
     </nav>
   );
 }

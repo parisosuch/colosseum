@@ -20,6 +20,10 @@ export default async function UserPage({ params }: PageProps) {
     .eq("handle", handle)
     .single();
 
+  if (error) {
+    console.error("There was an error getting user_profile: ", error.message);
+  }
+
   if (!data) {
     return <div>This user does not exist.</div>;
   }

@@ -13,7 +13,9 @@ export default async function NavBar() {
   if (!user) {
     return (
       <nav className="w-full flex justify-between p-4">
-        <LandmarkIcon />
+        <Link href="/">
+          <LandmarkIcon />
+        </Link>
         <Link
           href="/auth/login"
           className="flex flex-row items-center justify-center space-x-1"
@@ -29,7 +31,9 @@ export default async function NavBar() {
 
   return (
     <nav className="w-full flex justify-between p-4">
-      <LandmarkIcon />
+      <Link href="/">
+        <LandmarkIcon />
+      </Link>
       <Avatar>
         <AvatarImage src={userProfile.avatar_url} />
         <AvatarFallback>

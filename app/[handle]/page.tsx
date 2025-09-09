@@ -1,4 +1,7 @@
-import { getUserChannels } from "@/lib/colosseum/channel";
+import {
+  getUserChannels,
+  getUserPublicChannels,
+} from "@/lib/colosseum/channel";
 import { createClient } from "@/lib/supabase/server";
 import { Channel } from "@/lib/colosseum/channel";
 
@@ -11,7 +14,7 @@ export default async function UserPage({ params }: PageProps) {
 
   const supabase = await createClient();
 
-  const AuthView = (channels: Channel[]) => {
+  const AuthView = ({ channels }: { channels: Channel[] }) => {
     if (channels.length === 0) {
       return <p>User has no channels</p>;
     }
@@ -43,9 +46,11 @@ export default async function UserPage({ params }: PageProps) {
   const match = data?.user_id === user!.id;
 
   if (match) {
+    const channels = await getUserChannels(supabase, user.id);
+
     return (
-      <div>
-        <AuthView />
+      <div className="w-full bg-blue-100">
+        <AuthView channels={channels} />
       </div>
     );
   }

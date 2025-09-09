@@ -10,6 +10,22 @@ export type Channel = {
   updated_at?: string;
 };
 
+export async function getUserPublicChannels(
+  supabase: SupabaseClient,
+  user_id: string
+): Promise<Channel[] | []> {
+  const { data, error } = await supabase
+    .from("channel")
+    .select("*")
+    .eq("owner_id", user_id)
+    .eq("private", false);
+
+  if (!data) {
+    return [];
+  }
+  return data;
+}
+
 export async function getUserChannels(
   supabase: SupabaseClient,
   user_id: string

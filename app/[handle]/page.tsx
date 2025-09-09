@@ -1,4 +1,6 @@
+import { getUserChannels } from "@/lib/colosseum/channel";
 import { createClient } from "@/lib/supabase/server";
+import { Channel } from "@/lib/colosseum/channel";
 
 type PageProps = {
   params: { handle: string };
@@ -8,6 +10,13 @@ export default async function UserPage({ params }: PageProps) {
   const { handle } = await params;
 
   const supabase = await createClient();
+
+  const AuthView = (channels: Channel[]) => {
+    if (channels.length === 0) {
+      return <p>User has no channels</p>;
+    }
+    return <p>User has some channels</p>;
+  };
 
   // determine if user is authenticated
   const {
@@ -34,7 +43,11 @@ export default async function UserPage({ params }: PageProps) {
   const match = data?.user_id === user!.id;
 
   if (match) {
-    return <div>User match view.</div>;
+    return (
+      <div>
+        <AuthView />
+      </div>
+    );
   }
 
   return <div>User no match view.</div>;

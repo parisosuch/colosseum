@@ -11,7 +11,7 @@ export type UserProfile = {
 export async function getUserProfile(
   client: SupabaseClient,
   user_id: string
-): Promise<UserProfile | null> {
+): Promise<UserProfile> {
   const { data, error } = await client
     .from("user_profile")
     .select("*")

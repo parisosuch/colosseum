@@ -15,7 +15,7 @@ export default async function UserPage({ params }: PageProps) {
 
   const supabase = await createClient();
 
-  const AuthView = ({ channels }: { channels: Channel[] }) => {
+  const OwnerView = ({ channels }: { channels: Channel[] }) => {
     if (channels.length === 0) {
       return (
         <div className="w-full flex items-center justify-center">
@@ -29,6 +29,19 @@ export default async function UserPage({ params }: PageProps) {
     return <p>User has some channels</p>;
   };
 
+  const VisitorView = ({ channels }: { channels: Channel[] }) => {
+    if (channels.length === 0) {
+      return (
+        <div className="w-full flex items-center justify-center">
+          <h1 className="text-4xl font-semibold">User has no public channels.</h1>
+        </div>
+      );
+    }
+    return (
+      <p>User has some public channels.</p>
+    )
+  }
+
   // determine if user is authenticated
   const {
     data: { user },
@@ -40,17 +53,23 @@ export default async function UserPage({ params }: PageProps) {
     .eq("handle", handle)
     .single();
 
-  if (error) {
-    console.error("There was an error getting user_profile: ", error.message);
-  }
-
   if (!data) {
-    return <div>This user does not exist.</div>;
+    return (
+      <div className="w-full flex items-center justify-center">
+        <h1 className="text-4xl font-semibold">This user does not exist!</h1>
+      </div>
+    );
+  }
+  if (!user) {
+    const channels = await getUserPublicChannels(supabase, data?.user_id);
+
+    return (
+      <div className="w-full">
+        <VisitorView channels={channels} />
+      </div>
+    )
   }
 
-  if (!user) {
-    return <div>Not authenticated view.</div>;
-  }
   const match = data?.user_id === user!.id;
 
   if (match) {
@@ -58,10 +77,18 @@ export default async function UserPage({ params }: PageProps) {
 
     return (
       <div className="w-full">
-        <AuthView channels={channels} />
+        <OwnerView channels={channels} />
       </div>
     );
   }
 
-  return <div>User no match view.</div>;
+  // else all, get public channels and show visitor view for authenticated user
+  const channels = await getUserPublicChannels(supabase, data.user_id);
+
+  return (
+    <div className="w-full">
+      <VisitorView channels={channels} />
+    </div>
+  )
+
 }

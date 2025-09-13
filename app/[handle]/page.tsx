@@ -4,6 +4,7 @@ import {
 } from "@/lib/colosseum/channel";
 import { createClient } from "@/lib/supabase/server";
 import { Channel } from "@/lib/colosseum/channel";
+import CreateChannelButton from "@/components/create-channel-button";
 
 type PageProps = {
   params: { handle: string };
@@ -16,7 +17,14 @@ export default async function UserPage({ params }: PageProps) {
 
   const AuthView = ({ channels }: { channels: Channel[] }) => {
     if (channels.length === 0) {
-      return <p>User has no channels</p>;
+      return (
+        <div className="w-full flex items-center justify-center">
+          <div className="w-1/2 flex space-x-4 items-center">
+            <h1 className="text-4xl font-semibold">Looks like you have no channels.</h1>
+            <CreateChannelButton />
+          </div>
+        </div>
+      );
     }
     return <p>User has some channels</p>;
   };
@@ -49,7 +57,7 @@ export default async function UserPage({ params }: PageProps) {
     const channels = await getUserChannels(supabase, user.id);
 
     return (
-      <div className="w-full bg-blue-100">
+      <div className="w-full">
         <AuthView channels={channels} />
       </div>
     );

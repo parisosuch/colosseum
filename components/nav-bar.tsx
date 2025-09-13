@@ -4,6 +4,7 @@ import { LandmarkIcon, ArrowRight } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import Link from "next/link";
 import { ThemeSwitcher } from "./theme-switcher";
+import { LogoutButton } from "./logout-button";
 
 export default async function NavBar() {
   const supabase = await createClient();
@@ -43,6 +44,7 @@ export default async function NavBar() {
           </AvatarFallback>
         </Avatar>
         <ThemeSwitcher />
+        <LogoutButton />
       </div>
     </nav>
   );

@@ -18,13 +18,16 @@ export default async function NavBar() {
         <Link href="/">
           <LandmarkIcon />
         </Link>
-        <Link
-          href="/auth/login"
-          className="flex flex-row items-center justify-center space-x-1"
-        >
-          <p className="underline">Login</p>
-          <ArrowRight size={16} />
-        </Link>
+        <div className="flex flex-row space-x-2 items-center">
+          <Link
+            href="/auth/login"
+            className="flex flex-row items-center justify-center space-x-1"
+          >
+            <p className="underline">Login</p>
+            <ArrowRight size={16} />
+          </Link>
+          <ThemeSwitcher />
+        </div>
       </nav>
     );
   }

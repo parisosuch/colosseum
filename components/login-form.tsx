@@ -16,7 +16,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { getUserProfile } from "@/lib/colosseum/user";
-import { createBrowserClient } from "@supabase/ssr";
 
 export function LoginForm({
   className,

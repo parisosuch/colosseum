@@ -86,7 +86,7 @@ export default function CreateChannelForm({ className, ...props }: React.Compone
                                 <Label htmlFor="text">Private Channel</Label>
                                 <Checkbox
                                     id="private"
-                                    checked={false}
+                                    checked={isPrivate}
                                     onCheckedChange={(state) => setPrivate(state === true)}
                                 />
                             </div>

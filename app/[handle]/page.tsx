@@ -20,27 +20,43 @@ export default async function UserPage({ params }: PageProps) {
       return (
         <div className="w-full flex items-center justify-center">
           <div className="w-1/2 flex space-x-4 items-center">
-            <h1 className="text-4xl font-semibold">Looks like you have no channels.</h1>
+            <h1 className="text-4xl font-semibold">
+              Looks like you have no channels.
+            </h1>
             <CreateChannelButton />
           </div>
         </div>
       );
     }
-    return <p>User has some channels</p>;
+    return (
+      <div className="p-4">
+        {channels.map((channel) => (
+          <div className="border-2 border-gray-500/50 rounded-lg p-8 flex flex-row items-center space-x-8">
+            <div className="flex flex-col items-center">
+              <h2 className="text-lg">{channel.title}</h2>
+              {channel.description ? <p>{channel.description}</p> : null}
+            </div>
+            <div>
+              <p>this is where columns go</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
   };
 
   const VisitorView = ({ channels }: { channels: Channel[] }) => {
     if (channels.length === 0) {
       return (
         <div className="w-full flex items-center justify-center">
-          <h1 className="text-4xl font-semibold">User has no public channels.</h1>
+          <h1 className="text-4xl font-semibold">
+            User has no public channels.
+          </h1>
         </div>
       );
     }
-    return (
-      <p>User has some public channels.</p>
-    )
-  }
+    return <p>User has some public channels.</p>;
+  };
 
   // determine if user is authenticated
   const {
@@ -52,6 +68,10 @@ export default async function UserPage({ params }: PageProps) {
     .select("user_id")
     .eq("handle", handle)
     .single();
+
+  if (error) {
+    console.error(error);
+  }
 
   if (!data) {
     return (
@@ -67,7 +87,7 @@ export default async function UserPage({ params }: PageProps) {
       <div className="w-full">
         <VisitorView channels={channels} />
       </div>
-    )
+    );
   }
 
   const match = data?.user_id === user!.id;
@@ -89,6 +109,5 @@ export default async function UserPage({ params }: PageProps) {
     <div className="w-full">
       <VisitorView channels={channels} />
     </div>
-  )
-
+  );
 }

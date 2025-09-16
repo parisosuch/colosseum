@@ -16,14 +16,18 @@ export default async function UserPage({ params }: PageProps) {
 
   const supabase = await createClient();
 
-  const ChannelColumns = async ({ channel_id }: { channel_id: number }) => {
-    const columns = await getChannelColumns(supabase, channel_id);
+  const ChannelColumnsView = async ({ channel }: { channel: Channel }) => {
+    const columns = await getChannelColumns(supabase, channel.id);
 
-    if (columns.length === 0) {
-      return null;
-    }
-
-    return columns.map((column) => <p>{column.title}</p>);
+    return (
+      <div>
+        <div className="flex flex-col items-center">
+          <h2 className="text-lg">{channel.title}</h2>
+          {channel.description ? <p>{channel.description}</p> : null}
+          <p>{columns.length} column(s)</p>
+        </div>
+      </div>
+    );
   };
 
   const OwnerView = ({ channels }: { channels: Channel[] }) => {
@@ -43,14 +47,11 @@ export default async function UserPage({ params }: PageProps) {
     return (
       <div className="p-4">
         {channels.map((channel) => (
-          <div className="border-2 border-gray-500/50 rounded-lg p-8 flex flex-row items-center space-x-8">
-            <div className="flex flex-col items-center">
-              <h2 className="text-lg">{channel.title}</h2>
-              {channel.description ? <p>{channel.description}</p> : null}
-            </div>
-            <div>
-              <ChannelColumns channel_id={channel.id} />
-            </div>
+          <div
+            key={channel.id}
+            className="border-2 border-gray-500/50 rounded-lg p-8 flex flex-row items-center space-x-8"
+          >
+            <ChannelColumnsView channel={channel}></ChannelColumnsView>
           </div>
         ))}
       </div>

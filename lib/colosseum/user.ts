@@ -11,7 +11,7 @@ export type UserProfile = {
 export async function getPublicUserProfile(
   client: SupabaseClient,
   handle: string
-): Promise<UserProfile> {
+): Promise<UserProfile | null> {
   const { data, error } = await client
     .from("user_profile")
     .select("*")
@@ -23,7 +23,7 @@ export async function getPublicUserProfile(
   }
 
   if (!data) {
-    throw new Error(`User with handle ${handle} does not exist.`);
+    return null;
   }
 
   return data;

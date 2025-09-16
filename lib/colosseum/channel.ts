@@ -20,6 +20,10 @@ export async function getUserPublicChannels(
     .eq("owner_id", user_id)
     .eq("private", false);
 
+  if (error) {
+    throw new Error(error.message);
+  }
+
   if (!data) {
     return [];
   }
@@ -35,8 +39,26 @@ export async function getUserChannels(
     .select("*")
     .eq("owner_id", user_id);
 
+  if (error) {
+    throw new Error(error.message);
+  }
+
   if (!data) {
     return [];
   }
   return data;
+}
+
+export async function createChannel(supabase: SupabaseClient, data: {
+  title: string;
+  description?: string;
+  private: boolean;
+  owner_id: string;
+
+}) {
+  const { error } = await supabase.from("channel").insert(data);
+
+  if (error) {
+    throw new Error(error.message);
+  }
 }

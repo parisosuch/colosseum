@@ -49,16 +49,17 @@ export async function getUserChannels(
   return data;
 }
 
-export async function createChannel(supabase: SupabaseClient, data: {
+export async function createChannel(supabase: SupabaseClient, channel: {
   title: string;
   description?: string;
   private: boolean;
   owner_id: string;
 
-}) {
-  const { error } = await supabase.from("channel").insert(data);
+}): Promise<Channel> {
+  const { data, error } = await supabase.from("channel").upsert(channel).select().single();
 
   if (error) {
     throw new Error(error.message);
   }
+  return data;
 }

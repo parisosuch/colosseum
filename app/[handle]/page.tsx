@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Channel } from "@/lib/colosseum/channel";
 import CreateChannelButton from "@/components/create-channel-button";
 import { getChannelColumns } from "@/lib/colosseum/column";
+import { getPublicUserProfile } from "@/lib/colosseum/user";
 
 type PageProps = {
   params: { handle: string };
@@ -24,7 +25,7 @@ export default async function UserPage({ params }: PageProps) {
         <div className="flex flex-col items-center space-y-1 min-w-[200px]">
           <h2 className="text-lg">{channel.title}</h2>
           {channel.description ? <p>{channel.description}</p> : null}
-          <p className="text-sm dark:text-white/75 text-black/75">
+          <p className="text-sm dark:text-white/75 text-black/75 font-light">
             {columns.length} column(s)
           </p>
         </div>
@@ -58,7 +59,7 @@ export default async function UserPage({ params }: PageProps) {
     }
 
     return (
-      <div className="p-4">
+      <div>
         {channels.map((channel) => (
           <div
             key={channel.id}
@@ -89,17 +90,9 @@ export default async function UserPage({ params }: PageProps) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { data, error } = await supabase
-    .from("user_profile")
-    .select("user_id")
-    .eq("handle", handle)
-    .single();
+  const userProfile = await getPublicUserProfile(supabase, handle);
 
-  if (error) {
-    console.error(error);
-  }
-
-  if (!data) {
+  if (!userProfile) {
     return (
       <div className="w-full flex items-center justify-center">
         <h1 className="text-4xl font-semibold">This user does not exist!</h1>
@@ -107,7 +100,10 @@ export default async function UserPage({ params }: PageProps) {
     );
   }
   if (!user) {
-    const channels = await getUserPublicChannels(supabase, data?.user_id);
+    const channels = await getUserPublicChannels(
+      supabase,
+      userProfile?.user_id
+    );
 
     return (
       <div className="w-full">
@@ -116,20 +112,37 @@ export default async function UserPage({ params }: PageProps) {
     );
   }
 
-  const match = data?.user_id === user!.id;
+  const match = userProfile?.user_id === user!.id;
 
   if (match) {
     const channels = await getUserChannels(supabase, user.id);
 
     return (
-      <div className="w-full">
+      <div className="w-full p-12 space-y-8">
+        <h1 className="text-4xl">Colloseum / {handle}</h1>
+        <div className="flex flex-col space-y-4">
+          <div className="flex flex-col">
+            <h2 className="text-sm font-light">About</h2>
+            {userProfile.about ? <p className="">{userProfile.about}</p> : null}
+          </div>
+          <div className="flex flex-col">
+            <h2 className="text-sm font-light">Joined</h2>
+            <p>
+              {new Date(userProfile.created_at).toLocaleString("default", {
+                month: "long",
+                year: "numeric",
+              })}
+            </p>
+          </div>
+        </div>
+
         <OwnerView channels={channels} />
       </div>
     );
   }
 
   // else all, get public channels and show visitor view for authenticated user
-  const channels = await getUserPublicChannels(supabase, data.user_id);
+  const channels = await getUserPublicChannels(supabase, userProfile.user_id);
 
   return (
     <div className="w-full">

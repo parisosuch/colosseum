@@ -20,11 +20,24 @@ export default async function UserPage({ params }: PageProps) {
     const columns = await getChannelColumns(supabase, channel.id);
 
     return (
-      <div>
-        <div className="flex flex-col items-center">
+      <div className="flex gap-8 p-12">
+        <div className="flex flex-col items-center space-y-1 min-w-[200px]">
           <h2 className="text-lg">{channel.title}</h2>
           {channel.description ? <p>{channel.description}</p> : null}
-          <p>{columns.length} column(s)</p>
+          <p className="text-sm dark:text-white/75 text-black/75">
+            {columns.length} column(s)
+          </p>
+        </div>
+        <div className="flex gap-4 overflow-x-auto">
+          {columns.map((column) => (
+            <div
+              key={column.id}
+              className="min-w-[200px] border p-4 rounded-md"
+            >
+              <h3 className="font-semibold">{column.title}</h3>
+              <p>{column.description}</p>
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -49,7 +62,7 @@ export default async function UserPage({ params }: PageProps) {
         {channels.map((channel) => (
           <div
             key={channel.id}
-            className="border-2 border-gray-500/50 rounded-lg p-8 flex flex-row items-center space-x-8"
+            className="border-2 border-gray-500/50 rounded-lg p-8"
           >
             <ChannelColumnsView channel={channel}></ChannelColumnsView>
           </div>

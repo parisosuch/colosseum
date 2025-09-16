@@ -1,3 +1,5 @@
+import { SupabaseClient } from "@supabase/supabase-js";
+
 export type Column = {
   id: number;
   created_at: string;
@@ -8,5 +10,21 @@ export type Column = {
   text?: string;
   image?: string;
   created_by: string;
-  channel_id: string;
+  channel_id: number;
 };
+
+export async function getChannelColumns(
+  supabase: SupabaseClient,
+  channel_id: number
+): Promise<Column[]> {
+  const { data, error } = await supabase
+    .from("column")
+    .select("*")
+    .eq("channel_id", channel_id);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
+}

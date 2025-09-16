@@ -5,6 +5,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { Channel } from "@/lib/colosseum/channel";
 import CreateChannelButton from "@/components/create-channel-button";
+import { getChannelColumns } from "@/lib/colosseum/column";
 
 type PageProps = {
   params: { handle: string };
@@ -14,6 +15,16 @@ export default async function UserPage({ params }: PageProps) {
   const { handle } = await params;
 
   const supabase = await createClient();
+
+  const ChannelColumns = async ({ channel_id }: { channel_id: number }) => {
+    const columns = await getChannelColumns(supabase, channel_id);
+
+    if (columns.length === 0) {
+      return null;
+    }
+
+    return columns.map((column) => <p>{column.title}</p>);
+  };
 
   const OwnerView = ({ channels }: { channels: Channel[] }) => {
     if (channels.length === 0) {
@@ -28,6 +39,7 @@ export default async function UserPage({ params }: PageProps) {
         </div>
       );
     }
+
     return (
       <div className="p-4">
         {channels.map((channel) => (
@@ -37,7 +49,7 @@ export default async function UserPage({ params }: PageProps) {
               {channel.description ? <p>{channel.description}</p> : null}
             </div>
             <div>
-              <p>this is where columns go</p>
+              <ChannelColumns channel_id={channel.id} />
             </div>
           </div>
         ))}

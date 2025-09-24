@@ -5,6 +5,7 @@ import React, { useState, useRef } from "react";
 export default function CreateColumnForm() {
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -12,15 +13,45 @@ export default function CreateColumnForm() {
     if (selected) setFile(selected);
   };
 
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const droppedFile = e.dataTransfer.files?.[0];
+    if (droppedFile) setFile(droppedFile);
+  };
+
   return (
-    <div className="relative w-[300px] h-[300px] rounded-lg dark:bg-white/10 bg-gray-100">
-      <textarea
-        ref={textareaRef}
-        className="w-full h-full bg-transparent resize-none focus:outline-none p-3 leading-normal text-sm"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder=""
-      />
+    <div
+      className={`relative w-[300px] h-[300px] rounded-lg dark:bg-white/10 bg-gray-100 
+        ${isDragging ? "border-2 border-dashed border-blue-500" : ""}`}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+      onDragEnter={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(true);
+      }}
+      onDragLeave={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+      }}
+      onDrop={handleDrop}
+    >
+      {/* Text input */}
+      {!file && (
+        <textarea
+          ref={textareaRef}
+          className="w-full h-full bg-transparent resize-none focus:outline-none p-3 leading-normal text-sm"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder=""
+        />
+      )}
 
       {/* Overlay placeholder with clickable Upload */}
       {!text && !file && (
@@ -34,7 +65,8 @@ export default function CreateColumnForm() {
                 className="hidden"
                 onChange={handleFileChange}
               />
-            </label>
+            </label>{" "}
+            or drop a file
           </span>
         </div>
       )}

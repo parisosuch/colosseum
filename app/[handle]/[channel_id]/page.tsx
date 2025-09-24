@@ -1,79 +1,100 @@
-import CreateColumnForm from "@/components/create-column-form";
-import { getChannel } from "@/lib/colosseum/channel";
-import { getChannelColumns } from "@/lib/colosseum/column";
-import { createClient } from "@/lib/supabase/server";
+"use client";
+
+import { Channel, getChannel } from "@/lib/colosseum/channel";
+import { Column, getChannelColumns } from "@/lib/colosseum/column";
+import { createClient } from "@/lib/supabase/client";
+import { User } from "@supabase/supabase-js";
+import { useParams, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 
-type PageProps = {
-  params: {
-    handle: string;
-    channel_id: string;
-  };
-};
+export default function ChannelPage() {
+  const params = useParams();
+  const handle = params.handle as string;
+  const channel_id = params.channel_id as string;
 
-export default async function ChannelPage({ params }: PageProps) {
-  const { handle, channel_id } = await params;
+  const [channel, setChannel] = useState<Channel | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [columns, setColumns] = useState<Column[]>([]);
+  const [metaData, setMetaData] = useState<{title: string, data: string}[]>();
+  const [loading, setLoading] = useState(true);
 
-  const supabase = await createClient();
+  const router = useRouter();
+  const supabase = createClient();
 
-  // get channel information
-  const channel = await getChannel(supabase, parseInt(channel_id));
 
-  // redirect user if the channel is private and owner is not user
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const fetchData = async () => {
+    setLoading(true);
 
-  if (!user && channel.private) {
-    redirect("/");
-  }
+      try {
+        const channelResponse = await getChannel(supabase, parseInt(channel_id, 10));
+        if (!channelResponse) throw new Error("Channel does not exist.");
+        setChannel(channelResponse);
 
-  if (user!.id !== channel.owner_id && channel.private) {
-    redirect("/");
-  }
+        const { data: userData } = await supabase.auth.getUser();
+        const currentUser = userData.user;
+        setUser(currentUser);
 
-  // get channel columns and extract necessary metadata
-  const columns = await getChannelColumns(supabase, parseInt(channel_id));
+        if (channelResponse.private) {
+          if (!currentUser || currentUser.id !== channelResponse.owner_id) {
+            router.push("/"); // redirect safely in client component
+            return;
+          }
+        }
 
-  const lastModifiedChannel = columns.at(0);
+        const columnsResponse = await getChannelColumns(supabase, parseInt(channel_id, 10));
+        setColumns(columnsResponse);
 
-  let lastModifiedChannelDays: string;
+        const lastModifiedChannel = columnsResponse.at(0);
+        let lastModifiedChannelDays: string;
+        if (!lastModifiedChannel) {
+          lastModifiedChannelDays = "-";
+        } else {
+          const today = new Date();
+          const lastDate = new Date(lastModifiedChannel.created_at);
+          const diffInMs = today.getTime() - lastDate.getTime();
+          const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
+          lastModifiedChannelDays = diffInDays === 0 ? "Today" : `${diffInDays} days ago`;
+        }
 
-  if (!lastModifiedChannel) {
-    lastModifiedChannelDays = "-";
-  } else {
-    const today = new Date();
-    const lastDate = new Date(lastModifiedChannel.created_at);
+        setMetaData([
+          {
+            title: "Created On",
+            data: new Date(channelResponse.created_at).toLocaleString("default", {
+              month: "long",
+              day: "numeric",
+              year: "numeric",
+            }),
+          },
+          {
+            title: "Last Modified",
+            data: lastModifiedChannelDays,
+          },
+          {
+            title: "Length",
+            data: columnsResponse.length.toString(),
+          },
+        ]);
 
-    const diffInMs = today.getTime() - lastDate.getTime();
-    const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-    if (diffInDays == 0) {
-      lastModifiedChannelDays = "Today";
-    } else {
-      lastModifiedChannelDays = `${diffInDays} days ago`;
+  useEffect(() => {
+    if (!channel_id) {
+      return;
     }
-  }
 
-  const MetaData = [
-    {
-      title: "Created On",
-      data: new Date(channel.created_at).toLocaleString("default", {
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-      }),
-    },
-    {
-      title: "Last Modfified",
-      data: lastModifiedChannelDays,
-    },
-    {
-      title: "Length",
-      data: columns.length.toString(),
-    },
-  ];
+    fetchData();
+
+  }, [channel_id, supabase, router]);
+
+  if (loading) {
+    return (null);
+  }
 
   return (
     <div className="w-full p-12 space-y-8">
@@ -91,18 +112,18 @@ export default async function ChannelPage({ params }: PageProps) {
         >
           {handle}
         </Link>{" "}
-        <span className="font-extralight">/</span> {channel.title}
+        <span className="font-extralight">/</span> {channel!.title}
       </h1>
       <div className="flex flex-col space-y-4">
         <div className="flex flex-col">
           <h2 className="text-sm font-light">Description</h2>
-          {channel.description ? (
-            <p className="">{channel.description}</p>
+          {channel!.description ? (
+            <p className="">{channel!.description}</p>
           ) : null}
         </div>
         <div className="flex flex-col">
           <h2 className="text-sm font-light">Meta</h2>
-          {MetaData.map((meta, index) => (
+          {metaData!.map((meta, index) => (
             // TODO: change the width to be responsive and appropriate for each screen size.
             <div key={index} className="flex w-[350px] justify-between">
               <h3>{meta.title}</h3>
@@ -110,9 +131,6 @@ export default async function ChannelPage({ params }: PageProps) {
             </div>
           ))}
         </div>
-      </div>
-      <div className="">
-        <CreateColumnForm channel_id={channel_id} />
       </div>
     </div>
   );

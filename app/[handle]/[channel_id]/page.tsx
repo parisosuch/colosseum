@@ -77,13 +77,16 @@ export default async function ChannelPage({ params }: PageProps) {
   return (
     <div className="w-full p-12 space-y-8">
       <h1 className="text-4xl">
-        <Link href="/" className="hover:dark:text-white/75 hover:text-black/75">
+        <Link
+          href="/"
+          className="dark:text-white/75 text-black/75 hover:dark:text-white/100 hover:text-black/100"
+        >
           Colloseum
         </Link>{" "}
         /{" "}
         <Link
           href={`/${handle}`}
-          className="hover:dark:text-white/75 hover:text-black/75"
+          className="dark:text-white/75 text-black/75 hover:dark:text-white/100 hover:text-black/100"
         >
           {handle}
         </Link>{" "}

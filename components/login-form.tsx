@@ -40,7 +40,7 @@ export function LoginForm({
       });
       if (error) throw error;
       // Update this route to redirect to an authenticated route. The user already has an active session.
-      // Get user profile and redirect to profile      
+      // Get user profile and redirect to profile
       const userProfile = await getUserProfile(supabase, data.user.id);
       router.push(`/${userProfile.handle}`);
     } catch (error: unknown) {

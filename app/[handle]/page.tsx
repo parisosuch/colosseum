@@ -71,7 +71,6 @@ export default async function UserPage({ params }: PageProps) {
             </Link>
           ))}
         </div>
-
       </div>
     );
   };
@@ -106,7 +105,7 @@ export default async function UserPage({ params }: PageProps) {
   if (!user) {
     const channels = await getUserPublicChannels(
       supabase,
-      userProfile?.user_id
+      userProfile?.user_id,
     );
 
     return (

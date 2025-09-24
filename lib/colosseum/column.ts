@@ -15,7 +15,7 @@ export type Column = {
 
 export async function getChannelColumns(
   supabase: SupabaseClient,
-  channel_id: number
+  channel_id: number,
 ): Promise<Column[]> {
   const { data, error } = await supabase
     .from("column")

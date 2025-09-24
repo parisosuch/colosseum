@@ -10,7 +10,7 @@ export type UserProfile = {
 
 export async function getPublicUserProfile(
   client: SupabaseClient,
-  handle: string
+  handle: string,
 ): Promise<UserProfile | null> {
   const { data, error } = await client
     .from("user_profile")
@@ -31,7 +31,7 @@ export async function getPublicUserProfile(
 
 export async function getUserProfile(
   client: SupabaseClient,
-  user_id: string
+  user_id: string,
 ): Promise<UserProfile> {
   const { data, error } = await client
     .from("user_profile")

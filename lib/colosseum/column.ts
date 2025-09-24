@@ -20,7 +20,8 @@ export async function getChannelColumns(
   const { data, error } = await supabase
     .from("column")
     .select("*")
-    .eq("channel_id", channel_id);
+    .eq("channel_id", channel_id)
+    .order("created_at");
 
   if (error) {
     throw new Error(error.message);

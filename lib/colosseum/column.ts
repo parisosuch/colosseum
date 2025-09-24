@@ -6,7 +6,7 @@ export type Column = {
   type: string;
   title?: string;
   description?: string;
-  urL?: string;
+  url?: string;
   text?: string;
   image?: string;
   created_by: string;

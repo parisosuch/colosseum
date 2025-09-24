@@ -119,7 +119,15 @@ export default async function UserPage({ params }: PageProps) {
 
     return (
       <div className="w-full p-12 space-y-8">
-        <h1 className="text-4xl">Colloseum / {handle}</h1>
+        <h1 className="text-4xl">
+          <Link
+            href="/"
+            className="hover:dark:text-white/75 hover:text-black/75"
+          >
+            Colloseum
+          </Link>{" "}
+          / {handle}
+        </h1>
         <div className="flex flex-col space-y-4">
           <div className="flex flex-col">
             <h2 className="text-sm font-light">About</h2>

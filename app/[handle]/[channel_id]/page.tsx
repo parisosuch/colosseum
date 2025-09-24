@@ -1,6 +1,7 @@
 import { getChannel } from "@/lib/colosseum/channel";
 import { getChannelColumns } from "@/lib/colosseum/column";
 import { createClient } from "@/lib/supabase/server";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 type PageProps = {
@@ -76,7 +77,17 @@ export default async function ChannelPage({ params }: PageProps) {
   return (
     <div className="w-full p-12 space-y-8">
       <h1 className="text-4xl">
-        Colloseum / {handle} / {channel.title}
+        <Link href="/" className="hover:dark:text-white/75 hover:text-black/75">
+          Colloseum
+        </Link>{" "}
+        /{" "}
+        <Link
+          href={`/${handle}`}
+          className="hover:dark:text-white/75 hover:text-black/75"
+        >
+          {handle}
+        </Link>{" "}
+        / {channel.title}
       </h1>
       <div className="flex flex-col space-y-4">
         <div className="flex flex-col">

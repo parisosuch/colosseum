@@ -7,6 +7,7 @@ import { Channel } from "@/lib/colosseum/channel";
 import CreateChannelButton from "@/components/create-channel-button";
 import { getChannelColumns } from "@/lib/colosseum/column";
 import { getPublicUserProfile } from "@/lib/colosseum/user";
+import Link from "next/link";
 
 type PageProps = {
   params: { handle: string };
@@ -61,12 +62,11 @@ export default async function UserPage({ params }: PageProps) {
     return (
       <div>
         {channels.map((channel) => (
-          <div
-            key={channel.id}
-            className="border-2 border-gray-500/50 rounded-lg p-8"
-          >
-            <ChannelColumnsView channel={channel}></ChannelColumnsView>
-          </div>
+          <Link key={channel.id} href={`/${handle}/${channel.id}`}>
+            <div className="border-2 border-gray-500/50 rounded-lg p-8">
+              <ChannelColumnsView channel={channel}></ChannelColumnsView>
+            </div>
+          </Link>
         ))}
       </div>
     );

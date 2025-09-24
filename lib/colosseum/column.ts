@@ -4,7 +4,7 @@ export type Column = {
   id: number;
   created_at: string;
   type: string;
-  title: string;
+  title?: string;
   description?: string;
   urL?: string;
   text?: string;

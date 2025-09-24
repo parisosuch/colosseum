@@ -60,14 +60,18 @@ export default async function UserPage({ params }: PageProps) {
     }
 
     return (
-      <div>
-        {channels.map((channel) => (
-          <Link key={channel.id} href={`/${handle}/${channel.id}`}>
-            <div className="border-2 border-gray-500/50 rounded-lg p-8">
-              <ChannelColumnsView channel={channel}></ChannelColumnsView>
-            </div>
-          </Link>
-        ))}
+      <div className="space-y-4">
+        <CreateChannelButton />
+        <div>
+          {channels.map((channel) => (
+            <Link key={channel.id} href={`/${handle}/${channel.id}`}>
+              <div className="border-2 border-gray-500/50 rounded-lg p-8">
+                <ChannelColumnsView channel={channel}></ChannelColumnsView>
+              </div>
+            </Link>
+          ))}
+        </div>
+
       </div>
     );
   };

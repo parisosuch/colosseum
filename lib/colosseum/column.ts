@@ -31,7 +31,7 @@ export async function getChannelColumns(
   return data;
 }
 
-export async function uploadTextColumn(
+export async function uploadTextAreaColumn(
   supabase: SupabaseClient,
   column: {
     created_by: string;

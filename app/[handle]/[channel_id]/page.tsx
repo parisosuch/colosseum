@@ -1,4 +1,5 @@
 import { getChannel } from "@/lib/colosseum/channel";
+import { getChannelColumns } from "@/lib/colosseum/column";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 
@@ -30,6 +31,25 @@ export default async function ChannelPage({ params }: PageProps) {
     redirect("/");
   }
 
+  // get channel columns and extract necessary metadata
+  const columns = await getChannelColumns(supabase, channel_id);
+
+  const lastModifiedChannel = columns.at(0);
+
+  let lastModifiedChannelDays: string;
+
+  if (!lastModifiedChannel) {
+    lastModifiedChannelDays = "Never";
+  } else {
+    const today = new Date();
+    const lastDate = new Date(lastModifiedChannel.created_at);
+
+    const diffInMs = today.getTime() - lastDate.getTime();
+    const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
+
+    lastModifiedChannelDays = `${diffInDays} days ago`;
+  }
+
   return (
     <div className="w-full p-12 space-y-8">
       <h1 className="text-4xl">
@@ -43,14 +63,21 @@ export default async function ChannelPage({ params }: PageProps) {
           ) : null}
         </div>
         <div className="flex flex-col">
-          <h2 className="text-sm font-light">Created on</h2>
-          <p>
-            {new Date(channel.created_at).toLocaleString("default", {
-              month: "long",
-              day: "numeric",
-              year: "numeric",
-            })}
-          </p>
+          <h2 className="text-sm font-light">Meta</h2>
+          <div className="flex space-x-2">
+            <h3>Created On</h3>
+            <p>
+              {new Date(channel.created_at).toLocaleString("default", {
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+              })}
+            </p>
+          </div>
+          <div className="flex space-x-2">
+            <h3>Last Modified</h3>
+            <p>{lastModifiedChannelDays}</p>
+          </div>
         </div>
       </div>
     </div>

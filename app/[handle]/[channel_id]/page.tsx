@@ -8,7 +8,7 @@ import { redirect } from "next/navigation";
 type PageProps = {
   params: {
     handle: string;
-    channel_id: number;
+    channel_id: string;
   };
 };
 
@@ -18,7 +18,7 @@ export default async function ChannelPage({ params }: PageProps) {
   const supabase = await createClient();
 
   // get channel information
-  const channel = await getChannel(supabase, channel_id);
+  const channel = await getChannel(supabase, parseInt(channel_id));
 
   // redirect user if the channel is private and owner is not user
   const {
@@ -34,7 +34,7 @@ export default async function ChannelPage({ params }: PageProps) {
   }
 
   // get channel columns and extract necessary metadata
-  const columns = await getChannelColumns(supabase, channel_id);
+  const columns = await getChannelColumns(supabase, parseInt(channel_id));
 
   const lastModifiedChannel = columns.at(0);
 

@@ -1,12 +1,12 @@
 "use client";
 
-import { Column, uploadTextAreaColumn } from "@/lib/colosseum/column";
 import { createClient } from "@/lib/supabase/client";
 import React, { useState, useRef, useEffect } from "react";
 import { User } from "@supabase/supabase-js";
+import { createColumnServerAction } from "@/lib/actions/create-column";
 
 type CreateColumnFormProps = {
-  channel_id: number;
+  channel_id: string;
 };
 
 export default function CreateColumnForm(props: CreateColumnFormProps) {
@@ -25,7 +25,6 @@ export default function CreateColumnForm(props: CreateColumnFormProps) {
       .getUser()
       .then((userResponse) => {
         setUser(userResponse.data.user);
-        console.log(userResponse.data.user);
       })
       .catch((e) => {
         console.error("There was an error getting the user: ", e);
@@ -48,22 +47,16 @@ export default function CreateColumnForm(props: CreateColumnFormProps) {
     // TODO: handle upload on drop
   };
 
-  // TODO: handle textarea upload
-  const handleTextAreaUpload = () => {
-    if (text === "") {
-      return;
-    }
-    uploadTextAreaColumn(supabase, {
-      created_by: user!.id,
+  const handleTextAreaUpload = async () => {
+    if (!user?.id || text === "") return;
+
+    createColumnServerAction({
+      created_by: user.id,
       channel_id: props.channel_id,
-      text: text,
+      text,
     })
-      .then((column: Column) => {
-        console.log(column);
-      })
-      .catch((e) => {
-        console.error(e);
-      });
+      .then((column) => console.log(column))
+      .catch(console.error);
   };
 
   return (

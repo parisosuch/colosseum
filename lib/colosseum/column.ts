@@ -35,36 +35,34 @@ export async function uploadTextAreaColumn(
   supabase: SupabaseClient,
   column: {
     created_by: string;
-    channel_id: number;
+    channel_id: string;
     text: string;
   }
 ): Promise<Column> {
-  let columnData;
+  const columnData = isURL(column.text)
+    ? {
+        type: "url",
+        url: column.text,
+        channel_id: parseInt(column.channel_id),
+        created_by: column.created_by,
+      }
+    : {
+        type: "text",
+        url: column.text,
+        channel_id: parseInt(column.channel_id),
+        created_by: column.created_by,
+      };
 
-  if (isURL(column.text)) {
-    columnData = {
-      type: "url",
-      url: column.text,
-      created_by: column.created_by,
-      channel_id: column.channel_id,
-    };
-  } else {
-    columnData = {
-      type: "text",
-      url: column.text,
-      created_by: column.created_by,
-      channel_id: column.channel_id,
-    };
-  }
+  console.log(columnData);
 
-  const { data, error } = await supabase
+  const { data, error: insertError } = await supabase
     .from("column")
-    .upsert(columnData)
+    .insert(columnData) // use insert instead of upsert
     .select()
     .single();
 
-  if (error) {
-    throw new Error(error.message);
+  if (insertError) {
+    throw new Error(insertError.message);
   }
 
   return data;

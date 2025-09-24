@@ -1,3 +1,4 @@
+import CreateColumnForm from "@/components/create-column-form";
 import { getChannel } from "@/lib/colosseum/channel";
 import { getChannelColumns } from "@/lib/colosseum/column";
 import { createClient } from "@/lib/supabase/server";
@@ -109,6 +110,9 @@ export default async function ChannelPage({ params }: PageProps) {
             </div>
           ))}
         </div>
+      </div>
+      <div className="">
+        <CreateColumnForm />
       </div>
     </div>
   );

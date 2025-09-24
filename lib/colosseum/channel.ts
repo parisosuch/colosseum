@@ -49,17 +49,40 @@ export async function getUserChannels(
   return data;
 }
 
-export async function createChannel(supabase: SupabaseClient, channel: {
-  title: string;
-  description?: string;
-  private: boolean;
-  owner_id: string;
-
-}): Promise<Channel> {
-  const { data, error } = await supabase.from("channel").upsert(channel).select().single();
+export async function createChannel(
+  supabase: SupabaseClient,
+  channel: {
+    title: string;
+    description?: string;
+    private: boolean;
+    owner_id: string;
+  }
+): Promise<Channel> {
+  const { data, error } = await supabase
+    .from("channel")
+    .upsert(channel)
+    .select()
+    .single();
 
   if (error) {
     throw new Error(error.message);
   }
+  return data;
+}
+
+export async function getChannel(
+  supabase: SupabaseClient,
+  channel_id: number
+): Promise<Channel> {
+  const { data, error } = await supabase
+    .from("channel")
+    .select("*")
+    .eq("id", channel_id)
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
   return data;
 }

@@ -3,7 +3,6 @@
 import { Channel, getChannel } from "@/lib/colosseum/channel";
 import { Column, getChannelColumns } from "@/lib/colosseum/column";
 import { createClient } from "@/lib/supabase/client";
-import { User } from "@supabase/supabase-js";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -14,7 +13,6 @@ export default function ChannelPage() {
   const channel_id = params.channel_id as string;
 
   const [channel, setChannel] = useState<Channel | null>(null);
-  const [user, setUser] = useState<User | null>(null);
   const [columns, setColumns] = useState<Column[]>([]);
   const [metaData, setMetaData] = useState<{title: string, data: string}[]>();
   const [loading, setLoading] = useState(true);
@@ -33,7 +31,6 @@ export default function ChannelPage() {
 
         const { data: userData } = await supabase.auth.getUser();
         const currentUser = userData.user;
-        setUser(currentUser);
 
         if (channelResponse.private) {
           if (!currentUser || currentUser.id !== channelResponse.owner_id) {

@@ -112,7 +112,7 @@ export default async function ChannelPage({ params }: PageProps) {
         </div>
       </div>
       <div className="">
-        <CreateColumnForm />
+        <CreateColumnForm channel_id={channel_id} />
       </div>
     </div>
   );

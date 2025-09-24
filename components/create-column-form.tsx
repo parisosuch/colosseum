@@ -1,11 +1,15 @@
 "use client";
 
-import { uploadTextAreaColumn } from "@/lib/colosseum/column";
+import { Column, uploadTextAreaColumn } from "@/lib/colosseum/column";
 import { createClient } from "@/lib/supabase/client";
 import React, { useState, useRef, useEffect } from "react";
 import { User } from "@supabase/supabase-js";
 
-export default function CreateColumnForm() {
+type CreateColumnFormProps = {
+  channel_id: number;
+};
+
+export default function CreateColumnForm(props: CreateColumnFormProps) {
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -15,14 +19,18 @@ export default function CreateColumnForm() {
 
   const supabase = createClient();
 
-    useEffect(() => {
-        // get user
-        supabase.auth.getUser().then((userResponse) => {
-            setUser(userResponse.data.user);
-        }).catch((e) => {
+  useEffect(() => {
+    // get user
+    supabase.auth
+      .getUser()
+      .then((userResponse) => {
+        setUser(userResponse.data.user);
+        console.log(userResponse.data.user);
+      })
+      .catch((e) => {
         console.error("There was an error getting the user: ", e);
-        })
-    }, []);
+      });
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
@@ -46,8 +54,16 @@ export default function CreateColumnForm() {
       return;
     }
     uploadTextAreaColumn(supabase, {
-        created_by: 
-    });
+      created_by: user!.id,
+      channel_id: props.channel_id,
+      text: text,
+    })
+      .then((column: Column) => {
+        console.log(column);
+      })
+      .catch((e) => {
+        console.error(e);
+      });
   };
 
   return (

@@ -27,8 +27,8 @@ export default function CreateColumnForm() {
         <div className="absolute inset-0 px-3 pt-3 text-sm leading-normal text-gray-500 flex items-start pointer-events-none">
           <span className="pointer-events-auto">
             Type here... or{" "}
-            <label className="text-blue-600 underline cursor-pointer">
-              Upload file
+            <label className="underline cursor-pointer">
+              upload file
               <input
                 type="file"
                 className="hidden"

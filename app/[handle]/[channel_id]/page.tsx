@@ -39,7 +39,7 @@ export default async function ChannelPage({ params }: PageProps) {
   let lastModifiedChannelDays: string;
 
   if (!lastModifiedChannel) {
-    lastModifiedChannelDays = "Never";
+    lastModifiedChannelDays = "-";
   } else {
     const today = new Date();
     const lastDate = new Date(lastModifiedChannel.created_at);
@@ -53,6 +53,25 @@ export default async function ChannelPage({ params }: PageProps) {
       lastModifiedChannelDays = `${diffInDays} days ago`;
     }
   }
+
+  const MetaData = [
+    {
+      title: "Created On",
+      data: new Date(channel.created_at).toLocaleString("default", {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      }),
+    },
+    {
+      title: "Last Modfified",
+      data: lastModifiedChannelDays,
+    },
+    {
+      title: "Length",
+      data: columns.length.toString(),
+    },
+  ];
 
   return (
     <div className="w-full p-12 space-y-8">
@@ -68,20 +87,13 @@ export default async function ChannelPage({ params }: PageProps) {
         </div>
         <div className="flex flex-col">
           <h2 className="text-sm font-light">Meta</h2>
-          <div className="flex space-x-2">
-            <h3>Created On</h3>
-            <p>
-              {new Date(channel.created_at).toLocaleString("default", {
-                month: "long",
-                day: "numeric",
-                year: "numeric",
-              })}
-            </p>
-          </div>
-          <div className="flex space-x-2">
-            <h3>Last Modified</h3>
-            <p>{lastModifiedChannelDays}</p>
-          </div>
+          {MetaData.map((meta, index) => (
+            // TODO: change the width to be responsive and appropriate for each screen size.
+            <div key={index} className="flex w-[350px] justify-between">
+              <h3>{meta.title}</h3>
+              <p>{meta.data}</p>
+            </div>
+          ))}
         </div>
       </div>
     </div>

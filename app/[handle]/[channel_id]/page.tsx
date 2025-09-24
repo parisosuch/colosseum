@@ -47,7 +47,11 @@ export default async function ChannelPage({ params }: PageProps) {
     const diffInMs = today.getTime() - lastDate.getTime();
     const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
 
-    lastModifiedChannelDays = `${diffInDays} days ago`;
+    if (diffInDays == 0) {
+      lastModifiedChannelDays = "Today";
+    } else {
+      lastModifiedChannelDays = `${diffInDays} days ago`;
+    }
   }
 
   return (

@@ -13,7 +13,7 @@ export default function CreateColumnForm() {
   };
 
   return (
-    <div className="relative w-[300px] h-[300px] rounded-lg dark:bg-white/10 bg-gray-200">
+    <div className="relative w-[300px] h-[300px] rounded-lg dark:bg-white/10 bg-gray-100">
       <textarea
         ref={textareaRef}
         className="w-full h-full bg-transparent resize-none focus:outline-none p-3 leading-normal text-sm"

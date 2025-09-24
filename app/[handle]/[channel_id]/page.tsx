@@ -83,14 +83,14 @@ export default async function ChannelPage({ params }: PageProps) {
         >
           Colloseum
         </Link>{" "}
-        /{" "}
+        <span className="font-extralight">/</span>{" "}
         <Link
           href={`/${handle}`}
           className="dark:text-white/75 text-black/75 hover:dark:text-white/100 hover:text-black/100"
         >
           {handle}
         </Link>{" "}
-        / {channel.title}
+        <span className="font-extralight">/</span> {channel.title}
       </h1>
       <div className="flex flex-col space-y-4">
         <div className="flex flex-col">

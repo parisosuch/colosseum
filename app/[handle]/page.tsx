@@ -126,7 +126,7 @@ export default async function UserPage({ params }: PageProps) {
           >
             Colloseum
           </Link>{" "}
-          / {handle}
+          <span className="font-extralight">/</span> {handle}
         </h1>
         <div className="flex flex-col space-y-4">
           <div className="flex flex-col">

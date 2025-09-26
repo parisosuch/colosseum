@@ -21,6 +21,8 @@ export default async function UserPage({ params }: PageProps) {
   const ChannelColumnsView = async ({ channel }: { channel: Channel }) => {
     const columns = await getChannelColumns(supabase, channel.id);
 
+    console.log(columns);
+
     return (
       <div className="flex gap-8 p-12">
         <div className="flex flex-col items-center space-y-1 min-w-[200px]">
@@ -32,12 +34,8 @@ export default async function UserPage({ params }: PageProps) {
         </div>
         <div className="flex gap-4 overflow-x-auto">
           {columns.map((column) => (
-            <div
-              key={column.id}
-              className="min-w-[200px] border p-4 rounded-md"
-            >
-              <h3 className="font-semibold">{column.title}</h3>
-              <p>{column.description}</p>
+            <div key={column.id} className="p-4">
+              <p>This is a column.</p>
             </div>
           ))}
         </div>
@@ -105,7 +103,7 @@ export default async function UserPage({ params }: PageProps) {
   if (!user) {
     const channels = await getUserPublicChannels(
       supabase,
-      userProfile?.user_id,
+      userProfile?.user_id
     );
 
     return (

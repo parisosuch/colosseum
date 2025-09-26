@@ -3,9 +3,11 @@
 import { Channel, getChannel } from "@/lib/colosseum/channel";
 import { Column, getChannelColumns } from "@/lib/colosseum/column";
 import { createClient } from "@/lib/supabase/client";
-import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { User } from "@supabase/supabase-js";
 import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { createColumnServerAction } from "@/lib/actions/create-column";
 
 export default function ChannelPage() {
   const params = useParams();
@@ -14,71 +16,116 @@ export default function ChannelPage() {
 
   const [channel, setChannel] = useState<Channel | null>(null);
   const [columns, setColumns] = useState<Column[]>([]);
-  const [metaData, setMetaData] = useState<{title: string, data: string}[]>();
+  const [user, setUser] = useState<User | null>(null);
+  const [metaData, setMetaData] = useState<{ title: string; data: string }[]>();
   const [loading, setLoading] = useState(true);
+
+  // column form info
+  const [text, setText] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const router = useRouter();
   const supabase = createClient();
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = e.target.files?.[0];
+    if (selected) setFile(selected);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const droppedFile = e.dataTransfer.files?.[0];
+    if (droppedFile) setFile(droppedFile);
+
+    // TODO: handle upload on drop
+  };
+
+  const handleTextAreaUpload = async () => {
+    if (!user?.id || text === "") return;
+
+    createColumnServerAction({
+      created_by: user.id,
+      channel_id: channel_id,
+      text,
+    })
+      .then((column) => {
+        setColumns([column, ...columns]);
+      })
+      .catch(console.error);
+  };
 
   const fetchData = async () => {
     setLoading(true);
 
-      try {
-        const channelResponse = await getChannel(supabase, parseInt(channel_id, 10));
-        if (!channelResponse) throw new Error("Channel does not exist.");
-        setChannel(channelResponse);
+    try {
+      const channelResponse = await getChannel(
+        supabase,
+        parseInt(channel_id, 10)
+      );
+      if (!channelResponse) throw new Error("Channel does not exist.");
+      setChannel(channelResponse);
 
-        const { data: userData } = await supabase.auth.getUser();
-        const currentUser = userData.user;
+      const { data: userData } = await supabase.auth.getUser();
+      const currentUser = userData.user;
 
-        if (channelResponse.private) {
-          if (!currentUser || currentUser.id !== channelResponse.owner_id) {
-            router.push("/"); // redirect safely in client component
-            return;
-          }
+      if (channelResponse.private) {
+        if (!currentUser || currentUser.id !== channelResponse.owner_id) {
+          router.push("/"); // redirect safely in client component
+          return;
         }
-
-        const columnsResponse = await getChannelColumns(supabase, parseInt(channel_id, 10));
-        setColumns(columnsResponse);
-
-        const lastModifiedChannel = columnsResponse.at(0);
-        let lastModifiedChannelDays: string;
-        if (!lastModifiedChannel) {
-          lastModifiedChannelDays = "-";
-        } else {
-          const today = new Date();
-          const lastDate = new Date(lastModifiedChannel.created_at);
-          const diffInMs = today.getTime() - lastDate.getTime();
-          const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
-          lastModifiedChannelDays = diffInDays === 0 ? "Today" : `${diffInDays} days ago`;
-        }
-
-        setMetaData([
-          {
-            title: "Created On",
-            data: new Date(channelResponse.created_at).toLocaleString("default", {
-              month: "long",
-              day: "numeric",
-              year: "numeric",
-            }),
-          },
-          {
-            title: "Last Modified",
-            data: lastModifiedChannelDays,
-          },
-          {
-            title: "Length",
-            data: columnsResponse.length.toString(),
-          },
-        ]);
-
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
       }
-    };
+
+      setUser(currentUser);
+
+      const columnsResponse = await getChannelColumns(
+        supabase,
+        parseInt(channel_id, 10)
+      );
+      setColumns(columnsResponse);
+
+      const lastModifiedChannel = columnsResponse.at(0);
+      let lastModifiedChannelDays: string;
+      if (!lastModifiedChannel) {
+        lastModifiedChannelDays = "-";
+      } else {
+        const today = new Date();
+        const lastDate = new Date(lastModifiedChannel.created_at);
+        const diffInMs = today.getTime() - lastDate.getTime();
+        const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
+        lastModifiedChannelDays =
+          diffInDays === 0 ? "Today" : `${diffInDays} days ago`;
+      }
+
+      setMetaData([
+        {
+          title: "Created On",
+          data: new Date(channelResponse.created_at).toLocaleString("default", {
+            month: "long",
+            day: "numeric",
+            year: "numeric",
+          }),
+        },
+        {
+          title: "Last Modified",
+          data: lastModifiedChannelDays,
+        },
+        {
+          title: "Length",
+          data: columnsResponse.length.toString(),
+        },
+      ]);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!channel_id) {
@@ -86,11 +133,10 @@ export default function ChannelPage() {
     }
 
     fetchData();
-
   }, [channel_id, supabase, router]);
 
   if (loading) {
-    return (null);
+    return null;
   }
 
   return (
@@ -128,6 +174,72 @@ export default function ChannelPage() {
             </div>
           ))}
         </div>
+      </div>
+      <div className="flex gap-4">
+        <div
+          className={`relative w-[300px] h-[300px] rounded-lg dark:bg-white/10 bg-gray-100 
+        ${isDragging ? "border-2 border-dashed dark:border-white/20 border-gray-200" : ""}`}
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onDragEnter={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDragging(true);
+          }}
+          onDragLeave={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDragging(false);
+          }}
+          onDrop={handleDrop}
+        >
+          {/* Text input */}
+          {!file && (
+            <textarea
+              ref={textareaRef}
+              className="w-full h-full bg-transparent resize-none focus:outline-none p-3 leading-normal text-sm"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder=""
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleTextAreaUpload();
+                }
+              }}
+            />
+          )}
+
+          {/* Overlay placeholder with clickable Upload */}
+          {!text && !file && (
+            <div className="absolute inset-0 px-3 pt-3 text-sm leading-normal text-gray-500 flex items-start pointer-events-none">
+              <span className="pointer-events-auto">
+                Type here... or{" "}
+                <label className="underline cursor-pointer">
+                  upload file
+                  <input
+                    type="file"
+                    className="hidden"
+                    onChange={handleFileChange}
+                  />
+                </label>{" "}
+                or drop a file
+              </span>
+            </div>
+          )}
+
+          {/* Show file name if file is selected */}
+          {file && (
+            <div className="absolute inset-0 flex items-center justify-center text-center text-sm break-all px-3">
+              <p>{file.name}</p>
+            </div>
+          )}
+        </div>
+        {columns.map((column) => (
+          <div key={column.id}>{column.id}</div>
+        ))}
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 "use client";
 
+import { createColumnServerAction } from "@/lib/actions/create-column";
 import { Channel, getChannel } from "@/lib/colosseum/channel";
 import { Column, getChannelColumns } from "@/lib/colosseum/column";
 import { createClient } from "@/lib/supabase/client";
@@ -7,7 +8,6 @@ import { User } from "@supabase/supabase-js";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { createColumnServerAction } from "@/lib/actions/create-column";
 
 export default function ChannelPage() {
   const params = useParams();

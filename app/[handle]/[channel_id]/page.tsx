@@ -10,6 +10,11 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { timeAgo } from "@/lib/utils";
 import { Trash2Icon } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 export default function ChannelPage() {
   const params = useParams();
@@ -36,18 +41,27 @@ export default function ChannelPage() {
     return (
       <div className="group relative w-[300px]">
         <div className="w-[300px] h-[300px] border rounded-lg p-3 relative">
-          <div className="absolute hidden top-3 right-3 group-hover:flex z-10">
-            <Trash2Icon
-              size={24}
-              className="hover:bg-gray-100 p-1 rounded-md hover:cursor-pointer"
-            />
+          <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+            <Popover>
+              <PopoverTrigger>
+                <Trash2Icon
+                  size={24}
+                  className="hover:bg-gray-100 p-1 rounded-md cursor-pointer"
+                />
+              </PopoverTrigger>
+              <PopoverContent>
+                This is delete section of column {column.id}.
+              </PopoverContent>
+            </Popover>
           </div>
+
           {column.type === "text" ? (
             <p>{column.text}</p>
           ) : (
             <p>this is a url here</p>
           )}
         </div>
+
         <p className="hidden group-hover:block text-xs text-center pt-1">
           {timeAgo(new Date(column.created_at))}
         </p>

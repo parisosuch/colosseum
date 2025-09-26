@@ -9,7 +9,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { timeAgo } from "@/lib/utils";
-import { Trash, TrashIcon, Trash2Icon } from "lucide-react";
+import { Trash2Icon } from "lucide-react";
 
 export default function ChannelPage() {
   const params = useParams();

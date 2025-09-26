@@ -239,7 +239,12 @@ export default function ChannelPage() {
           )}
         </div>
         {columns.map((column) => (
-          <div key={column.id}>{column.id}</div>
+          <div
+            key={column.id}
+            className="w-[300px] h-[300px] border rounded-lg p-3"
+          >
+            {column.id}
+          </div>
         ))}
       </div>
     </div>

@@ -8,6 +8,7 @@ import { User } from "@supabase/supabase-js";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { timeAgo } from "@/lib/utils";
 
 export default function ChannelPage() {
   const params = useParams();
@@ -41,7 +42,7 @@ export default function ChannelPage() {
           )}
         </div>
         <p className="hidden group-hover:block text-xs text-center pt-1">
-          {new Date(column.created_at).toLocaleString()}
+          {timeAgo(new Date(column.created_at))}
         </p>
       </div>
     );

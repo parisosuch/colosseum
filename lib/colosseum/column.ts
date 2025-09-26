@@ -22,7 +22,7 @@ export async function getChannelColumns(
     .from("column")
     .select("*")
     .eq("channel_id", channel_id)
-    .order("created_at");
+    .order("created_at", { ascending: false });
 
   if (error) {
     throw new Error(error.message);

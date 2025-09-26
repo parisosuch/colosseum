@@ -48,7 +48,7 @@ export async function uploadTextAreaColumn(
       }
     : {
         type: "text",
-        url: column.text,
+        text: column.text,
         channel_id: parseInt(column.channel_id),
         created_by: column.created_by,
       };

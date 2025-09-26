@@ -12,9 +12,14 @@ export const hasEnvVars =
 
 export function isURL(text: string): boolean {
   try {
-    new URL(text);
-    return true;
-  } catch (e) {
+    // If the text has no scheme, prepend http://
+    const url = new URL(
+      /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(text) ? text : `http://${text}`
+    );
+
+    // Optionally, require at least a hostname and a TLD
+    return Boolean(url.hostname && url.hostname.includes("."));
+  } catch {
     return false;
   }
 }

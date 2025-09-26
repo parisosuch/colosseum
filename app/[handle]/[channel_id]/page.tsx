@@ -32,12 +32,17 @@ export default function ChannelPage() {
 
   const ColumnComponent = ({ column }: { column: Column }) => {
     return (
-      <div className="w-[300px] h-[300px] border rounded-lg p-3">
-        {column.type === "text" ? (
-          <p>{column.text}</p>
-        ) : (
-          <p>this is a url here</p>
-        )}
+      <div className="group">
+        <div className="w-[300px] h-[300px] border rounded-lg p-3">
+          {column.type === "text" ? (
+            <p>{column.text}</p>
+          ) : (
+            <p>this is a url here</p>
+          )}
+        </div>
+        <p className="hidden group-hover:block text-xs text-center pt-1">
+          {new Date(column.created_at).toLocaleString()}
+        </p>
       </div>
     );
   };

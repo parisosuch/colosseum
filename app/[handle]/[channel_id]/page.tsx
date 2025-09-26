@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { timeAgo } from "@/lib/utils";
+import { Trash, TrashIcon, Trash2Icon } from "lucide-react";
 
 export default function ChannelPage() {
   const params = useParams();
@@ -33,8 +34,14 @@ export default function ChannelPage() {
 
   const ColumnComponent = ({ column }: { column: Column }) => {
     return (
-      <div className="group">
-        <div className="w-[300px] h-[300px] border rounded-lg p-3">
+      <div className="group relative w-[300px]">
+        <div className="w-[300px] h-[300px] border rounded-lg p-3 relative">
+          <div className="absolute hidden top-3 right-3 group-hover:flex z-10">
+            <Trash2Icon
+              size={24}
+              className="hover:bg-gray-100 p-1 rounded-md hover:cursor-pointer"
+            />
+          </div>
           {column.type === "text" ? (
             <p>{column.text}</p>
           ) : (

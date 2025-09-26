@@ -21,8 +21,6 @@ export default async function UserPage({ params }: PageProps) {
   const ChannelColumnsView = async ({ channel }: { channel: Channel }) => {
     const columns = await getChannelColumns(supabase, channel.id);
 
-    console.log(columns);
-
     return (
       <div className="flex gap-8 p-12">
         <div className="flex flex-col items-center space-y-1 min-w-[200px]">

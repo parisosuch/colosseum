@@ -53,8 +53,6 @@ export async function uploadTextAreaColumn(
         created_by: column.created_by,
       };
 
-  console.log(columnData);
-
   const { data, error: insertError } = await supabase
     .from("column")
     .insert(columnData) // use insert instead of upsert

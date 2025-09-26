@@ -30,6 +30,18 @@ export default function ChannelPage() {
   const router = useRouter();
   const supabase = createClient();
 
+  const ColumnComponent = ({ column }: { column: Column }) => {
+    return (
+      <div className="w-[300px] h-[300px] border rounded-lg p-3">
+        {column.type === "text" ? (
+          <p>{column.text}</p>
+        ) : (
+          <p>this is a url here</p>
+        )}
+      </div>
+    );
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
     if (selected) setFile(selected);
@@ -239,12 +251,7 @@ export default function ChannelPage() {
           )}
         </div>
         {columns.map((column) => (
-          <div
-            key={column.id}
-            className="w-[300px] h-[300px] border rounded-lg p-3"
-          >
-            {column.id}
-          </div>
+          <ColumnComponent key={column.id} column={column} />
         ))}
       </div>
     </div>

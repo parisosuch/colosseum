@@ -56,6 +56,7 @@ export default function ChannelPage() {
     })
       .then((column) => {
         setColumns([column, ...columns]);
+        setText("");
       })
       .catch(console.error);
   };

@@ -80,6 +80,8 @@ export default function ChannelPage() {
     const [title, setTitle] = useState(column.title ?? "");
     const [description, setDescription] = useState(column.description ?? "");
 
+    const [showSave, setShowSave] = useState(false);
+
     const titleInputRef = useRef<HTMLInputElement>(null);
     const descriptionInputRef = useRef<HTMLInputElement>(null);
 
@@ -122,6 +124,17 @@ export default function ChannelPage() {
       }
     };
 
+    const handleSave = async (column: Column) => {
+      try {
+        await handleTitleChange(column);
+        await handleDescriptionChange(column);
+
+        setShowSave(false);
+      } catch (e) {
+        console.error(e);
+      }
+    };
+
     return (
       <Dialog>
         <DialogTrigger>
@@ -158,7 +171,15 @@ export default function ChannelPage() {
                   placeholder="No title"
                   value={title}
                   className="border-none shadow-none"
-                  onChange={(e) => setTitle(e.target.value)}
+                  onChange={(e) => {
+                    const oldTitle = column.title ?? "";
+                    if (e.target.value !== oldTitle) {
+                      setShowSave(true);
+                    } else {
+                      setShowSave(false);
+                    }
+                    setTitle(e.target.value);
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
@@ -173,7 +194,15 @@ export default function ChannelPage() {
                   placeholder="No description"
                   value={description}
                   className="border-none shadow-none"
-                  onChange={(e) => setDescription(e.target.value)}
+                  onChange={(e) => {
+                    const oldDescription = column.description ?? "";
+                    if (e.target.value !== oldDescription) {
+                      setShowSave(true);
+                    } else {
+                      setShowSave(false);
+                    }
+                    setDescription(e.target.value);
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
@@ -189,6 +218,14 @@ export default function ChannelPage() {
                 </p>
               </div>
               <div className="p-3 w-full flex justify-end">
+                {showSave ? (
+                  <button
+                    onClick={() => handleSave(column)}
+                    className="text-xs underline font-light px-2"
+                  >
+                    save
+                  </button>
+                ) : null}
                 <button
                   className="text-xs underline font-light"
                   onClick={() => {

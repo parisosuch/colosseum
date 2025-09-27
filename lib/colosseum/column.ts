@@ -71,11 +71,10 @@ export async function updateColumnTitle(
   column_id: number,
   title: string
 ): Promise<void> {
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from("column")
     .update({ title: title })
-    .eq("id", column_id)
-    .single();
+    .eq("id", column_id);
 
   if (error) {
     throw new Error(error.message);

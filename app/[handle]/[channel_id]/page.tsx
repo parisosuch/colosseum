@@ -6,6 +6,7 @@ import {
   Column,
   deleteColumn,
   getChannelColumns,
+  updateColumnDescription,
   updateColumnTitle,
 } from "@/lib/colosseum/column";
 import { createClient } from "@/lib/supabase/client";
@@ -80,6 +81,7 @@ export default function ChannelPage() {
     const [description, setDescription] = useState(column.description ?? "");
 
     const titleInputRef = useRef<HTMLInputElement>(null);
+    const descriptionInputRef = useRef<HTMLInputElement>(null);
 
     const handleTitleChange = async (column: Column) => {
       const oldTitle = column.title ? column.title : "";
@@ -91,6 +93,21 @@ export default function ChannelPage() {
       try {
         await updateColumnTitle(supabase, column.id, title);
         titleInputRef.current?.blur();
+      } catch (e) {
+        console.error(e);
+      }
+    };
+
+    const handleDescriptionChange = async (column: Column) => {
+      const oldDescription = column.description ? column.description : "";
+
+      if (oldDescription == description) {
+        return;
+      }
+
+      try {
+        await updateColumnDescription(supabase, column.id, description);
+        descriptionInputRef.current?.blur();
       } catch (e) {
         console.error(e);
       }
@@ -143,6 +160,7 @@ export default function ChannelPage() {
               </DialogTitle>
               <DialogDescription>
                 <Input
+                  ref={descriptionInputRef}
                   placeholder="No description"
                   value={description}
                   className="border-none shadow-none"

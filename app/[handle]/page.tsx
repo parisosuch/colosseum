@@ -31,7 +31,9 @@ export default async function UserPage({ params }: PageProps) {
       <div className="flex gap-8 p-2">
         <div className="flex flex-col justify-center items-center space-y-1 w-[250px] h-[250px]">
           <h2 className="text-lg">{channel.title}</h2>
-          {channel.description ? <p>{channel.description}</p> : null}
+          {channel.description ? (
+            <p className="text-center">{channel.description}</p>
+          ) : null}
           <p className="text-sm dark:text-white/75 text-black/75 font-light">
             {columnCount} column(s)
           </p>
@@ -67,7 +69,7 @@ export default async function UserPage({ params }: PageProps) {
     return (
       <div className="space-y-4">
         <CreateChannelButton />
-        <div>
+        <div className="flex flex-col space-y-4">
           {channels.map((channel) => (
             <Link key={channel.id} href={`/${handle}/${channel.id}`}>
               <div className="border-2 border-gray-500/50 rounded-lg p-8">

@@ -2,7 +2,11 @@
 
 import { createColumnServerAction } from "@/lib/actions/create-column";
 import { Channel, getChannel } from "@/lib/colosseum/channel";
-import { Column, getChannelColumns } from "@/lib/colosseum/column";
+import {
+  Column,
+  getChannelColumns,
+  updateColumnTitle,
+} from "@/lib/colosseum/column";
 import { createClient } from "@/lib/supabase/client";
 import { User } from "@supabase/supabase-js";
 import Link from "next/link";
@@ -39,10 +43,6 @@ export default function ChannelPage() {
   const router = useRouter();
   const supabase = createClient();
 
-  const ColumnComponent = ({ column }: { column: Column }) => {
-    return null;
-  };
-
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
     if (selected) setFile(selected);
@@ -72,6 +72,84 @@ export default function ChannelPage() {
         setText("");
       })
       .catch(console.error);
+  };
+
+  const ColumnComponent = ({ column }: { column: Column }) => {
+    const [title, setTitle] = useState(column.title ?? "");
+    const [description, setDescription] = useState(column.description ?? "");
+
+    const titleInputRef = useRef<HTMLInputElement>(null);
+
+    const handleTitleChange = async (column: Column) => {
+      const oldTitle = column.title ? column.title : "";
+
+      if (oldTitle === title) {
+        return;
+      }
+
+      try {
+        await updateColumnTitle(supabase, column.id, title);
+        titleInputRef.current?.blur();
+      } catch (e) {
+        console.error(e);
+      }
+    };
+
+    return (
+      <Dialog>
+        <DialogTrigger>
+          <div className="group relative w-[300px]">
+            <div className="w-[300px] h-[300px] border rounded-lg text-left p-2">
+              {column.type === "text" ? (
+                <p>{column.text}</p>
+              ) : (
+                <p>this is a url here</p>
+              )}
+            </div>
+            <p className="opacity-0 group-hover:opacity-100 transition-opacity pt-1 text-xs font-light">
+              {timeAgo(new Date(column.created_at))}
+            </p>
+          </div>
+        </DialogTrigger>
+
+        <DialogContent className="w-[97vw] !h-[97vh] !max-w-none p-4">
+          <div className="flex pt-4 px-4">
+            <div className="w-3/4">This is big blue</div>
+            <div className="w-1/4 border rounded-lg space-y-2">
+              <DialogTitle>
+                <Input
+                  ref={titleInputRef}
+                  placeholder="No title"
+                  value={title}
+                  className="border-none shadow-none"
+                  onChange={(e) => setTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleTitleChange(column);
+                    }
+                  }}
+                />
+              </DialogTitle>
+              <DialogDescription>
+                <Input
+                  placeholder="No description"
+                  value={description}
+                  className="border-none shadow-none"
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </DialogDescription>
+              <div className="flex w-full justify-between text-xs p-3">
+                <h3>Created on</h3>
+                <p className="font-mono">
+                  {new Date(column.created_at).toDateString()}
+                </p>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
   };
 
   const fetchData = async () => {
@@ -252,55 +330,7 @@ export default function ChannelPage() {
           )}
         </div>
         {columns.map((column) => (
-          <Dialog key={column.id}>
-            <DialogTrigger>
-              <div className="group relative w-[300px]">
-                <div className="w-[300px] h-[300px] border rounded-lg text-left p-2">
-                  {column.type === "text" ? (
-                    <p>{column.text}</p>
-                  ) : (
-                    <p>this is a url here</p>
-                  )}
-                </div>
-                <p className="opacity-0 group-hover:opacity-100 transition-opacity pt-1 text-xs font-light">
-                  {timeAgo(new Date(column.created_at))}
-                </p>
-              </div>
-            </DialogTrigger>
-            <DialogContent className="w-[97vw] !h-[97vh] !max-w-none p-4">
-              <div className="flex pt-4 px-4">
-                <div className="w-3/4">This is big blue</div>
-                <div className="w-1/4 border rounded-lg space-y-2">
-                  <DialogTitle>
-                    {column.title ? (
-                      column.title
-                    ) : (
-                      <Input
-                        placeholder="No title"
-                        className="border-none shadow-none"
-                      />
-                    )}
-                  </DialogTitle>
-                  <DialogDescription>
-                    {column.description ? (
-                      column.description
-                    ) : (
-                      <Input
-                        placeholder="No description"
-                        className="border-none shadow-none"
-                      />
-                    )}
-                  </DialogDescription>
-                  <div className="flex w-full justify-between text-xs p-3">
-                    <h3>Created on</h3>
-                    <p className="font-mono">
-                      {new Date(column.created_at).toDateString()}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
+          <ColumnComponent column={column} key={column.id} />
         ))}
       </div>
     </div>

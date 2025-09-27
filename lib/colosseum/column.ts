@@ -65,3 +65,19 @@ export async function uploadTextAreaColumn(
 
   return data;
 }
+
+export async function updateColumnTitle(
+  supabase: SupabaseClient,
+  column_id: number,
+  title: string
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("column")
+    .update({ title: title })
+    .eq("column_id", column_id)
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}

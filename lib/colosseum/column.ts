@@ -81,3 +81,11 @@ export async function updateColumnTitle(
     throw new Error(error.message);
   }
 }
+
+export async function deleteColumn(supabase: SupabaseClient, column_id: number): Promise<void> {
+  const {error} = await supabase.from("column").delete().eq("id", column_id);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}

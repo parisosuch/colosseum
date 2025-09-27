@@ -12,9 +12,11 @@ import { timeAgo } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 
 export default function ChannelPage() {
   const params = useParams();
@@ -266,7 +268,37 @@ export default function ChannelPage() {
               </div>
             </DialogTrigger>
             <DialogContent className="w-[97vw] !h-[97vh] !max-w-none p-4">
-              <DialogTitle>Title goes here</DialogTitle>
+              <div className="flex pt-4 px-4">
+                <div className="w-3/4">This is big blue</div>
+                <div className="w-1/4 border rounded-lg space-y-2">
+                  <DialogTitle>
+                    {column.title ? (
+                      column.title
+                    ) : (
+                      <Input
+                        placeholder="No title"
+                        className="border-none shadow-none"
+                      />
+                    )}
+                  </DialogTitle>
+                  <DialogDescription>
+                    {column.description ? (
+                      column.description
+                    ) : (
+                      <Input
+                        placeholder="No description"
+                        className="border-none shadow-none"
+                      />
+                    )}
+                  </DialogDescription>
+                  <div className="flex w-full justify-between text-xs p-3">
+                    <h3>Created on</h3>
+                    <p className="font-mono">
+                      {new Date(column.created_at).toDateString()}
+                    </p>
+                  </div>
+                </div>
+              </div>
             </DialogContent>
           </Dialog>
         ))}

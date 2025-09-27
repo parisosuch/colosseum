@@ -4,6 +4,7 @@ import { createColumnServerAction } from "@/lib/actions/create-column";
 import { Channel, getChannel } from "@/lib/colosseum/channel";
 import {
   Column,
+  deleteColumn,
   getChannelColumns,
   updateColumnTitle,
 } from "@/lib/colosseum/column";
@@ -95,6 +96,15 @@ export default function ChannelPage() {
       }
     };
 
+    const handleDeleteColumn = async (column: Column) => {
+      try {
+        await deleteColumn(supabase, column.id);
+        // TODO: update columns array by removing column
+      } catch (e) {
+        console.error(e);
+      }
+    };
+
     return (
       <Dialog>
         <DialogTrigger>
@@ -144,6 +154,16 @@ export default function ChannelPage() {
                 <p className="font-mono">
                   {new Date(column.created_at).toDateString()}
                 </p>
+              </div>
+              <div className="p-3 w-full flex justify-end">
+                <button
+                  className="text-xs underline font-light"
+                  onClick={() => {
+                    handleDeleteColumn(column);
+                  }}
+                >
+                  delete
+                </button>
               </div>
             </div>
           </div>

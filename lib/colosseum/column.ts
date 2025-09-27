@@ -16,8 +16,24 @@ export type Column = {
 
 export async function getChannelColumns(
   supabase: SupabaseClient,
-  channel_id: number
+  channel_id: number,
+  limit?: number
 ): Promise<Column[]> {
+  if (limit) {
+    const { data, error } = await supabase
+      .from("column")
+      .select("*")
+      .eq("channel_id", channel_id)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return data;
+  }
+
   const { data, error } = await supabase
     .from("column")
     .select("*")

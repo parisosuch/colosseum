@@ -1,5 +1,13 @@
 "use client";
 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { createColumnServerAction } from "@/lib/actions/create-column";
 import { Channel, getChannel } from "@/lib/colosseum/channel";
 import {
@@ -10,19 +18,11 @@ import {
   updateColumnTitle,
 } from "@/lib/colosseum/column";
 import { createClient } from "@/lib/supabase/client";
+import { timeAgo } from "@/lib/utils";
 import { User } from "@supabase/supabase-js";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { timeAgo } from "@/lib/utils";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 
 export default function ChannelPage() {
   const params = useParams();
@@ -174,6 +174,12 @@ export default function ChannelPage() {
                   value={description}
                   className="border-none shadow-none"
                   onChange={(e) => setDescription(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleDescriptionChange(column);
+                    }
+                  }}
                 />
               </DialogDescription>
               <div className="flex w-full justify-between text-xs p-3">

@@ -128,7 +128,7 @@ export default function ChannelPage() {
           <div className="group relative w-[300px]">
             <div className="w-[300px] h-[300px] border rounded-lg text-left p-2">
               {column.type === "text" ? (
-                <p>{column.text}</p>
+                <p className="text-sm line-clamp-[10]">{column.text}</p>
               ) : (
                 <p>this is a url here</p>
               )}

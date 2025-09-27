@@ -141,7 +141,15 @@ export default function ChannelPage() {
 
         <DialogContent className="w-[97vw] !h-[97vh] !max-w-none p-4">
           <div className="flex pt-4 px-4">
-            <div className="w-3/4">This is big blue</div>
+            <div className="w-3/4 flex justify-center">
+              <div className="flex w-3/4 bg-gray-100 p-6 rounded-md">
+                {column.text ? (
+                  <p>{column.text}</p>
+                ) : (
+                  <p>TODO: URL VIEW HERE</p>
+                )}
+              </div>
+            </div>
             <div className="w-1/4 border rounded-lg space-y-2">
               <DialogTitle>
                 <Input

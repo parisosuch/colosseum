@@ -82,8 +82,26 @@ export async function updateColumnTitle(
   }
 }
 
-export async function deleteColumn(supabase: SupabaseClient, column_id: number): Promise<void> {
-  const {error} = await supabase.from("column").delete().eq("id", column_id);
+export async function updateColumnDescription(
+  supabase: SupabaseClient,
+  column_id: number,
+  description: string
+) {
+  const { error } = await supabase
+    .from("column")
+    .update({ description: description })
+    .eq("id", column_id);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function deleteColumn(
+  supabase: SupabaseClient,
+  column_id: number
+): Promise<void> {
+  const { error } = await supabase.from("column").delete().eq("id", column_id);
 
   if (error) {
     throw new Error(error.message);

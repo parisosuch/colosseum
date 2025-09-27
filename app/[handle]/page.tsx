@@ -29,16 +29,19 @@ export default async function UserPage({ params }: PageProps) {
 
     return (
       <div className="flex gap-8 p-2">
-        <div className="flex flex-col justify-center items-center space-y-1 w-[250px] h-[250px] bg-blue-100">
+        <div className="flex flex-col justify-center items-center space-y-1 w-[250px] h-[250px]">
           <h2 className="text-lg">{channel.title}</h2>
           {channel.description ? <p>{channel.description}</p> : null}
           <p className="text-sm dark:text-white/75 text-black/75 font-light">
             {columnCount} column(s)
           </p>
         </div>
-        <div className="flex gap-4 overflow-x-auto">
+        <div className="flex gap-8 overflow-x-auto">
           {columns.map((column) => (
-            <div key={column.id} className="bg-blue-100 w-[250px] h-[250px]">
+            <div
+              key={column.id}
+              className="border-2 rounded-md w-[250px] h-[250px]"
+            >
               <ColumnPreview column={column} />
             </div>
           ))}

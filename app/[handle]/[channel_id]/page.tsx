@@ -182,7 +182,7 @@ export default function ChannelPage() {
             // TODO: change the width to be responsive and appropriate for each screen size.
             <div key={index} className="flex w-[350px] justify-between">
               <h3>{meta.title}</h3>
-              <p>{meta.data}</p>
+              <p className="font-mono">{meta.data}</p>
             </div>
           ))}
         </div>
@@ -266,7 +266,7 @@ export default function ChannelPage() {
               </div>
             </DialogTrigger>
             <DialogContent className="w-[97vw] !h-[97vh] !max-w-none p-4">
-              <DialogTitle>This is the title.</DialogTitle>
+              <DialogTitle>Title goes here</DialogTitle>
             </DialogContent>
           </Dialog>
         ))}

@@ -143,6 +143,7 @@ export default function ChannelPage() {
           <div className="flex pt-4 px-4">
             <div className="w-3/4 flex justify-center">
               <div className="flex w-3/4 bg-gray-100 p-6 rounded-md">
+                {/* TODO: add ability to edit text in-line */}
                 {column.text ? (
                   <p>{column.text}</p>
                 ) : (

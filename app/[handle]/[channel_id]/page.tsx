@@ -9,6 +9,12 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { timeAgo } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 export default function ChannelPage() {
   const params = useParams();
@@ -32,20 +38,7 @@ export default function ChannelPage() {
   const supabase = createClient();
 
   const ColumnComponent = ({ column }: { column: Column }) => {
-    return (
-      <div className="group relative w-[300px]">
-        <div className="w-[300px] h-[300px] border rounded-lg p-3 relative">
-          {column.type === "text" ? (
-            <p>{column.text}</p>
-          ) : (
-            <p>this is a url here</p>
-          )}
-        </div>
-        <p className="hidden group-hover:block text-xs text-center pt-1">
-          {timeAgo(new Date(column.created_at))}
-        </p>
-      </div>
-    );
+    return null;
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -257,7 +250,25 @@ export default function ChannelPage() {
           )}
         </div>
         {columns.map((column) => (
-          <ColumnComponent key={column.id} column={column} />
+          <Dialog key={column.id}>
+            <DialogTrigger>
+              <div className="group relative w-[300px]">
+                <div className="w-[300px] h-[300px] border rounded-lg text-left p-2">
+                  {column.type === "text" ? (
+                    <p>{column.text}</p>
+                  ) : (
+                    <p>this is a url here</p>
+                  )}
+                </div>
+                <p className="opacity-0 group-hover:opacity-100 transition-opacity pt-1 text-xs font-light">
+                  {timeAgo(new Date(column.created_at))}
+                </p>
+              </div>
+            </DialogTrigger>
+            <DialogContent className="w-[97vw] !h-[97vh] !max-w-none p-4">
+              <DialogTitle>This is the title.</DialogTitle>
+            </DialogContent>
+          </Dialog>
         ))}
       </div>
     </div>

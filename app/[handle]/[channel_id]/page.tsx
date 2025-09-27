@@ -63,17 +63,19 @@ export default function ChannelPage() {
 
   const handleTextAreaUpload = async () => {
     if (!user?.id || text === "") return;
-
-    createColumnServerAction({
-      created_by: user.id,
-      channel_id: channel_id,
-      text,
-    })
-      .then((column) => {
-        setColumns([column, ...columns]);
-        setText("");
-      })
-      .catch(console.error);
+    try {
+      const column = await createColumnServerAction({
+        created_by: user.id,
+        channel_id: channel_id,
+        text,
+      });
+      const newColumns = [column, ...columns];
+      setColumns(newColumns);
+      setText("");
+      handleMetaData(channel!, newColumns);
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const ColumnComponent = ({ column }: { column: Column }) => {
@@ -242,6 +244,40 @@ export default function ChannelPage() {
     );
   };
 
+  const handleMetaData = (channelData: Channel, columnsData: Column[]) => {
+    const lastModifiedChannel = columnsData.at(0);
+    let lastModifiedChannelDays: string;
+    if (!lastModifiedChannel) {
+      lastModifiedChannelDays = "-";
+    } else {
+      const today = new Date();
+      const lastDate = new Date(lastModifiedChannel.created_at);
+      const diffInMs = today.getTime() - lastDate.getTime();
+      const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
+      lastModifiedChannelDays =
+        diffInDays === 0 ? "Today" : `${diffInDays} days ago`;
+    }
+
+    setMetaData([
+      {
+        title: "Created On",
+        data: new Date(channelData.created_at).toLocaleString("default", {
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+        }),
+      },
+      {
+        title: "Last Modified",
+        data: lastModifiedChannelDays,
+      },
+      {
+        title: "Length",
+        data: columnsData.length.toString(),
+      },
+    ]);
+  };
+
   const fetchData = async () => {
     setLoading(true);
 
@@ -271,37 +307,7 @@ export default function ChannelPage() {
       );
       setColumns(columnsResponse);
 
-      const lastModifiedChannel = columnsResponse.at(0);
-      let lastModifiedChannelDays: string;
-      if (!lastModifiedChannel) {
-        lastModifiedChannelDays = "-";
-      } else {
-        const today = new Date();
-        const lastDate = new Date(lastModifiedChannel.created_at);
-        const diffInMs = today.getTime() - lastDate.getTime();
-        const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
-        lastModifiedChannelDays =
-          diffInDays === 0 ? "Today" : `${diffInDays} days ago`;
-      }
-
-      setMetaData([
-        {
-          title: "Created On",
-          data: new Date(channelResponse.created_at).toLocaleString("default", {
-            month: "long",
-            day: "numeric",
-            year: "numeric",
-          }),
-        },
-        {
-          title: "Last Modified",
-          data: lastModifiedChannelDays,
-        },
-        {
-          title: "Length",
-          data: columnsResponse.length.toString(),
-        },
-      ]);
+      handleMetaData(channelResponse, columnsResponse);
     } catch (e) {
       console.error(e);
     } finally {

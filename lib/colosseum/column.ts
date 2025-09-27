@@ -74,7 +74,7 @@ export async function updateColumnTitle(
   const { data, error } = await supabase
     .from("column")
     .update({ title: title })
-    .eq("column_id", column_id)
+    .eq("id", column_id)
     .single();
 
   if (error) {

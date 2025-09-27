@@ -118,7 +118,7 @@ export default function ChannelPage() {
     const handleDeleteColumn = async (column: Column) => {
       try {
         await deleteColumn(supabase, column.id);
-        // TODO: update columns array by removing column
+        setColumns((columns) => columns.filter((c) => c.id !== column.id));
       } catch (e) {
         console.error(e);
       }

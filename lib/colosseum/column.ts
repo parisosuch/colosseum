@@ -122,3 +122,23 @@ export async function deleteColumn(
     throw new Error(error.message);
   }
 }
+
+export async function getChannelColumnCount(
+  supabase: SupabaseClient,
+  channel_id: number
+): Promise<number> {
+  const { count, error } = await supabase
+    .from("column")
+    .select("id", { count: "exact" })
+    .eq("channel_id", channel_id);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (count === null) {
+    throw new Error("Count for columns was null.");
+  }
+
+  return count;
+}

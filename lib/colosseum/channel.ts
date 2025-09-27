@@ -12,7 +12,7 @@ export type Channel = {
 
 export async function getUserPublicChannels(
   supabase: SupabaseClient,
-  user_id: string,
+  user_id: string
 ): Promise<Channel[] | []> {
   const { data, error } = await supabase
     .from("channel")
@@ -32,7 +32,7 @@ export async function getUserPublicChannels(
 
 export async function getUserChannels(
   supabase: SupabaseClient,
-  user_id: string,
+  user_id: string
 ): Promise<Channel[] | []> {
   const { data, error } = await supabase
     .from("channel")
@@ -56,7 +56,7 @@ export async function createChannel(
     description?: string;
     private: boolean;
     owner_id: string;
-  },
+  }
 ): Promise<Channel> {
   const { data, error } = await supabase
     .from("channel")
@@ -72,7 +72,7 @@ export async function createChannel(
 
 export async function getChannel(
   supabase: SupabaseClient,
-  channel_id: number,
+  channel_id: number
 ): Promise<Channel> {
   const { data, error } = await supabase
     .from("channel")

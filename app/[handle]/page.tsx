@@ -5,9 +5,13 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { Channel } from "@/lib/colosseum/channel";
 import CreateChannelButton from "@/components/create-channel-button";
-import { getChannelColumns } from "@/lib/colosseum/column";
+import {
+  getChannelColumnCount,
+  getChannelColumns,
+} from "@/lib/colosseum/column";
 import { getPublicUserProfile } from "@/lib/colosseum/user";
 import Link from "next/link";
+import ColumnPreview from "@/components/column-preview";
 
 type PageProps = {
   params: { handle: string };
@@ -19,21 +23,23 @@ export default async function UserPage({ params }: PageProps) {
   const supabase = await createClient();
 
   const ChannelColumnsView = async ({ channel }: { channel: Channel }) => {
-    const columns = await getChannelColumns(supabase, channel.id);
+    const columns = await getChannelColumns(supabase, channel.id, 4);
+
+    const columnCount = await getChannelColumnCount(supabase, channel.id);
 
     return (
-      <div className="flex gap-8 p-12">
-        <div className="flex flex-col items-center space-y-1 min-w-[200px]">
+      <div className="flex gap-8 p-2">
+        <div className="flex flex-col justify-center items-center space-y-1 w-[250px] h-[250px] bg-blue-100">
           <h2 className="text-lg">{channel.title}</h2>
           {channel.description ? <p>{channel.description}</p> : null}
           <p className="text-sm dark:text-white/75 text-black/75 font-light">
-            {columns.length} column(s)
+            {columnCount} column(s)
           </p>
         </div>
         <div className="flex gap-4 overflow-x-auto">
           {columns.map((column) => (
-            <div key={column.id} className="p-4">
-              <p>This is a column.</p>
+            <div key={column.id} className="bg-blue-100 w-[250px] h-[250px]">
+              <ColumnPreview column={column} />
             </div>
           ))}
         </div>

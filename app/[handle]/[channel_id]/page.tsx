@@ -8,6 +8,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea.";
 import { createColumnServerAction } from "@/lib/actions/create-column";
 import { Channel, getChannel } from "@/lib/colosseum/channel";
 import {
@@ -15,6 +16,7 @@ import {
   deleteColumn,
   getChannelColumns,
   updateColumnDescription,
+  updateColumnText,
   updateColumnTitle,
 } from "@/lib/colosseum/column";
 import { createClient } from "@/lib/supabase/client";
@@ -82,10 +84,13 @@ export default function ChannelPage() {
     const [title, setTitle] = useState(column.title ?? "");
     const [description, setDescription] = useState(column.description ?? "");
 
+    const [text, setText] = useState(column.text ?? "");
+
     const [showSave, setShowSave] = useState(false);
 
     const titleInputRef = useRef<HTMLInputElement>(null);
     const descriptionInputRef = useRef<HTMLInputElement>(null);
+    const textInputRef = useRef<HTMLTextAreaElement>(null);
 
     const handleTitleChange = async (column: Column) => {
       const oldTitle = column.title ? column.title : "";
@@ -115,6 +120,17 @@ export default function ChannelPage() {
       } catch (e) {
         console.error(e);
       }
+    };
+
+    const handleTextChange = async (column_id: number) => {
+      await updateColumnText(supabase, column_id, text);
+      textInputRef.current?.blur();
+      // update column text
+      setColumns((prev) =>
+        prev.map((column) =>
+          column.id === column_id ? { ...column, text: text } : column
+        )
+      );
     };
 
     const handleDeleteColumn = async (column: Column) => {
@@ -157,10 +173,27 @@ export default function ChannelPage() {
         <DialogContent className="w-[97vw] !h-[97vh] !max-w-none p-4">
           <div className="flex pt-4 px-4">
             <div className="w-3/4 flex justify-center">
-              <div className="flex w-3/4 bg-gray-100 p-6 rounded-md">
+              <div className="flex w-3/4 p-6 rounded-md">
                 {/* TODO: add ability to edit text in-line */}
                 {column.text ? (
-                  <p>{column.text}</p>
+                  <Textarea
+                    ref={textInputRef}
+                    value={text}
+                    onChange={(e) => {
+                      const oldText = column.text ?? "";
+
+                      if (e.target.value !== oldText) {
+                        setShowSave(true);
+                      }
+                      setText(e.target.value);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleTextChange(column.id);
+                      }
+                    }}
+                  />
                 ) : (
                   <p>TODO: URL VIEW HERE</p>
                 )}

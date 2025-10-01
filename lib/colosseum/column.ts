@@ -142,3 +142,19 @@ export async function getChannelColumnCount(
 
   return count;
 }
+
+export async function updateColumnText(
+  supabase: SupabaseClient,
+  column_id: number,
+  text: string
+) {
+  const { error } = await supabase
+    .from("column")
+    .update({ text: text })
+    .eq("id", column_id)
+    .select();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}

@@ -1,5 +1,6 @@
 "use client";
 
+import ScreenshotPreview from "@/components/screenshot-preview";
 import {
   Dialog,
   DialogContent,
@@ -161,7 +162,7 @@ export default function ChannelPage() {
               {column.type === "text" ? (
                 <p className="text-sm line-clamp-[10]">{column.text}</p>
               ) : (
-                <p>this is a url here</p>
+                <ScreenshotPreview column_id={column.id} url={column.url!} />
               )}
             </div>
             <p className="opacity-0 group-hover:opacity-100 transition-opacity pt-1 text-xs font-light">

@@ -1,5 +1,3 @@
-"use server";
-
 import { createClient } from "../supabase/server";
 
 export type Screenshot = {
@@ -21,6 +19,10 @@ export async function getScreenshot(column_id: number, url: string) {
 
   if (existing && new Date(existing.created_at) > oneWeekAgo) {
     return existing.image_url; // return cached screenshot
+  }
+
+  if (fetchError) {
+    throw new Error(fetchError.message);
   }
 
   const { chromium } = await import("playwright");

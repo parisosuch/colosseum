@@ -3,6 +3,7 @@ import puppeteer from "puppeteer";
 
 import { createClient } from "@/lib/supabase/server";
 import { encodeUrlToFilename } from "@/lib/url-encoding";
+import { createBrowserClient } from "@supabase/ssr";
 
 export const runtime = "nodejs"; // puppeteer is going to require nodejs runtime for browsing
 
@@ -16,7 +17,28 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const token = authHeader.replace("Bearer ", "");
+
   const supabase = await createClient();
+  const supabaseUser = await createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    token
+  );
+
+  // ensure user is authenticated first
+  const {
+    data: { user },
+    error,
+  } = await supabaseUser.auth.getUser();
+
+  if (error || !user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   try {
     // launch headless browser

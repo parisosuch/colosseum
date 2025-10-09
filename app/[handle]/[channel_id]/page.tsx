@@ -162,7 +162,7 @@ export default function ChannelPage() {
               {column.type === "text" ? (
                 <p className="text-sm line-clamp-[10]">{column.text}</p>
               ) : (
-                <ScreenshotPreview column_id={column.id} url={column.url!} />
+                <ScreenshotPreview url={column.url!} />
               )}
             </div>
             <p className="opacity-0 group-hover:opacity-100 transition-opacity pt-1 text-xs font-light">

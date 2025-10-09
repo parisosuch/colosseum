@@ -1,17 +1,30 @@
-import { getScreenshot } from "@/lib/colosseum/screenshot";
+import { useState, useEffect } from "react";
 
-export default async function ScreenshotPreview({
-  column_id,
-  url,
-}: {
-  column_id: number;
-  url: string;
-}) {
-  const image = await getScreenshot(column_id, url);
+export default function ScreenshotPreview({ url }: { url: string }) {
+  // create client side supabase client
+
+  const [image, setImage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchScreenshot = async () => {
+      try {
+        const res = await fetch(
+          `/api/screenshot?url=${encodeURIComponent(url)}`
+        );
+        const data = await res.json();
+        console.log(data);
+        setImage(data.image_url);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    fetchScreenshot();
+  }, [url]);
 
   return (
     <div className="max-w-xl mx-auto space-y-4">
-      {image && <img src={image} alt="Preview" className="rounded shadow" />}
+      {image ? <image className="w-[100px] h-[100px]" href={image} /> : null}
     </div>
   );
 }

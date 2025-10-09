@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
 
   const authHeader = req.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 400 });
   }
 
   const token = authHeader.replace("Bearer ", "");
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
   } = await supabaseUser.auth.getUser();
 
   if (error || !user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 400 });
   }
 
   try {
@@ -93,4 +93,40 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ error: error }, { status: 500 });
   }
+}
+
+export async function GET(req: NextRequest) {
+  const requestURL = new URL(req.url);
+
+  const targetURL = requestURL.searchParams.get("url");
+
+  if (!targetURL) {
+    return NextResponse.json(
+      { error: "Missing url parameter." },
+      { status: 401 }
+    );
+  }
+
+  const supabase = await createClient();
+
+  // look up if image exists in database
+  const { data, error: selectError } = await supabase
+    .from("screenshot")
+    .select("*")
+    .eq("url", targetURL)
+    .single();
+
+  if (selectError) {
+    return NextResponse.json({ error: selectError }, { status: 500 });
+  }
+
+  if (!data) {
+    return NextResponse.json(
+      { error: "Screenshot for URL does not exist." },
+      { status: 404 }
+    );
+  }
+
+  // return image url
+  return NextResponse.json({ image_url: data.image_url });
 }

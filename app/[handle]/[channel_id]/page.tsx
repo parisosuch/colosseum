@@ -19,6 +19,7 @@ import {
   updateColumnDescription,
   updateColumnText,
   updateColumnTitle,
+  uploadTextAreaColumn,
 } from "@/lib/colosseum/column";
 import { createClient } from "@/lib/supabase/client";
 import { timeAgo } from "@/lib/utils";
@@ -67,11 +68,16 @@ export default function ChannelPage() {
   const handleTextAreaUpload = async () => {
     if (!user?.id || text === "") return;
     try {
-      const column = await createColumnServerAction({
+      const column = await uploadTextAreaColumn(supabase, {
         created_by: user.id,
         channel_id: channel_id,
         text,
       });
+      // const column = await createColumnServerAction({
+      //   created_by: user.id,
+      //   channel_id: channel_id,
+      //   text,
+      // });
       const newColumns = [column, ...columns];
       setColumns(newColumns);
       setText("");

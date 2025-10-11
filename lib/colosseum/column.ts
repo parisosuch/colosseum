@@ -55,19 +55,28 @@ export async function uploadTextAreaColumn(
     text: string;
   }
 ): Promise<Column> {
-  const columnData = isURL(column.text)
-    ? {
-        type: "url",
-        url: column.text,
-        channel_id: parseInt(column.channel_id),
-        created_by: column.created_by,
-      }
-    : {
-        type: "text",
-        text: column.text,
-        channel_id: parseInt(column.channel_id),
-        created_by: column.created_by,
-      };
+  const columnIsURL = isURL(column.text);
+  let columnData;
+
+  if (columnIsURL) {
+    const urlText = column.text.startsWith("https://")
+      ? column.text
+      : "https://" + column.text;
+
+    columnData = {
+      type: "url",
+      url: urlText,
+      channel_id: parseInt(column.channel_id),
+      created_by: column.created_by,
+    };
+  } else {
+    columnData = {
+      type: "text",
+      text: column.text,
+      channel_id: parseInt(column.channel_id),
+      created_by: column.created_by,
+    };
+  }
 
   const { data, error: insertError } = await supabase
     .from("column")

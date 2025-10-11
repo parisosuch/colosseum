@@ -19,6 +19,7 @@ import { createClient } from "@/lib/supabase/client";
 import { timeAgo } from "@/lib/utils";
 import { Textarea } from "./ui/textarea.";
 import { Input } from "./ui/input";
+import ScreenShotPreview from "./screenshot-preview";
 
 type ColumnComponentProps = {
   column: Column;
@@ -103,54 +104,15 @@ const ColumnComponent = memo(function ColumnComponent({
     }
   };
 
-  const ScreenshotPreview = memo(function ({ url }: { url: string }) {
-    // create client side supabase client
-
-    const [image, setImage] = useState<string | null>(null);
-
-    useEffect(() => {
-      const fetchScreenshot = async () => {
-        try {
-          const res = await fetch(
-            `/api/screenshot?url=${encodeURIComponent(url)}`
-          );
-          const data = await res.json();
-          console.log(data);
-          setImage(data.image_url);
-        } catch (err) {
-          console.error(err);
-        }
-      };
-
-      fetchScreenshot();
-    }, []);
-
-    return (
-      <div className="w-full h-full flex items-center justify-center">
-        {image ? (
-          <img
-            src={image}
-            alt={`Screenshot of ${url}`}
-            className="w-full h-full object-cover rounded-lg"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center rounded-lg">
-            <p className="text-gray-500 text-sm">Loading screenshot...</p>
-          </div>
-        )}
-      </div>
-    );
-  });
-
   return (
     <Dialog>
       <DialogTrigger>
         <div className="group relative w-[300px]">
-          <div className="w-[300px] h-[300px] border rounded-lg text-left p-2">
+          <div className="w-[300px] h-[300px] border rounded-lg text-left">
             {column.type === "text" ? (
-              <p className="text-sm line-clamp-[10]">{column.text}</p>
+              <p className="text-sm line-clamp-[10] p-2">{column.text}</p>
             ) : (
-              <ScreenshotPreview url={column.url!} />
+              <ScreenShotPreview url={column.url!} />
             )}
           </div>
           <p className="opacity-0 group-hover:opacity-100 transition-opacity pt-1 text-xs font-light">

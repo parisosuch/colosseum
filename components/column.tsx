@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, memo } from "react";
 import { Column } from "@/lib/colosseum/column";
 import {
   updateColumnDescription,
@@ -103,7 +103,7 @@ export default function ColumnComponent({
     }
   };
 
-  function ScreenshotPreview({ url }: { url: string }) {
+  const ScreenshotPreview = memo(function ({ url }: { url: string }) {
     // create client side supabase client
 
     const [image, setImage] = useState<string | null>(null);
@@ -140,7 +140,7 @@ export default function ColumnComponent({
         )}
       </div>
     );
-  }
+  });
 
   return (
     <Dialog>

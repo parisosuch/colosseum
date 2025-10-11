@@ -27,11 +27,15 @@ export default function ScreenShotPreview({ url }: { url: string }) {
   return (
     <div className="w-full h-full flex items-center justify-center">
       {!loading ? (
-        <img
-          src={image!}
-          alt={`Screenshot of ${url}`}
-          className="w-full h-full object-cover rounded-lg"
-        />
+        imageExists ? (
+          <img
+            src={image!}
+            alt={`Screenshot of ${url}`}
+            className="w-full h-full object-cover rounded-lg"
+          />
+        ) : (
+          <p>Website does not exist.</p>
+        )
       ) : (
         <div className="w-full h-full flex items-center justify-center rounded-lg">
           <p className="text-gray-500 text-sm">Loading...</p>

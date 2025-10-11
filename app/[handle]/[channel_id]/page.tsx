@@ -143,7 +143,16 @@ export default function ChannelPage() {
           ))}
         </div>
       </div>
-      <div className="grid grid-cols-5 gap-4">
+      <div
+        className="grid gap-4 
+                grid-cols-1
+                sm:grid-cols-2
+                md:grid-cols-3
+                lg:grid-cols-4
+                xl:grid-cols-5
+                2xl:grid-cols-6
+                3xl:grid-cols-7"
+      >
         <ColumnInput
           user={user}
           columns={columns}

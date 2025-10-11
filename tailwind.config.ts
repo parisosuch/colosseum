@@ -57,6 +57,9 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      screens: {
+        "3xl": "1600px", // now 3xl triggers at 1440px
+      },
     },
   },
   plugins: [require("tailwindcss-animate")],

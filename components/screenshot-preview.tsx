@@ -5,7 +5,7 @@ export default function ScreenShotPreview({ url }: { url: string }) {
 
   const [image, setImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [imageExists, setImageExists] = useState(false);
+  const [imageExists, setImageExists] = useState(true);
 
   useEffect(() => {
     const fetchScreenshot = async () => {
@@ -13,12 +13,16 @@ export default function ScreenShotPreview({ url }: { url: string }) {
         const res = await fetch(
           `/api/screenshot?url=${encodeURIComponent(url)}`
         );
-        const data = await res.json();
-        setImage(data.image_url);
-        setLoading(false);
+        if (res.status === 404) {
+          setImageExists(false);
+        } else {
+          const data = await res.json();
+          setImage(data.image_url);
+        }
       } catch (err) {
         console.error(err);
       }
+      setLoading(false);
     };
 
     fetchScreenshot();

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import puppeteer from "puppeteer";
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@supabase/supabase-js";
 import { encodeUrlToFilename } from "@/lib/url-encoding";
 
 export const runtime = "nodejs"; // puppeteer is going to require nodejs runtime for browsing
@@ -23,7 +23,10 @@ export async function POST(req: NextRequest) {
 
   const token = authHeader.replace("Bearer ", "");
 
-  const supabase = await createClient();
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
 
   // ensure user is authenticated first
   const {
@@ -102,7 +105,10 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const supabase = await createClient();
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
 
   // look up if image exists in database
   const { data, error: selectError } = await supabase

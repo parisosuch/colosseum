@@ -1,33 +1,19 @@
 "use client";
 
-import ScreenshotPreview from "@/components/screenshot-preview";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea.";
+import ColumnComponent from "@/components/column";
 import { Channel, getChannel } from "@/lib/colosseum/channel";
 import {
   Column,
-  deleteColumn,
   getChannelColumns,
-  updateColumnDescription,
-  updateColumnText,
-  updateColumnTitle,
   uploadTextColumn,
   uploadURLColumn,
 } from "@/lib/colosseum/column";
 import { createClient } from "@/lib/supabase/client";
-import { isURL, timeAgo } from "@/lib/utils";
+import { isURL } from "@/lib/utils";
 import { User } from "@supabase/supabase-js";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import ColumnComponent from "@/components/column";
 
 export default function ChannelPage() {
   const params = useParams();

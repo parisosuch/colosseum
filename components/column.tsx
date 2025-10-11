@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Column } from "@/lib/colosseum/column";
 import {
   updateColumnDescription,
@@ -16,7 +16,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { createClient } from "@/lib/supabase/client";
-import ScreenShotPreview from "./screenshot-preview";
 import { timeAgo } from "@/lib/utils";
 import { Textarea } from "./ui/textarea.";
 import { Input } from "./ui/input";
@@ -104,6 +103,45 @@ export default function ColumnComponent({
     }
   };
 
+  function ScreenshotPreview({ url }: { url: string }) {
+    // create client side supabase client
+
+    const [image, setImage] = useState<string | null>(null);
+
+    useEffect(() => {
+      const fetchScreenshot = async () => {
+        try {
+          const res = await fetch(
+            `/api/screenshot?url=${encodeURIComponent(url)}`
+          );
+          const data = await res.json();
+          console.log(data);
+          setImage(data.image_url);
+        } catch (err) {
+          console.error(err);
+        }
+      };
+
+      fetchScreenshot();
+    }, []);
+
+    return (
+      <div className="w-full h-full flex items-center justify-center">
+        {image ? (
+          <img
+            src={image}
+            alt={`Screenshot of ${url}`}
+            className="w-full h-full object-cover rounded-lg"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center rounded-lg">
+            <p className="text-gray-500 text-sm">Loading screenshot...</p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <Dialog>
       <DialogTrigger>
@@ -112,7 +150,7 @@ export default function ColumnComponent({
             {column.type === "text" ? (
               <p className="text-sm line-clamp-[10]">{column.text}</p>
             ) : (
-              <ScreenShotPreview url={column.url!} />
+              <ScreenshotPreview url={column.url!} />
             )}
           </div>
           <p className="opacity-0 group-hover:opacity-100 transition-opacity pt-1 text-xs font-light">

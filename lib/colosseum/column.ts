@@ -1,5 +1,4 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import { isURL } from "../utils";
 
 export type Column = {
   id: number;
@@ -51,14 +50,14 @@ export async function uploadURLColumn(
   supabase: SupabaseClient,
   column: {
     created_by: string;
-    channel_id: string;
+    channel_id: number;
     text: string;
   }
 ): Promise<Column> {
   const columnData = {
     type: "url",
     url: column.text,
-    channel_id: parseInt(column.channel_id),
+    channel_id: column.channel_id,
     created_by: column.created_by,
   };
   const { data, error: insertError } = await supabase
@@ -78,14 +77,14 @@ export async function uploadTextColumn(
   supabase: SupabaseClient,
   column: {
     created_by: string;
-    channel_id: string;
+    channel_id: number;
     text: string;
   }
 ): Promise<Column> {
   const columnData = {
     type: "text",
     text: column.text,
-    channel_id: parseInt(column.channel_id),
+    channel_id: column.channel_id,
     created_by: column.created_by,
   };
 

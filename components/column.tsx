@@ -25,7 +25,7 @@ type ColumnComponentProps = {
   setColumns: React.Dispatch<React.SetStateAction<Column[]>>;
 };
 
-export default function ColumnComponent({
+const ColumnComponent = memo(function ColumnComponent({
   column,
   setColumns,
 }: ColumnComponentProps) {
@@ -264,4 +264,6 @@ export default function ColumnComponent({
       </DialogContent>
     </Dialog>
   );
-}
+});
+
+export default ColumnComponent;

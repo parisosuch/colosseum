@@ -75,10 +75,12 @@ export async function POST(req: NextRequest) {
       data: { publicUrl },
     } = supabase.storage.from("screenshots").getPublicUrl(fileName);
 
-    const { error: insertError } = await supabase.from("screenshot").insert({
-      url: url,
-      image_url: publicUrl,
-    });
+    const { error: insertError } = await supabase
+      .from("screenshot")
+      .upsert(
+        { url: url, image_url: publicUrl },
+        { onConflict: "url", ignoreDuplicates: true }
+      );
 
     if (insertError) {
       console.error(insertError);

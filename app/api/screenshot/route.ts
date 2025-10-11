@@ -115,7 +115,7 @@ export async function GET(req: NextRequest) {
     .from("screenshot")
     .select("*")
     .eq("url", targetURL)
-    .single();
+    .maybeSingle();
 
   if (selectError) {
     return NextResponse.json({ error: selectError }, { status: 500 });

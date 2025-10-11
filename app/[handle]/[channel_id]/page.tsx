@@ -10,7 +10,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea.";
-import { createColumnServerAction } from "@/lib/actions/create-column";
 import { Channel, getChannel } from "@/lib/colosseum/channel";
 import {
   Column,
@@ -19,10 +18,11 @@ import {
   updateColumnDescription,
   updateColumnText,
   updateColumnTitle,
-  uploadTextAreaColumn,
+  uploadTextColumn,
+  uploadURLColumn,
 } from "@/lib/colosseum/column";
 import { createClient } from "@/lib/supabase/client";
-import { timeAgo } from "@/lib/utils";
+import { isURL, timeAgo } from "@/lib/utils";
 import { User } from "@supabase/supabase-js";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -65,19 +65,50 @@ export default function ChannelPage() {
     // TODO: handle upload on drop
   };
 
+  const screenshotURL = async (url: string) => {
+    const { data } = await supabase.auth.getSession();
+
+    if (!data.session) {
+      console.error("User is not auth.");
+      return;
+    }
+
+    const response = await fetch("/api/screenshot", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + data.session.access_token,
+      },
+      body: JSON.stringify({ url: url }),
+    });
+
+    if (response.status !== 200) {
+      const data = await response.json();
+      throw new Error(data);
+    }
+  };
+
   const handleTextAreaUpload = async () => {
     if (!user?.id || text === "") return;
+    let column;
     try {
-      const column = await uploadTextAreaColumn(supabase, {
-        created_by: user.id,
-        channel_id: channel_id,
-        text,
-      });
-      // const column = await createColumnServerAction({
-      //   created_by: user.id,
-      //   channel_id: channel_id,
-      //   text,
-      // });
+      if (isURL(text)) {
+        // get proper url
+        const urlText = text.startsWith("https://") ? text : "https://" + text;
+
+        column = await uploadURLColumn(supabase, {
+          created_by: user.id,
+          channel_id: channel_id,
+          text: urlText,
+        });
+        screenshotURL(urlText);
+      } else {
+        column = await uploadTextColumn(supabase, {
+          created_by: user.id,
+          channel_id: channel_id,
+          text,
+        });
+      }
+
       const newColumns = [column, ...columns];
       setColumns(newColumns);
       setText("");

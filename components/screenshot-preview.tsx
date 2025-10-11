@@ -5,22 +5,22 @@ export default function ScreenshotPreview({ url }: { url: string }) {
 
   const [image, setImage] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchScreenshot = async () => {
-      try {
-        const res = await fetch(
-          `/api/screenshot?url=${encodeURIComponent(url)}`
-        );
-        const data = await res.json();
-        console.log(data);
-        setImage(data.image_url);
-      } catch (err) {
-        console.error(err);
-      }
-    };
+  // useEffect(() => {
+  //   const fetchScreenshot = async () => {
+  //     try {
+  //       const res = await fetch(
+  //         `/api/screenshot?url=${encodeURIComponent(url)}`
+  //       );
+  //       const data = await res.json();
+  //       console.log(data);
+  //       setImage(data.image_url);
+  //     } catch (err) {
+  //       console.error(err);
+  //     }
+  //   };
 
-    fetchScreenshot();
-  }, [url]);
+  //   fetchScreenshot();
+  // }, [url]);
 
   return (
     <div className="max-w-xl mx-auto space-y-4">

@@ -47,7 +47,7 @@ export async function getChannelColumns(
   return data;
 }
 
-export async function uploadTextAreaColumn(
+export async function uploadURLColumn(
   supabase: SupabaseClient,
   column: {
     created_by: string;
@@ -55,28 +55,39 @@ export async function uploadTextAreaColumn(
     text: string;
   }
 ): Promise<Column> {
-  const columnIsURL = isURL(column.text);
-  let columnData;
+  const columnData = {
+    type: "url",
+    url: column.text,
+    channel_id: parseInt(column.channel_id),
+    created_by: column.created_by,
+  };
+  const { data, error: insertError } = await supabase
+    .from("column")
+    .insert(columnData) // use insert instead of upsert
+    .select()
+    .single();
 
-  if (columnIsURL) {
-    const urlText = column.text.startsWith("https://")
-      ? column.text
-      : "https://" + column.text;
-
-    columnData = {
-      type: "url",
-      url: urlText,
-      channel_id: parseInt(column.channel_id),
-      created_by: column.created_by,
-    };
-  } else {
-    columnData = {
-      type: "text",
-      text: column.text,
-      channel_id: parseInt(column.channel_id),
-      created_by: column.created_by,
-    };
+  if (insertError) {
+    throw new Error(insertError.message);
   }
+
+  return data;
+}
+
+export async function uploadTextColumn(
+  supabase: SupabaseClient,
+  column: {
+    created_by: string;
+    channel_id: string;
+    text: string;
+  }
+): Promise<Column> {
+  const columnData = {
+    type: "text",
+    text: column.text,
+    channel_id: parseInt(column.channel_id),
+    created_by: column.created_by,
+  };
 
   const { data, error: insertError } = await supabase
     .from("column")

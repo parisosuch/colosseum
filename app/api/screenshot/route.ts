@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
 
     const viewportSize = 1200;
     await page.setViewport({ width: viewportSize, height: viewportSize });
-    await page.goto(url, { waitUntil: "domcontentloaded" });
+    await page.goto(url, { waitUntil: "networkidle0" });
 
     // Screenshot the top square
     const buffer = (await page.screenshot({

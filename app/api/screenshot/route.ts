@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import puppeteer from "puppeteer";
+import sharp from "sharp";
 
 import { createClient } from "@supabase/supabase-js";
 import { encodeUrlToFilename } from "@/lib/url-encoding";
@@ -39,25 +40,32 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // launch headless browser
     const browser = await puppeteer.launch({
       headless: true,
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
     const page = await browser.newPage();
 
-    await page.goto(url, { waitUntil: "networkidle2", timeout: 30000 });
+    const viewportSize = 1200;
+    await page.setViewport({ width: viewportSize, height: viewportSize });
+    await page.goto(url, { waitUntil: "domcontentloaded" });
 
-    const buffer = await page.screenshot({ fullPage: true });
+    // Screenshot the top square
+    const buffer = (await page.screenshot({
+      fullPage: true,
+    })) as Buffer;
 
-    await browser.close();
+    const squareBuffer = await sharp(buffer)
+      .extract({ left: 0, top: 0, width: 1200, height: 1200 })
+      .toFormat("png")
+      .toBuffer();
 
     const fileName = `${encodeUrlToFilename(url)}.png`;
 
     // upload to supabase storage
     const { error } = await supabase.storage
       .from("screenshots")
-      .upload(fileName, buffer, {
+      .upload(fileName, squareBuffer, {
         contentType: "image/png",
         upsert: true,
       });

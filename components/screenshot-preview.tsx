@@ -35,7 +35,7 @@ export default function ScreenShotPreview({ url }: { url: string }) {
           <img
             src={image!}
             alt={`Screenshot of ${url}`}
-            className="w-full h-full object-cover rounded-lg"
+            className="w-full h-full object-top object-cover rounded-lg"
           />
         ) : (
           <p>Website does not exist.</p>

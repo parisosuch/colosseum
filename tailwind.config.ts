@@ -58,7 +58,7 @@ export default {
         sm: "calc(var(--radius) - 4px)",
       },
       screens: {
-        "3xl": "2560px", // now 3xl triggers at 1440p monitors
+        "3xl": "2000px", // now 3xl triggers at 1440p monitors
       },
     },
   },

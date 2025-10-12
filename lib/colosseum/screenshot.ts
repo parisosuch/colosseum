@@ -3,4 +3,5 @@ export interface Screenshot {
   created_at: string;
   url: string;
   image_url: string;
+  title: string;
 }

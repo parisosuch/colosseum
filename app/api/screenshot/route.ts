@@ -50,6 +50,8 @@ export async function POST(req: NextRequest) {
     await page.setViewport({ width: viewportSize, height: viewportSize });
     await page.goto(url, { waitUntil: "networkidle2" });
 
+    const title = await page.title();
+
     // Screenshot the top square
     const buffer = (await page.screenshot({
       fullPage: true,
@@ -86,7 +88,7 @@ export async function POST(req: NextRequest) {
     const { error: insertError } = await supabase
       .from("screenshot")
       .upsert(
-        { url: url, image_url: publicUrl },
+        { url: url, image_url: publicUrl, title: title },
         { onConflict: "url", ignoreDuplicates: true }
       );
 
@@ -138,6 +140,6 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // return image url
-  return NextResponse.json({ image_url: data.image_url });
+  // return screenshot data
+  return NextResponse.json(data);
 }

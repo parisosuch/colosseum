@@ -38,6 +38,7 @@ const ColumnComponent = memo(function ColumnComponent({
   const [showSave, setShowSave] = useState(false);
 
   const [imageURL, setImageURL] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   const titleInputRef = useRef<HTMLInputElement>(null);
   const descriptionInputRef = useRef<HTMLInputElement>(null);
@@ -119,11 +120,15 @@ const ColumnComponent = memo(function ColumnComponent({
         }
       } catch (err) {
         console.error(err);
+      } finally {
+        setLoading(false);
       }
     };
     // get the image url of the column if it is of type url
     if (column.type === "url") {
       fetchScreenshot();
+    } else {
+      setLoading(false);
     }
   }, []);
 
@@ -134,12 +139,16 @@ const ColumnComponent = memo(function ColumnComponent({
           <div className="w-[300px] h-[300px] border rounded-lg text-left">
             {column.type === "text" ? (
               <p className="text-sm line-clamp-[10] p-2">{column.text}</p>
+            ) : loading ? (
+              <div className="w-full h-full flex items-center justify-center animate-pulse">
+                Loading...
+              </div>
             ) : (
               <ScreenShotPreview image_url={imageURL} />
             )}
           </div>
           <p className="opacity-0 group-hover:opacity-100 transition-opacity pt-1 text-xs font-light">
-            {timeAgo(new Date(column.created_at))}
+            {loading ? "Loading..." : timeAgo(new Date(column.created_at))}
           </p>
         </div>
       </DialogTrigger>

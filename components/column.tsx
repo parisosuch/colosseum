@@ -37,6 +37,8 @@ const ColumnComponent = memo(function ColumnComponent({
 
   const [showSave, setShowSave] = useState(false);
 
+  const [imageURL, setImageURL] = useState(null);
+
   const titleInputRef = useRef<HTMLInputElement>(null);
   const descriptionInputRef = useRef<HTMLInputElement>(null);
   const textInputRef = useRef<HTMLTextAreaElement>(null);
@@ -104,6 +106,27 @@ const ColumnComponent = memo(function ColumnComponent({
     }
   };
 
+  useEffect(() => {
+    const fetchScreenshot = async () => {
+      try {
+        const res = await fetch(
+          `/api/screenshot?url=${encodeURIComponent(column.url!)}`
+        );
+        if (res.status === 404) {
+        } else {
+          const data = await res.json();
+          setImageURL(data.image_url);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    // get the image url of the column if it is of type url
+    if (column.type === "url") {
+      fetchScreenshot();
+    }
+  }, []);
+
   return (
     <Dialog>
       <DialogTrigger>
@@ -112,7 +135,7 @@ const ColumnComponent = memo(function ColumnComponent({
             {column.type === "text" ? (
               <p className="text-sm line-clamp-[10] p-2">{column.text}</p>
             ) : (
-              <ScreenShotPreview url={column.url!} />
+              <ScreenShotPreview image_url={imageURL} />
             )}
           </div>
           <p className="opacity-0 group-hover:opacity-100 transition-opacity pt-1 text-xs font-light">

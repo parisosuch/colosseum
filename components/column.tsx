@@ -179,14 +179,15 @@ const ColumnComponent = memo(function ColumnComponent({
                   }}
                 />
               ) : (
-                <div>
+                <a href={column.url} target="_blank" className="size-11/12">
                   <div className="flex flex-row space-x-2 items-center border border-1 rounded-md px-2 py-1">
                     <GlobeIcon className="size-4" />
                     <h1 className="font-mono">{column.url!}</h1>
                   </div>
-
-                  <img className="mt-2" src={imageURL!} />
-                </div>
+                  <div className="mt-2 w-full">
+                    <img src={imageURL!} />
+                  </div>
+                </a>
               )}
             </div>
           </div>

@@ -178,7 +178,7 @@ const ColumnComponent = memo(function ColumnComponent({
                   }}
                 />
               ) : (
-                <p>TODO: URL VIEW HERE</p>
+                <img src={imageURL!} />
               )}
             </div>
           </div>

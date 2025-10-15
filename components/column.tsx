@@ -20,6 +20,7 @@ import { timeAgo } from "@/lib/utils";
 import { Textarea } from "./ui/textarea.";
 import { Input } from "./ui/input";
 import ScreenShotPreview from "./screenshot-preview";
+import { GlobeIcon } from "lucide-react";
 
 type ColumnComponentProps = {
   column: Column;
@@ -178,7 +179,14 @@ const ColumnComponent = memo(function ColumnComponent({
                   }}
                 />
               ) : (
-                <img src={imageURL!} />
+                <div>
+                  <div className="flex flex-row space-x-2 items-center border border-1 rounded-md px-2 py-1">
+                    <GlobeIcon className="size-4" />
+                    <h1 className="font-mono">{column.url!}</h1>
+                  </div>
+
+                  <img className="mt-2" src={imageURL!} />
+                </div>
               )}
             </div>
           </div>

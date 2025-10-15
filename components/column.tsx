@@ -39,6 +39,7 @@ const ColumnComponent = memo(function ColumnComponent({
   const [showSave, setShowSave] = useState(false);
 
   const [imageURL, setImageURL] = useState(null);
+  const [urlTitle, setURLTitle] = useState("");
   const [loading, setLoading] = useState(true);
 
   const titleInputRef = useRef<HTMLInputElement>(null);
@@ -117,7 +118,9 @@ const ColumnComponent = memo(function ColumnComponent({
         if (res.status === 404) {
         } else {
           const data = await res.json();
+          console.log(data);
           setImageURL(data.image_url);
+          setURLTitle(data.title);
         }
       } catch (err) {
         console.error(err);
@@ -148,12 +151,16 @@ const ColumnComponent = memo(function ColumnComponent({
               <ScreenShotPreview image_url={imageURL} />
             )}
           </div>
-          <p className="opacity-0 group-hover:opacity-100 transition-opacity pt-1 text-xs font-light">
-            {loading ? "Loading..." : timeAgo(new Date(column.created_at))}
+          {column.type === "url" ? (
+            <p className="group-hover:hidden pt-1 text-xs font-light">
+              {urlTitle}
+            </p>
+          ) : null}
+          <p className="opacity-0 group-hover:opacity-100 pt-1 text-xs font-light">
+            {timeAgo(new Date(column.created_at))}
           </p>
         </div>
       </DialogTrigger>
-
       <DialogContent className="w-[97vw] !h-[97vh] !max-w-none p-4">
         <div className="flex pt-4 px-4">
           <div className="w-3/4 flex justify-center">

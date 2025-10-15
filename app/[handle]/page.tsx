@@ -23,7 +23,7 @@ export default async function UserPage({ params }: PageProps) {
   const supabase = await createClient();
 
   const ChannelColumnsView = async ({ channel }: { channel: Channel }) => {
-    const columns = await getChannelColumns(supabase, channel.id, 4);
+    const columns = await getChannelColumns(supabase, channel.id);
 
     const columnCount = await getChannelColumnCount(supabase, channel.id);
 
@@ -39,10 +39,14 @@ export default async function UserPage({ params }: PageProps) {
           </p>
         </div>
         <div className="flex gap-8 overflow-x-auto">
-          {columns.map((column) => (
+          {columns.map((column, index) => (
             <div
               key={column.id}
-              className="border-2 rounded-md w-[250px] h-[250px]"
+              className={
+                index >= 5
+                  ? "md:hidden"
+                  : "border-2 rounded-md w-[250px] h-[250px]"
+              }
             >
               <ColumnPreview column={column} />
             </div>

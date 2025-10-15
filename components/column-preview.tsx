@@ -13,8 +13,6 @@ export default async function ColumnPreview({ column }: { column: Column }) {
     );
   }
 
-  console.log(column.url);
-
   // get the image url of the screenshot
   const supabase = await createClient();
 

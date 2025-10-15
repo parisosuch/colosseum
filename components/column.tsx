@@ -156,7 +156,7 @@ const ColumnComponent = memo(function ColumnComponent({
               {urlTitle}
             </p>
           ) : null}
-          <p className="opacity-0 group-hover:opacity-100 pt-1 text-xs font-light">
+          <p className="hidden group-hover:block pt-1 text-xs font-light">
             {timeAgo(new Date(column.created_at))}
           </p>
         </div>

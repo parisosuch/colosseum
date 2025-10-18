@@ -10,6 +10,7 @@ import {
 import { isURL } from "@/lib/utils";
 import { User } from "@supabase/supabase-js";
 import { Channel } from "@/lib/colosseum/channel";
+import { Spinner } from "./ui/spinner";
 
 type ColumnInputProps = {
   user: User | null;
@@ -29,6 +30,7 @@ export default function ColumnInput({
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -86,7 +88,9 @@ export default function ColumnInput({
           channel_id: channel.id,
           text: urlText,
         });
-        screenshotURL(urlText);
+        setLoading(true);
+        await screenshotURL(urlText);
+        setLoading(false);
       } else {
         column = await uploadTextColumn(supabase, {
           created_by: user.id,
@@ -128,13 +132,15 @@ export default function ColumnInput({
       {!file && (
         <textarea
           ref={textareaRef}
-          className="w-full h-full bg-transparent resize-none focus:outline-none p-3 leading-normal text-sm"
+          disabled={loading}
+          className={`w-full h-full bg-transparent resize-none focus:outline-none p-3 leading-normal text-sm ${loading ? "hidden" : ""}`}
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder=""
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
+              setLoading(true);
               handleTextAreaUpload();
             }
           }}
@@ -163,6 +169,12 @@ export default function ColumnInput({
       {file && (
         <div className="absolute inset-0 flex items-center justify-center text-center text-sm break-all px-3">
           <p>{file.name}</p>
+        </div>
+      )}
+
+      {loading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-100/60 dark:bg-black/50 z-10">
+          <Spinner variant="circle" className="size-10" />
         </div>
       )}
     </div>

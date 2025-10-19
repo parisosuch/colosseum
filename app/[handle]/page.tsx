@@ -18,7 +18,7 @@ type PageProps = {
 };
 
 export default async function UserPage({ params }: PageProps) {
-  const { handle } = await params;
+  const { handle } = params;
 
   const supabase = await createClient();
 

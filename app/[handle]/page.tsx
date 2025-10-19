@@ -1,17 +1,17 @@
+import ColumnPreview from "@/components/column-preview";
+import CreateChannelButton from "@/components/create-channel-button";
 import {
+  Channel,
   getUserChannels,
   getUserPublicChannels,
 } from "@/lib/colosseum/channel";
-import { createClient } from "@/lib/supabase/server";
-import { Channel } from "@/lib/colosseum/channel";
-import CreateChannelButton from "@/components/create-channel-button";
 import {
   getChannelColumnCount,
   getChannelColumns,
 } from "@/lib/colosseum/column";
 import { getPublicUserProfile } from "@/lib/colosseum/user";
+import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
-import ColumnPreview from "@/components/column-preview";
 
 export default async function UserPage({
   params,
@@ -56,15 +56,21 @@ export default async function UserPage({
     );
   };
 
-  const OwnerView = ({ channels }: { channels: Channel[] }) => {
+  const ChannelsView = ({
+    channels,
+    isOwner,
+  }: {
+    channels: Channel[];
+    isOwner: boolean;
+  }) => {
     if (channels.length === 0) {
       return (
         <div className="w-full flex items-center justify-center">
           <div className="w-1/2 flex space-x-4 items-center">
             <h1 className="text-4xl font-semibold">
-              Looks like you have no channels.
+              Looks like {isOwner ? "you" : "they"} have no channels.
             </h1>
-            <CreateChannelButton />
+            {isOwner ? <CreateChannelButton /> : null}
           </div>
         </div>
       );
@@ -72,7 +78,7 @@ export default async function UserPage({
 
     return (
       <div className="space-y-4">
-        <CreateChannelButton />
+        {isOwner ? <CreateChannelButton /> : null}
         <div className="flex flex-col space-y-4">
           {channels.map((channel) => (
             <Link key={channel.id} href={`/${handle}/${channel.id}`}>
@@ -86,19 +92,6 @@ export default async function UserPage({
     );
   };
 
-  const VisitorView = ({ channels }: { channels: Channel[] }) => {
-    if (channels.length === 0) {
-      return (
-        <div className="w-full flex items-center justify-center">
-          <h1 className="text-4xl font-semibold">
-            User has no public channels.
-          </h1>
-        </div>
-      );
-    }
-    return <p>User has some public channels.</p>;
-  };
-
   // determine if user is authenticated
   const {
     data: { user },
@@ -107,68 +100,57 @@ export default async function UserPage({
   const userProfile = await getPublicUserProfile(supabase, handle);
 
   if (!userProfile) {
+    // TODO: make this prettier
     return (
       <div className="w-full flex items-center justify-center">
         <h1 className="text-4xl font-semibold">This user does not exist!</h1>
       </div>
     );
   }
+
+  var match: boolean;
   if (!user) {
-    const channels = await getUserPublicChannels(
-      supabase,
-      userProfile?.user_id
-    );
-
-    return (
-      <div className="w-full">
-        <VisitorView channels={channels} />
-      </div>
-    );
+    match = false;
+  } else {
+    match = userProfile?.user_id === user.id;
   }
 
-  const match = userProfile?.user_id === user!.id;
+  var channels: Channel[];
 
-  if (match) {
-    const channels = await getUserChannels(supabase, user.id);
-
-    return (
-      <div className="w-full p-12 space-y-8">
-        <h1 className="text-4xl">
-          <Link
-            href="/"
-            className="dark:text-white/75 text-black/75 hover:dark:text-white/100 hover:text-black/100"
-          >
-            Colloseum
-          </Link>{" "}
-          <span className="font-extralight">/</span> {handle}
-        </h1>
-        <div className="flex flex-col space-y-4">
-          <div className="flex flex-col">
-            <h2 className="text-sm font-light">About</h2>
-            {userProfile.about ? <p className="">{userProfile.about}</p> : null}
-          </div>
-          <div className="flex flex-col">
-            <h2 className="text-sm font-light">Joined</h2>
-            <p>
-              {new Date(userProfile.created_at).toLocaleString("default", {
-                month: "long",
-                year: "numeric",
-              })}
-            </p>
-          </div>
-        </div>
-
-        <OwnerView channels={channels} />
-      </div>
-    );
+  if (!match) {
+    channels = await getUserPublicChannels(supabase, userProfile.user_id);
+  } else {
+    channels = await getUserChannels(supabase, user!.id);
   }
-
-  // else all, get public channels and show visitor view for authenticated user
-  const channels = await getUserPublicChannels(supabase, userProfile.user_id);
 
   return (
-    <div className="w-full">
-      <VisitorView channels={channels} />
+    <div className="w-full p-12 space-y-8">
+      <h1 className="text-4xl">
+        <Link
+          href="/"
+          className="dark:text-white/75 text-black/75 hover:dark:text-white/100 hover:text-black/100"
+        >
+          Colloseum
+        </Link>{" "}
+        <span className="font-extralight">/</span> {handle}
+      </h1>
+      <div className="flex flex-col space-y-4">
+        <div className="flex flex-col">
+          <h2 className="text-sm font-light">About</h2>
+          {userProfile.about ? <p className="">{userProfile.about}</p> : null}
+        </div>
+        <div className="flex flex-col">
+          <h2 className="text-sm font-light">Joined</h2>
+          <p>
+            {new Date(userProfile.created_at).toLocaleString("default", {
+              month: "long",
+              year: "numeric",
+            })}
+          </p>
+        </div>
+      </div>
+
+      <ChannelsView channels={channels} isOwner={match} />
     </div>
   );
 }

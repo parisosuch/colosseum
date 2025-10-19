@@ -25,11 +25,13 @@ import { GlobeIcon } from "lucide-react";
 type ColumnComponentProps = {
   column: Column;
   setColumns: React.Dispatch<React.SetStateAction<Column[]>>;
+  isOwner: boolean;
 };
 
 const ColumnComponent = memo(function ColumnComponent({
   column,
   setColumns,
+  isOwner,
 }: ColumnComponentProps) {
   const [title, setTitle] = useState(column.title ?? "");
   const [description, setDescription] = useState(column.description ?? "");
@@ -174,6 +176,7 @@ const ColumnComponent = memo(function ColumnComponent({
                 <Textarea
                   ref={textInputRef}
                   value={text}
+                  disabled={!isOwner}
                   onChange={(e) => {
                     const oldText = column.text ?? "";
 
@@ -207,6 +210,7 @@ const ColumnComponent = memo(function ColumnComponent({
               <Input
                 ref={titleInputRef}
                 placeholder="No title"
+                disabled={!isOwner}
                 value={title}
                 className="border-none shadow-none"
                 onChange={(e) => {
@@ -230,6 +234,7 @@ const ColumnComponent = memo(function ColumnComponent({
               <Input
                 ref={descriptionInputRef}
                 placeholder="No description"
+                disabled={!isOwner}
                 value={description}
                 className="border-none shadow-none"
                 onChange={(e) => {
@@ -264,14 +269,16 @@ const ColumnComponent = memo(function ColumnComponent({
                   save
                 </button>
               ) : null}
-              <button
-                className="text-xs underline font-light"
-                onClick={() => {
-                  handleDeleteColumn(column);
-                }}
-              >
-                delete
-              </button>
+              {isOwner ? (
+                <button
+                  className="text-xs underline font-light"
+                  onClick={() => {
+                    handleDeleteColumn(column);
+                  }}
+                >
+                  delete
+                </button>
+              ) : null}
             </div>
           </div>
         </div>

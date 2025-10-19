@@ -13,12 +13,12 @@ import { getPublicUserProfile } from "@/lib/colosseum/user";
 import Link from "next/link";
 import ColumnPreview from "@/components/column-preview";
 
-type PageProps = {
-  params: { handle: string };
-};
-
-export default async function UserPage({ params }: PageProps) {
-  const { handle } = params;
+export default async function UserPage({
+  params,
+}: {
+  params: Promise<{ handle: string }>;
+}) {
+  const { handle } = await params;
 
   const supabase = await createClient();
 

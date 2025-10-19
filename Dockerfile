@@ -3,7 +3,7 @@ FROM ubuntu:22.04
 
 # Install dependencies
 RUN apt-get update && \
-    apt-get install -y curl git build-essential python3 && \
+    apt-get install -y curl git build-essential python3 unzip && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Bun

@@ -20,6 +20,7 @@ export default function ChannelPage() {
   const [user, setUser] = useState<User | null>(null);
   const [metaData, setMetaData] = useState<{ title: string; data: string }[]>();
   const [loading, setLoading] = useState(true);
+  const [isOwner, setIsOwner] = useState(false);
 
   const router = useRouter();
   const supabase = createClient();
@@ -71,6 +72,10 @@ export default function ChannelPage() {
 
       const { data: userData } = await supabase.auth.getUser();
       const currentUser = userData.user;
+
+      const match = !user ? false : channelResponse.owner_id === user.id;
+
+      setIsOwner(match);
 
       if (channelResponse.private) {
         if (!currentUser || currentUser.id !== channelResponse.owner_id) {
@@ -148,16 +153,19 @@ export default function ChannelPage() {
                 grid-cols-5
                 3xl:grid-cols-7"
       >
-        <ColumnInput
-          user={user}
-          columns={columns}
-          setColumns={setColumns}
-          channel={channel}
-          handleMetaData={handleMetaData}
-        />
+        {isOwner ? (
+          <ColumnInput
+            user={user}
+            columns={columns}
+            setColumns={setColumns}
+            channel={channel}
+            handleMetaData={handleMetaData}
+          />
+        ) : null}
         {columns.map((column) => (
           <ColumnComponent
             column={column}
+            isOwner={isOwner}
             setColumns={setColumns}
             key={column.id}
           />

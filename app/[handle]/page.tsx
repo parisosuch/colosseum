@@ -108,14 +108,14 @@ export default async function UserPage({
     );
   }
 
-  var match: boolean;
+  let match: boolean;
   if (!user) {
     match = false;
   } else {
     match = userProfile?.user_id === user.id;
   }
 
-  var channels: Channel[];
+  let channels: Channel[];
 
   if (!match) {
     channels = await getUserPublicChannels(supabase, userProfile.user_id);

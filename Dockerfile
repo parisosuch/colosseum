@@ -17,7 +17,7 @@ ENV PATH="$BUN_INSTALL/bin:$PATH"
 WORKDIR /app
 
 # Copy package files
-COPY package.json bun.lockb ./
+COPY package.json bun.lock ./
 
 # Install dependencies with Bun
 RUN bun install --production

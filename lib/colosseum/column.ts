@@ -16,7 +16,7 @@ export type Column = {
 export async function getChannelColumns(
   supabase: SupabaseClient,
   channel_id: number,
-  limit?: number
+  limit?: number,
 ): Promise<Column[]> {
   if (limit) {
     const { data, error } = await supabase
@@ -52,7 +52,7 @@ export async function uploadURLColumn(
     created_by: string;
     channel_id: number;
     text: string;
-  }
+  },
 ): Promise<Column> {
   const columnData = {
     type: "url",
@@ -79,7 +79,7 @@ export async function uploadTextColumn(
     created_by: string;
     channel_id: number;
     text: string;
-  }
+  },
 ): Promise<Column> {
   const columnData = {
     type: "text",
@@ -104,12 +104,9 @@ export async function uploadTextColumn(
 export async function updateColumnTitle(
   supabase: SupabaseClient,
   column_id: number,
-  title: string
+  title: string,
 ): Promise<void> {
-  const { error } = await supabase
-    .from("column")
-    .update({ title: title })
-    .eq("id", column_id);
+  const { error } = await supabase.from("column").update({ title: title }).eq("id", column_id);
 
   if (error) {
     throw new Error(error.message);
@@ -119,7 +116,7 @@ export async function updateColumnTitle(
 export async function updateColumnDescription(
   supabase: SupabaseClient,
   column_id: number,
-  description: string
+  description: string,
 ) {
   const { error } = await supabase
     .from("column")
@@ -131,10 +128,7 @@ export async function updateColumnDescription(
   }
 }
 
-export async function deleteColumn(
-  supabase: SupabaseClient,
-  column_id: number
-): Promise<void> {
+export async function deleteColumn(supabase: SupabaseClient, column_id: number): Promise<void> {
   const { error } = await supabase.from("column").delete().eq("id", column_id);
 
   if (error) {
@@ -144,7 +138,7 @@ export async function deleteColumn(
 
 export async function getChannelColumnCount(
   supabase: SupabaseClient,
-  channel_id: number
+  channel_id: number,
 ): Promise<number> {
   const { count, error } = await supabase
     .from("column")
@@ -162,11 +156,7 @@ export async function getChannelColumnCount(
   return count;
 }
 
-export async function updateColumnText(
-  supabase: SupabaseClient,
-  column_id: number,
-  text: string
-) {
+export async function updateColumnText(supabase: SupabaseClient, column_id: number, text: string) {
   const { error } = await supabase
     .from("column")
     .update({ text: text })

@@ -2,11 +2,7 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { Dispatch, SetStateAction, useState, useRef } from "react";
-import {
-  uploadURLColumn,
-  uploadTextColumn,
-  Column,
-} from "@/lib/colosseum/column";
+import { uploadURLColumn, uploadTextColumn, Column } from "@/lib/colosseum/column";
 import { isURL } from "@/lib/utils";
 import { User } from "@supabase/supabase-js";
 import { Channel } from "@/lib/colosseum/channel";
@@ -153,11 +149,7 @@ export default function ColumnInput({
             Type here... or{" "}
             <label className="underline cursor-pointer">
               upload file
-              <input
-                type="file"
-                className="hidden"
-                onChange={handleFileChange}
-              />
+              <input type="file" className="hidden" onChange={handleFileChange} />
             </label>{" "}
             or drop a file
           </span>

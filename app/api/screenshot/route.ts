@@ -10,10 +10,7 @@ export async function POST(req: NextRequest) {
   const { url } = await req.json();
 
   if (!url) {
-    return NextResponse.json(
-      { error: "Missing url parameter" },
-      { status: 401 }
-    );
+    return NextResponse.json({ error: "Missing url parameter" }, { status: 401 });
   }
 
   const authHeader = req.headers.get("Authorization");
@@ -25,7 +22,7 @@ export async function POST(req: NextRequest) {
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
 
   // ensure user is authenticated first
@@ -44,19 +41,14 @@ export async function POST(req: NextRequest) {
     const fileName = `${encodeUrlToFilename(url)}.png`;
 
     // upload to supabase storage
-    const { error } = await supabase.storage
-      .from("screenshots")
-      .upload(fileName, squareBuffer, {
-        contentType: "image/png",
-        upsert: true,
-      });
+    const { error } = await supabase.storage.from("screenshots").upload(fileName, squareBuffer, {
+      contentType: "image/png",
+      upsert: true,
+    });
 
     if (error) {
       console.error(error);
-      return NextResponse.json(
-        { error: "Failed to upload image" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Failed to upload image" }, { status: 500 });
     }
 
     // Get public URL
@@ -68,7 +60,7 @@ export async function POST(req: NextRequest) {
       .from("screenshot")
       .upsert(
         { url: url, image_url: publicUrl, title: title },
-        { onConflict: "url", ignoreDuplicates: true }
+        { onConflict: "url", ignoreDuplicates: true },
       );
 
     if (insertError) {
@@ -90,15 +82,12 @@ export async function GET(req: NextRequest) {
   const targetURL = requestURL.searchParams.get("url");
 
   if (!targetURL) {
-    return NextResponse.json(
-      { error: "Missing url parameter." },
-      { status: 401 }
-    );
+    return NextResponse.json({ error: "Missing url parameter." }, { status: 401 });
   }
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
 
   // look up if image exists in database
@@ -113,10 +102,7 @@ export async function GET(req: NextRequest) {
   }
 
   if (!data) {
-    return NextResponse.json(
-      { error: "Screenshot for URL does not exist." },
-      { status: 404 }
-    );
+    return NextResponse.json({ error: "Screenshot for URL does not exist." }, { status: 404 });
   }
 
   // return screenshot data

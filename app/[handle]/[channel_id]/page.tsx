@@ -35,8 +35,7 @@ export default function ChannelPage() {
       const lastDate = new Date(lastModifiedChannel.created_at);
       const diffInMs = today.getTime() - lastDate.getTime();
       const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
-      lastModifiedChannelDays =
-        diffInDays === 0 ? "Today" : `${diffInDays} days ago`;
+      lastModifiedChannelDays = diffInDays === 0 ? "Today" : `${diffInDays} days ago`;
     }
 
     setMetaData([
@@ -63,19 +62,14 @@ export default function ChannelPage() {
     setLoading(true);
 
     try {
-      const channelResponse = await getChannel(
-        supabase,
-        parseInt(channel_id, 10)
-      );
+      const channelResponse = await getChannel(supabase, parseInt(channel_id, 10));
       if (!channelResponse) throw new Error("Channel does not exist.");
       setChannel(channelResponse);
 
       const { data: userData } = await supabase.auth.getUser();
       const currentUser = userData.user;
 
-      const match = !currentUser
-        ? false
-        : channelResponse.owner_id === currentUser.id;
+      const match = !currentUser ? false : channelResponse.owner_id === currentUser.id;
 
       setIsOwner(match);
 
@@ -88,10 +82,7 @@ export default function ChannelPage() {
 
       setUser(currentUser);
 
-      const columnsResponse = await getChannelColumns(
-        supabase,
-        parseInt(channel_id, 10)
-      );
+      const columnsResponse = await getChannelColumns(supabase, parseInt(channel_id, 10));
       setColumns(columnsResponse);
 
       handleMetaData(channelResponse, columnsResponse);
@@ -135,9 +126,7 @@ export default function ChannelPage() {
       <div className="flex flex-col space-y-4">
         <div className="flex flex-col">
           <h2 className="text-sm font-light">Description</h2>
-          {channel!.description ? (
-            <p className="">{channel!.description}</p>
-          ) : null}
+          {channel!.description ? <p className="">{channel!.description}</p> : null}
         </div>
         <div className="flex flex-col">
           <h2 className="text-sm font-light">Meta</h2>

@@ -43,12 +43,12 @@ bun run dev                     # http://localhost:3000
 but if your CLI emits different keys, copy them into `.env.local` (run
 `bun run db:status` to see them again).
 
-| Service          | URL                                              |
-| ---------------- | ------------------------------------------------ |
-| API              | http://127.0.0.1:54321                           |
-| Studio (web UI)  | http://127.0.0.1:54323                           |
+| Service          | URL                                                     |
+| ---------------- | ------------------------------------------------------- |
+| API              | http://127.0.0.1:54321                                  |
+| Studio (web UI)  | http://127.0.0.1:54323                                  |
 | Postgres         | postgresql://postgres:postgres@127.0.0.1:54322/postgres |
-| Inbucket (email) | http://127.0.0.1:54324                           |
+| Inbucket (email) | http://127.0.0.1:54324                                  |
 
 The seed creates a confirmed test login (email confirmations are off locally):
 

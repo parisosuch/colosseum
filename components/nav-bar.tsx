@@ -19,10 +19,7 @@ export default async function NavBar() {
           <LandmarkIcon />
         </Link>
         <div className="flex flex-row space-x-2 items-center">
-          <Link
-            href="/auth/login"
-            className="flex flex-row items-center justify-center space-x-1"
-          >
+          <Link href="/auth/login" className="flex flex-row items-center justify-center space-x-1">
             <p className="underline">Login</p>
             <ArrowRight size={16} />
           </Link>
@@ -42,9 +39,7 @@ export default async function NavBar() {
       <div className="flex flex-row space-x-2 items-center">
         <Avatar>
           <AvatarImage src={userProfile.avatar_url} />
-          <AvatarFallback>
-            {userProfile.handle.charAt(0).toUpperCase()}
-          </AvatarFallback>
+          <AvatarFallback>{userProfile.handle.charAt(0).toUpperCase()}</AvatarFallback>
         </Avatar>
         <ThemeSwitcher />
         <LogoutButton />

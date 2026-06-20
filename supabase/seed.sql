@@ -104,3 +104,21 @@ union all
 select 'url', 'https://nextjs.org', null, 'Next.js',
        '00000000-0000-0000-0000-000000000001'::uuid, private_channel.id
 from private_channel;
+
+-- --- cached screenshots ----------------------------------------------------
+-- One row per seeded URL column so ColumnPreview renders a real image instead
+-- of the "no screenshot" fallback. image_url points at the placeholder objects
+-- uploaded into the `screenshots` bucket (see config.toml objects_path); the
+-- filenames use the same base64url(url).png scheme as the screenshot route.
+insert into public.screenshot (url, image_url, title) values
+  (
+    'https://supabase.com',
+    'http://127.0.0.1:54321/storage/v1/object/public/screenshots/aHR0cHM6Ly9zdXBhYmFzZS5jb20.png',
+    'Supabase'
+  ),
+  (
+    'https://nextjs.org',
+    'http://127.0.0.1:54321/storage/v1/object/public/screenshots/aHR0cHM6Ly9uZXh0anMub3Jn.png',
+    'Next.js'
+  )
+on conflict (url) do nothing;

@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import puppeteer from "puppeteer";
-import sharp from "sharp";
 
 import { createClient } from "@supabase/supabase-js";
 import { encodeUrlToFilename } from "@/lib/url-encoding";
+import { captureWebsiteScreenshot } from "@/lib/colosseum/screenshot";
 
 export const runtime = "nodejs"; // puppeteer is going to require nodejs runtime for browsing
 
@@ -40,27 +39,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    });
-    const page = await browser.newPage();
-
-    const viewportSize = 1200;
-    await page.setViewport({ width: viewportSize, height: viewportSize });
-    await page.goto(url, { waitUntil: "networkidle2" });
-
-    const title = await page.title();
-
-    // Screenshot the top square
-    const buffer = (await page.screenshot({
-      fullPage: true,
-    })) as Buffer;
-
-    const squareBuffer = await sharp(buffer)
-      .extract({ left: 0, top: 0, width: 1200, height: 1200 })
-      .toFormat("png")
-      .toBuffer();
+    const { image: squareBuffer, title } = await captureWebsiteScreenshot(url);
 
     const fileName = `${encodeUrlToFilename(url)}.png`;
 

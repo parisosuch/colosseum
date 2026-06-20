@@ -9,7 +9,8 @@
     "db:stop": "supabase stop",
     "db:status": "supabase status",
     "db:reset": "supabase db reset",
-    "db:migration": "supabase migration new"
+    "db:migration": "supabase migration new",
+    "db:seed:screenshots": "bun scripts/generate-seed-screenshots.ts"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.15",
@@ -31,6 +32,7 @@
     "puppeteer": "^24.24.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "sharp": "^0.35.2",
     "tailwind-merge": "^3.3.1",
     "tldts": "^7.0.17"
   },

@@ -122,6 +122,10 @@ file_size_limit = "50MiB"
 # Both are public so getPublicUrl() links resolve without signed URLs.
 [storage.buckets.screenshots]
 public = true
+# Seed images uploaded into the bucket on `db:start` / `db:reset`. Filenames use
+# the same base64url(url).png scheme as app/api/screenshot/route.ts, so the rows
+# in seed.sql resolve to real objects.
+objects_path = "./seed-screenshots"
 
 [storage.buckets.avatars]
 public = true

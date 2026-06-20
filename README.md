@@ -123,6 +123,43 @@ docker ps --filter label=com.supabase.cli.project=colosseum
   (then `wsl --shutdown` and reopen). With systemd on, `docker.service` starts
   automatically.
 
+### Seed screenshots (puppeteer / Chromium)
+
+The seeded URL columns render real screenshots of the linked sites. Those
+images live in `supabase/seed-screenshots/` and are uploaded into the local
+`screenshots` bucket on `db:reset` (via `objects_path` in `config.toml`).
+
+Regenerate them with:
+
+```bash
+bun run db:seed:screenshots   # captures the URLs in scripts/generate-seed-screenshots.ts
+bun run db:reset              # loads the new images into local storage
+```
+
+This uses the **same** capture code as the runtime screenshot route
+(`captureWebsiteScreenshot` in `lib/colosseum/screenshot.ts`), which drives
+**puppeteer + Chromium**. Chromium needs system libraries that aren't installed
+by default on minimal Linux / WSL. If you see:
+
+```
+error while loading shared libraries: libnspr4.so: cannot open shared object file
+```
+
+install the Chromium runtime libraries (the screenshot route at
+`app/api/screenshot/route.ts` needs these too — including in the production
+Docker image):
+
+```bash
+# Ubuntu 24.04 "noble" (uses the t64 package variants)
+sudo apt-get update && sudo apt-get install -y \
+  libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libatspi2.0-0 libcups2 \
+  libdrm2 libgbm1 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 \
+  libxrandr2 libpango-1.0-0 libcairo2 libasound2t64 libxshmfence1 \
+  fonts-liberation libgtk-3-0
+```
+
+On Ubuntu 22.04 and earlier, use `libasound2` instead of `libasound2t64`.
+
 ## Features
 
 - Works across the entire [Next.js](https://nextjs.org) stack

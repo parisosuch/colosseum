@@ -30,5 +30,7 @@ export default async function ColumnPreview({ column }: { column: Column }) {
     );
   }
 
-  return <ScreenShotPreview image_url={data.image_url} />;
+  // `data` is null when no screenshot has been cached for this URL yet
+  // (maybeSingle returns null, not an error). ScreenShotPreview handles null.
+  return <ScreenShotPreview image_url={data?.image_url ?? null} />;
 }

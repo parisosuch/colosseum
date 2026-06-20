@@ -1,23 +1,12 @@
 import ColumnPreview from "@/components/column-preview";
 import CreateChannelButton from "@/components/create-channel-button";
-import {
-  Channel,
-  getUserChannels,
-  getUserPublicChannels,
-} from "@/lib/colosseum/channel";
-import {
-  getChannelColumnCount,
-  getChannelColumns,
-} from "@/lib/colosseum/column";
+import { Channel, getUserChannels, getUserPublicChannels } from "@/lib/colosseum/channel";
+import { getChannelColumnCount, getChannelColumns } from "@/lib/colosseum/column";
 import { getPublicUserProfile } from "@/lib/colosseum/user";
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 
-export default async function UserPage({
-  params,
-}: {
-  params: Promise<{ handle: string }>;
-}) {
+export default async function UserPage({ params }: { params: Promise<{ handle: string }> }) {
   const { handle } = await params;
 
   const supabase = await createClient();
@@ -31,9 +20,7 @@ export default async function UserPage({
       <div className="flex gap-8 p-2">
         <div className="flex flex-col justify-center items-center space-y-1 w-[250px] h-[250px]">
           <h2 className="text-lg">{channel.title}</h2>
-          {channel.description ? (
-            <p className="text-center">{channel.description}</p>
-          ) : null}
+          {channel.description ? <p className="text-center">{channel.description}</p> : null}
           <p className="text-sm dark:text-white/75 text-black/75 font-light">
             {columnCount} column(s)
           </p>
@@ -42,11 +29,7 @@ export default async function UserPage({
           {columns.map((column, index) => (
             <div
               key={column.id}
-              className={
-                index >= 5
-                  ? "md:hidden"
-                  : "border-2 rounded-md w-[250px] h-[250px]"
-              }
+              className={index >= 5 ? "md:hidden" : "border-2 rounded-md w-[250px] h-[250px]"}
             >
               <ColumnPreview column={column} />
             </div>
@@ -56,13 +39,7 @@ export default async function UserPage({
     );
   };
 
-  const ChannelsView = ({
-    channels,
-    isOwner,
-  }: {
-    channels: Channel[];
-    isOwner: boolean;
-  }) => {
+  const ChannelsView = ({ channels, isOwner }: { channels: Channel[]; isOwner: boolean }) => {
     if (channels.length === 0) {
       return (
         <div className="w-full flex items-center justify-center">

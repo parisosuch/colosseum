@@ -12,7 +12,7 @@ export type Channel = {
 
 export async function getUserPublicChannels(
   supabase: SupabaseClient,
-  user_id: string
+  user_id: string,
 ): Promise<Channel[] | []> {
   const { data, error } = await supabase
     .from("channel")
@@ -32,12 +32,9 @@ export async function getUserPublicChannels(
 
 export async function getUserChannels(
   supabase: SupabaseClient,
-  user_id: string
+  user_id: string,
 ): Promise<Channel[] | []> {
-  const { data, error } = await supabase
-    .from("channel")
-    .select("*")
-    .eq("owner_id", user_id);
+  const { data, error } = await supabase.from("channel").select("*").eq("owner_id", user_id);
 
   if (error) {
     throw new Error(error.message);
@@ -56,13 +53,9 @@ export async function createChannel(
     description?: string;
     private: boolean;
     owner_id: string;
-  }
+  },
 ): Promise<Channel> {
-  const { data, error } = await supabase
-    .from("channel")
-    .upsert(channel)
-    .select()
-    .single();
+  const { data, error } = await supabase.from("channel").upsert(channel).select().single();
 
   if (error) {
     throw new Error(error.message);
@@ -70,15 +63,8 @@ export async function createChannel(
   return data;
 }
 
-export async function getChannel(
-  supabase: SupabaseClient,
-  channel_id: number
-): Promise<Channel> {
-  const { data, error } = await supabase
-    .from("channel")
-    .select("*")
-    .eq("id", channel_id)
-    .single();
+export async function getChannel(supabase: SupabaseClient, channel_id: number): Promise<Channel> {
+  const { data, error } = await supabase.from("channel").select("*").eq("id", channel_id).single();
 
   if (error) {
     throw new Error(error.message);

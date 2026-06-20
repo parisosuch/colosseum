@@ -85,9 +85,7 @@ const ColumnComponent = memo(function ColumnComponent({
     textInputRef.current?.blur();
     // update column text
     setColumns((prev) =>
-      prev.map((column) =>
-        column.id === column_id ? { ...column, text: text } : column
-      )
+      prev.map((column) => (column.id === column_id ? { ...column, text: text } : column)),
     );
   };
 
@@ -114,9 +112,7 @@ const ColumnComponent = memo(function ColumnComponent({
   useEffect(() => {
     const fetchScreenshot = async () => {
       try {
-        const res = await fetch(
-          `/api/screenshot?url=${encodeURIComponent(column.url!)}`
-        );
+        const res = await fetch(`/api/screenshot?url=${encodeURIComponent(column.url!)}`);
         if (res.status === 404) {
         } else {
           const data = await res.json();
@@ -154,9 +150,7 @@ const ColumnComponent = memo(function ColumnComponent({
             )}
           </div>
           {column.type === "url" ? (
-            <p className="group-hover:hidden pt-1 text-xs font-light">
-              {urlTitle}
-            </p>
+            <p className="group-hover:hidden pt-1 text-xs font-light">{urlTitle}</p>
           ) : (
             <p className="pt-1 text-xs font-light opacity-0 group-hover:hidden select-none">
               placeholder
@@ -256,9 +250,7 @@ const ColumnComponent = memo(function ColumnComponent({
             </DialogDescription>
             <div className="flex w-full justify-between text-xs p-3">
               <h3>Created on</h3>
-              <p className="font-mono">
-                {new Date(column.created_at).toDateString()}
-              </p>
+              <p className="font-mono">{new Date(column.created_at).toDateString()}</p>
             </div>
             <div className="p-3 w-full flex justify-end">
               {showSave ? (

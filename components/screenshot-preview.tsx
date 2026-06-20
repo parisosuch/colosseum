@@ -1,8 +1,4 @@
-export default function ScreenShotPreview({
-  image_url,
-}: {
-  image_url: string | null;
-}) {
+export default function ScreenShotPreview({ image_url }: { image_url: string | null }) {
   return (
     <div className="w-full h-full flex items-center justify-center">
       {image_url ? (

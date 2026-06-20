@@ -73,7 +73,9 @@ export default function ChannelPage() {
       const { data: userData } = await supabase.auth.getUser();
       const currentUser = userData.user;
 
-      const match = !user ? false : channelResponse.owner_id === user.id;
+      const match = !currentUser
+        ? false
+        : channelResponse.owner_id === currentUser.id;
 
       setIsOwner(match);
 

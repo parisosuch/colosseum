@@ -44,7 +44,9 @@ export function SignUpForm({ className, ...props }: React.ComponentPropsWithoutR
       // user to confirm their email first (they land on onboarding via the
       // confirmation link / root redirect once their profile is still missing).
       if (data.session) {
-        router.push("/auth/onboarding");
+        // Signed in immediately (email confirmation disabled). Full-document
+        // navigation so the server-rendered nav reflects the new session.
+        window.location.assign("/auth/onboarding");
       } else {
         router.push("/auth/sign-up-success");
       }

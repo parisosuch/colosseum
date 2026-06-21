@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect, memo } from "react";
+import React, { useState, useRef, memo } from "react";
 import { Column } from "@/lib/colosseum/column";
 import {
   updateColumnDescription,
@@ -20,18 +20,24 @@ import { timeAgo } from "@/lib/utils";
 import { Textarea } from "./ui/textarea.";
 import { Input } from "./ui/input";
 import ScreenShotPreview from "./screenshot-preview";
+import { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import { GlobeIcon } from "lucide-react";
 
 type ColumnComponentProps = {
   column: Column;
   setColumns: React.Dispatch<React.SetStateAction<Column[]>>;
   isOwner: boolean;
+  // Screenshot data hydrated by the parent (one batched query for the whole
+  // channel). `undefined` means "not loaded yet" for a URL column; a resolved
+  // value may still have a null image_url when no screenshot exists.
+  screenshot?: ColumnScreenshot;
 };
 
 const ColumnComponent = memo(function ColumnComponent({
   column,
   setColumns,
   isOwner,
+  screenshot,
 }: ColumnComponentProps) {
   const [title, setTitle] = useState(column.title ?? "");
   const [description, setDescription] = useState(column.description ?? "");
@@ -40,9 +46,10 @@ const ColumnComponent = memo(function ColumnComponent({
 
   const [showSave, setShowSave] = useState(false);
 
-  const [imageURL, setImageURL] = useState(null);
-  const [urlTitle, setURLTitle] = useState("");
-  const [loading, setLoading] = useState(true);
+  const imageURL = screenshot?.image_url ?? null;
+  const urlTitle = screenshot?.title ?? "";
+  // A URL column is still loading until the parent resolves its screenshot.
+  const loading = column.type === "url" && screenshot === undefined;
 
   const titleInputRef = useRef<HTMLInputElement>(null);
   const descriptionInputRef = useRef<HTMLInputElement>(null);
@@ -108,31 +115,6 @@ const ColumnComponent = memo(function ColumnComponent({
       console.error(e);
     }
   };
-
-  useEffect(() => {
-    const fetchScreenshot = async () => {
-      try {
-        const res = await fetch(`/api/screenshot?url=${encodeURIComponent(column.url!)}`);
-        if (res.status === 404) {
-        } else {
-          const data = await res.json();
-          console.log(data);
-          setImageURL(data.image_url);
-          setURLTitle(data.title);
-        }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    // get the image url of the column if it is of type url
-    if (column.type === "url") {
-      fetchScreenshot();
-    } else {
-      setLoading(false);
-    }
-  }, []);
 
   return (
     <Dialog>

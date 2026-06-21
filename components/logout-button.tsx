@@ -2,15 +2,14 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
-import { useRouter } from "next/navigation";
 
 export function LogoutButton() {
-  const router = useRouter();
-
   const logout = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
-    router.push("/auth/login");
+    // Full-document navigation so the server-rendered nav (root layout) reflects
+    // the signed-out session instead of the cached authenticated render.
+    window.location.assign("/auth/login");
   };
 
   return <Button onClick={logout}>Logout</Button>;

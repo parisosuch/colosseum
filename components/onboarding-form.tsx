@@ -45,7 +45,9 @@ export function OnboardingForm({ className, ...props }: React.ComponentPropsWith
       }
 
       await createUserProfile(supabase, user.id, normalized);
-      router.push(`/${normalized}`);
+      // Full-document navigation so the server-rendered nav (root layout) picks
+      // up the new profile (avatar) instead of the cached pre-profile render.
+      window.location.assign(`/${normalized}`);
     } catch (err: unknown) {
       if (err instanceof HandleTakenError) {
         setError("That handle is already taken. Try another.");

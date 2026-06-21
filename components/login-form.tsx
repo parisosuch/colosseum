@@ -7,7 +7,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { getUserProfile } from "@/lib/colosseum/user";
 
@@ -16,7 +15,6 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const router = useRouter();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,12 +31,16 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
       // Update this route to redirect to an authenticated route. The user already has an active session.
       // Get user profile and redirect to profile
       const userProfile = await getUserProfile(supabase, data.user.id);
+      // Full-document navigation (not router.push): the nav lives in the root
+      // layout as a server component that reads auth, and a client push won't
+      // re-render it. A real navigation makes the server render it with the new
+      // session.
       // a user who signed up but never picked a handle has no profile yet
       if (!userProfile) {
-        router.push("/auth/onboarding");
+        window.location.assign("/auth/onboarding");
         return;
       }
-      router.push(`/${userProfile.handle}`);
+      window.location.assign(`/${userProfile.handle}`);
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
     } finally {

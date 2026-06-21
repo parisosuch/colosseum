@@ -4,6 +4,7 @@ import ColumnComponent from "@/components/column";
 import ColumnInput from "@/components/column-input";
 import { Channel, getChannel } from "@/lib/colosseum/channel";
 import { Column, getChannelColumns } from "@/lib/colosseum/column";
+import { ColumnScreenshot, getScreenshotsForUrls } from "@/lib/colosseum/screenshot-data";
 import { createClient } from "@/lib/supabase/client";
 import { User } from "@supabase/supabase-js";
 import Link from "next/link";
@@ -17,6 +18,7 @@ export default function ChannelPage() {
 
   const [channel, setChannel] = useState<Channel | null>(null);
   const [columns, setColumns] = useState<Column[]>([]);
+  const [screenshots, setScreenshots] = useState<Map<string, ColumnScreenshot>>(new Map());
   const [user, setUser] = useState<User | null>(null);
   const [metaData, setMetaData] = useState<{ title: string; data: string }[]>();
   const [loading, setLoading] = useState(true);
@@ -106,6 +108,42 @@ export default function ChannelPage() {
     fetchData();
   }, [channel_id, supabase, router]);
 
+  // Hydrate screenshots for all URL columns in a single batched query instead
+  // of each ColumnComponent fetching its own. Runs on load and whenever a new
+  // URL column appears (only the missing ones are fetched).
+  useEffect(() => {
+    const missing = columns
+      .filter((c) => c.type === "url" && c.url && !screenshots.has(c.url))
+      .map((c) => c.url!);
+
+    if (missing.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const fetched = await getScreenshotsForUrls(supabase, missing);
+        if (cancelled) return;
+        setScreenshots((prev) => {
+          const next = new Map(prev);
+          // Record every requested URL so a missing screenshot resolves to a
+          // null image (and isn't refetched on the next render).
+          for (const url of missing) {
+            next.set(url, fetched.get(url) ?? { url, image_url: null, title: null });
+          }
+          return next;
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [columns, screenshots, supabase]);
+
   // `channel` stays null while a redirect (not-found / RLS-hidden) is in
   // flight, so guard on it too — `loading` is already false by then.
   if (loading || !channel) {
@@ -165,6 +203,7 @@ export default function ChannelPage() {
             column={column}
             isOwner={isOwner}
             setColumns={setColumns}
+            screenshot={column.url ? screenshots.get(column.url) : undefined}
             key={column.id}
           />
         ))}

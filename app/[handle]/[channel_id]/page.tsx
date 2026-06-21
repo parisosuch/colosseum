@@ -63,7 +63,12 @@ export default function ChannelPage() {
 
     try {
       const channelResponse = await getChannel(supabase, parseInt(channel_id, 10));
-      if (!channelResponse) throw new Error("Channel does not exist.");
+      if (!channelResponse) {
+        // null = the channel doesn't exist or RLS hides it from this user
+        // (e.g. a private channel they don't own). Don't leak which; redirect.
+        router.push("/");
+        return;
+      }
       setChannel(channelResponse);
 
       const { data: userData } = await supabase.auth.getUser();
@@ -101,7 +106,9 @@ export default function ChannelPage() {
     fetchData();
   }, [channel_id, supabase, router]);
 
-  if (loading) {
+  // `channel` stays null while a redirect (not-found / RLS-hidden) is in
+  // flight, so guard on it too — `loading` is already false by then.
+  if (loading || !channel) {
     return null;
   }
 
@@ -121,12 +128,12 @@ export default function ChannelPage() {
         >
           {handle}
         </Link>{" "}
-        <span className="font-extralight">/</span> {channel!.title}
+        <span className="font-extralight">/</span> {channel.title}
       </h1>
       <div className="flex flex-col space-y-4">
         <div className="flex flex-col">
           <h2 className="text-sm font-light">Description</h2>
-          {channel!.description ? <p className="">{channel!.description}</p> : null}
+          {channel.description ? <p className="">{channel.description}</p> : null}
         </div>
         <div className="flex flex-col">
           <h2 className="text-sm font-light">Meta</h2>

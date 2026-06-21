@@ -12,8 +12,10 @@
 --   * Foreign keys cascade on delete.
 --   * RLS: profiles are world-readable; channels/columns are readable when the
 --     parent channel is public OR owned by the requester; writes are limited to
---     the owner. Server-side reads use the service_role key (see lib/supabase/
---     server.ts) and therefore bypass RLS.
+--     the owner. Both the browser and server clients use the anon key with the
+--     user's session, so these policies apply on every path. The only
+--     service_role user is app/api/screenshot/route.ts (trusted screenshot
+--     cache writer, gated by a bearer-token auth check).
 
 create extension if not exists pgcrypto with schema extensions;
 
@@ -142,7 +144,7 @@ create policy "column: delete own"
   on public."column" for delete to authenticated
   using (auth.uid() = created_by);
 
--- screenshot: public read; writes happen via service_role (route) -----------
+-- screenshot: public read; writes happen via service_role (screenshot route) -
 create policy "screenshot: public read"
   on public.screenshot for select
   using (true);

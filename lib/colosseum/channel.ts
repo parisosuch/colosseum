@@ -63,8 +63,18 @@ export async function createChannel(
   return data;
 }
 
-export async function getChannel(supabase: SupabaseClient, channel_id: number): Promise<Channel> {
-  const { data, error } = await supabase.from("channel").select("*").eq("id", channel_id).single();
+// Returns null when the channel doesn't exist OR when RLS hides it from the
+// caller (e.g. a private channel they don't own). Callers must not distinguish
+// the two, so we don't leak the existence of private channels.
+export async function getChannel(
+  supabase: SupabaseClient,
+  channel_id: number,
+): Promise<Channel | null> {
+  const { data, error } = await supabase
+    .from("channel")
+    .select("*")
+    .eq("id", channel_id)
+    .maybeSingle();
 
   if (error) {
     throw new Error(error.message);

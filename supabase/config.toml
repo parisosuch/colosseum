@@ -178,7 +178,9 @@ enable_refresh_token_rotation = true
 # Allows refresh tokens to be reused after expiry, up to the specified interval in seconds.
 # Requires enable_refresh_token_rotation = true.
 refresh_token_reuse_interval = 10
-# Allow/disallow new user signups to your project.
+# Allow/disallow new user signups to your project. This is the authoritative
+# block — the app's DISABLE_SIGNUPS env var only hides the sign-up UI, while
+# this rejects sign-ups at the Auth API. Set both to fully close registration.
 enable_signup = true
 # Allow/disallow anonymous sign-ins to your project.
 enable_anonymous_sign_ins = false

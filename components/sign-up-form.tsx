@@ -31,15 +31,23 @@ export function SignUpForm({ className, ...props }: React.ComponentPropsWithoutR
     }
 
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/protected`,
+          emailRedirectTo: `${window.location.origin}/auth/onboarding`,
         },
       });
       if (error) throw error;
-      router.push("/auth/sign-up-success");
+      // When email confirmation is disabled, sign-up returns an active session,
+      // so go straight to onboarding to pick a handle. Otherwise prompt the
+      // user to confirm their email first (they land on onboarding via the
+      // confirmation link / root redirect once their profile is still missing).
+      if (data.session) {
+        router.push("/auth/onboarding");
+      } else {
+        router.push("/auth/sign-up-success");
+      }
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
     } finally {

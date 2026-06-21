@@ -33,6 +33,11 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
       // Update this route to redirect to an authenticated route. The user already has an active session.
       // Get user profile and redirect to profile
       const userProfile = await getUserProfile(supabase, data.user.id);
+      // a user who signed up but never picked a handle has no profile yet
+      if (!userProfile) {
+        router.push("/auth/onboarding");
+        return;
+      }
       router.push(`/${userProfile.handle}`);
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");

@@ -48,6 +48,10 @@ export default function CreateChannelForm({
       });
       // reroute to channel that was just created
       const userProfile = await getUserProfile(supabase, user.id);
+      if (!userProfile) {
+        router.push("/auth/onboarding");
+        return;
+      }
       router.push(`/${userProfile.handle}/${channel.id}`);
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");

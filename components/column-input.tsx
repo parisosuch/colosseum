@@ -27,6 +27,7 @@ export default function ColumnInput({
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -65,28 +66,31 @@ export default function ColumnInput({
     });
 
     if (response.status !== 200) {
-      const data = await response.json();
-      throw new Error(data);
+      const body = await response.json().catch(() => null);
+      const message = typeof body?.error === "string" ? body.error : "Failed to capture screenshot.";
+      throw new Error(message);
     }
   };
 
   const handleTextAreaUpload = async () => {
     if (!user?.id || text === "") return;
     if (!channel) return;
-    let column;
-    try {
-      if (isURL(text)) {
-        // get proper url
-        const urlText = text.startsWith("https://") ? text : "https://" + text;
 
+    setError(null);
+
+    const isUrlInput = isURL(text);
+    const urlText = text.startsWith("https://") ? text : "https://" + text;
+
+    // 1) Insert the column row. If this fails, surface it and stop — nothing
+    // was created.
+    let column: Column;
+    try {
+      if (isUrlInput) {
         column = await uploadURLColumn(supabase, {
           created_by: user.id,
           channel_id: channel.id,
           text: urlText,
         });
-        setLoading(true);
-        await screenshotURL(urlText);
-        setLoading(false);
       } else {
         column = await uploadTextColumn(supabase, {
           created_by: user.id,
@@ -94,14 +98,33 @@ export default function ColumnInput({
           text,
         });
       }
-
-      const newColumns = [column, ...columns];
-      setColumns(newColumns);
-      setText("");
-      handleMetaData(channel!, newColumns);
     } catch (e) {
       console.error(e);
+      setError("Couldn't add that block. Please try again.");
+      return;
     }
+
+    // 2) For URL columns, capture a screenshot. A failure here must NOT block
+    // the column from appearing — it's already inserted, and the preview falls
+    // back to "no screenshot". Always clear loading via finally so the spinner
+    // can never get stuck.
+    if (isUrlInput) {
+      setLoading(true);
+      try {
+        await screenshotURL(urlText);
+      } catch (e) {
+        console.error(e);
+        setError("Block added, but the screenshot for that link couldn't be captured.");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    // 3) Show the column regardless of the screenshot outcome.
+    const newColumns = [column, ...columns];
+    setColumns(newColumns);
+    setText("");
+    handleMetaData(channel, newColumns);
   };
 
   return (
@@ -131,7 +154,10 @@ export default function ColumnInput({
           disabled={loading}
           className={`w-full h-full bg-transparent resize-none focus:outline-none p-3 leading-normal text-sm ${loading ? "hidden" : ""}`}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            if (error) setError(null);
+          }}
           placeholder=""
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
@@ -166,6 +192,12 @@ export default function ColumnInput({
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-100/60 dark:bg-black/50 z-10">
           <Spinner variant="circle" className="size-10" />
+        </div>
+      )}
+
+      {error && !loading && (
+        <div className="absolute inset-x-0 bottom-0 z-20 rounded-b-lg bg-red-500/90 p-2 text-xs text-white">
+          {error}
         </div>
       )}
     </div>

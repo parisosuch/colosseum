@@ -45,8 +45,18 @@ export async function updateSession(request: NextRequest) {
   const { data } = await supabase.auth.getClaims();
   const user = data?.claims;
 
-  if (request.nextUrl.pathname === "/settings" && !user) {
-    // no user, potentially respond by redirecting the user to the login page
+  // Routes that require an authenticated user. Matched by exact path or as a
+  // path prefix (e.g. "/create-channel" also guards "/create-channel/..."").
+  // Everything else — the landing page, public profiles (/[handle]), public
+  // channels, and the /auth/* pages — stays open.
+  const protectedRoutes = ["/create-channel"];
+  const { pathname } = request.nextUrl;
+  const requiresAuth = protectedRoutes.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`),
+  );
+
+  if (requiresAuth && !user) {
+    // no user on a protected route — redirect to login
     const url = request.nextUrl.clone();
     url.pathname = "/auth/login";
     return NextResponse.redirect(url);

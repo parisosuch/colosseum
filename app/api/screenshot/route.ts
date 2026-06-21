@@ -35,6 +35,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Reuse an already-captured screenshot for this URL instead of recapturing.
+  // Screenshots are keyed by URL (deterministic filename) and shared by every
+  // block/channel using that URL, so recapturing would waste a puppeteer run
+  // and overwrite the image other blocks already display.
+  const { data: existing, error: lookupError } = await supabase
+    .from("screenshot")
+    .select("image_url")
+    .eq("url", url)
+    .maybeSingle();
+
+  if (lookupError) {
+    console.error(lookupError);
+    return NextResponse.json({ error: "Failed to look up screenshot" }, { status: 500 });
+  }
+
+  if (existing?.image_url) {
+    return NextResponse.json({ image_url: existing.image_url });
+  }
+
   try {
     const { image: squareBuffer, title } = await captureWebsiteScreenshot(url);
 

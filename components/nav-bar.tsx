@@ -28,7 +28,8 @@ export default async function NavBar() {
       </nav>
     );
   }
-  // get the user profile to get the avatar
+  // get the user profile to get the avatar. A user who hasn't completed
+  // onboarding has no profile yet, so render the nav without the avatar.
   const userProfile = await getUserProfile(supabase, user.id);
 
   return (
@@ -37,10 +38,12 @@ export default async function NavBar() {
         <LandmarkIcon />
       </Link>
       <div className="flex flex-row space-x-2 items-center">
-        <Avatar>
-          <AvatarImage src={userProfile.avatar_url} />
-          <AvatarFallback>{userProfile.handle.charAt(0).toUpperCase()}</AvatarFallback>
-        </Avatar>
+        {userProfile && (
+          <Avatar>
+            <AvatarImage src={userProfile.avatar_url} />
+            <AvatarFallback>{userProfile.handle.charAt(0).toUpperCase()}</AvatarFallback>
+          </Avatar>
+        )}
         <ThemeSwitcher />
         <LogoutButton />
       </div>

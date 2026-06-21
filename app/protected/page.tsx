@@ -18,6 +18,10 @@ export default async function ProtectedPage() {
 
   const userProfile = await getUserProfile(supabase, user.id);
 
+  if (!userProfile) {
+    redirect("/auth/onboarding");
+  }
+
   return (
     <div className="flex-1 w-full flex flex-col gap-12">
       <div className="w-full">

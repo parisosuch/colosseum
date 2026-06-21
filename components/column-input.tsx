@@ -67,7 +67,8 @@ export default function ColumnInput({
 
     if (response.status !== 200) {
       const body = await response.json().catch(() => null);
-      const message = typeof body?.error === "string" ? body.error : "Failed to capture screenshot.";
+      const message =
+        typeof body?.error === "string" ? body.error : "Failed to capture screenshot.";
       throw new Error(message);
     }
   };

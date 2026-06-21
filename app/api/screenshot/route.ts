@@ -6,6 +6,11 @@ import { captureWebsiteScreenshot } from "@/lib/colosseum/screenshot";
 
 export const runtime = "nodejs"; // puppeteer is going to require nodejs runtime for browsing
 
+// How long a cached screenshot is considered fresh. Past this, the next request
+// for the URL recaptures it (lazy refresh — no background job). Treat a
+// screenshot as a refreshing preview, not a permanent snapshot.
+const SCREENSHOT_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
+
 export async function POST(req: NextRequest) {
   const { url } = await req.json();
 
@@ -35,13 +40,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Reuse an already-captured screenshot for this URL instead of recapturing.
-  // Screenshots are keyed by URL (deterministic filename) and shared by every
-  // block/channel using that URL, so recapturing would waste a puppeteer run
-  // and overwrite the image other blocks already display.
+  // Reuse an already-captured screenshot for this URL instead of recapturing,
+  // unless it has gone stale (older than the TTL). Screenshots are keyed by URL
+  // (deterministic filename) and shared by every block/channel using that URL,
+  // so recapturing a still-fresh one would waste a puppeteer run and overwrite
+  // the image other blocks already display.
   const { data: existing, error: lookupError } = await supabase
     .from("screenshot")
-    .select("image_url")
+    .select("image_url, captured_at")
     .eq("url", url)
     .maybeSingle();
 
@@ -50,7 +56,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Failed to look up screenshot" }, { status: 500 });
   }
 
-  if (existing?.image_url) {
+  const isFresh =
+    existing?.captured_at != null &&
+    Date.now() - new Date(existing.captured_at).getTime() < SCREENSHOT_TTL_MS;
+
+  if (existing?.image_url && isFresh) {
     return NextResponse.json({ image_url: existing.image_url });
   }
 
@@ -75,11 +85,14 @@ export async function POST(req: NextRequest) {
       data: { publicUrl },
     } = supabase.storage.from("screenshots").getPublicUrl(fileName);
 
+    // Upsert (not ignoreDuplicates) so a stale row is refreshed in place:
+    // image_url/title get rewritten and captured_at is bumped, which also
+    // serves as the client cache-busting version.
     const { error: insertError } = await supabase
       .from("screenshot")
       .upsert(
-        { url: url, image_url: publicUrl, title: title },
-        { onConflict: "url", ignoreDuplicates: true },
+        { url: url, image_url: publicUrl, title: title, captured_at: new Date().toISOString() },
+        { onConflict: "url" },
       );
 
     if (insertError) {

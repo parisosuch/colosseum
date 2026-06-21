@@ -13,6 +13,7 @@
     "db:stop": "supabase stop",
     "db:status": "supabase status",
     "db:reset": "supabase db reset",
+    "db:migrate": "supabase migration up",
     "db:migration": "supabase migration new",
     "db:seed:screenshots": "bun scripts/generate-seed-screenshots.ts"
   },

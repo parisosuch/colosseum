@@ -130,7 +130,7 @@ export default function ChannelPage() {
           // Record every requested URL so a missing screenshot resolves to a
           // null image (and isn't refetched on the next render).
           for (const url of missing) {
-            next.set(url, fetched.get(url) ?? { url, image_url: null, title: null });
+            next.set(url, fetched.get(url) ?? { url, image_url: null, title: null, captured_at: null });
           }
           return next;
         });

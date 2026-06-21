@@ -48,6 +48,8 @@ const ColumnComponent = memo(function ColumnComponent({
 
   const imageURL = screenshot?.image_url ?? null;
   const urlTitle = screenshot?.title ?? "";
+  // cache-busting token for the shared storage object (bumped on refresh)
+  const screenshotVersion = screenshot?.captured_at ?? null;
   // A URL column is still loading until the parent resolves its screenshot.
   const loading = column.type === "url" && screenshot === undefined;
 
@@ -128,7 +130,7 @@ const ColumnComponent = memo(function ColumnComponent({
                 Loading...
               </div>
             ) : (
-              <ScreenShotPreview image_url={imageURL} />
+              <ScreenShotPreview image_url={imageURL} version={screenshotVersion} />
             )}
           </div>
           {column.type === "url" ? (
@@ -175,7 +177,13 @@ const ColumnComponent = memo(function ColumnComponent({
                     <h1 className="font-mono">{column.url!}</h1>
                   </div>
                   <div className="mt-2 w-full">
-                    <img src={imageURL!} />
+                    <img
+                      src={
+                        imageURL && screenshotVersion
+                          ? `${imageURL}?v=${encodeURIComponent(screenshotVersion)}`
+                          : (imageURL ?? undefined)
+                      }
+                    />
                   </div>
                 </a>
               )}

@@ -7,6 +7,9 @@ export type ColumnScreenshot = {
   url: string;
   image_url: string | null;
   title: string | null;
+  // When the image was last captured; used to cache-bust the shared storage
+  // object after a refresh (see app/api/screenshot/route.ts).
+  captured_at: string | null;
 };
 
 // Batch-fetch cached screenshot rows for many URLs in a single query, instead
@@ -23,7 +26,7 @@ export async function getScreenshotsForUrls(
 
   const { data, error } = await supabase
     .from("screenshot")
-    .select("url, image_url, title")
+    .select("url, image_url, title, captured_at")
     .in("url", urls);
 
   if (error) {

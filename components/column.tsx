@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { createClient } from "@/lib/supabase/client";
 import { timeAgo } from "@/lib/utils";
-import { Textarea } from "./ui/textarea.";
+import { Textarea } from "./ui/textarea";
 import { Input } from "./ui/input";
 import ScreenShotPreview from "./screenshot-preview";
 import { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
@@ -44,12 +44,18 @@ const ColumnComponent = memo(function ColumnComponent({
 
   const [text, setText] = useState(column.text ?? "");
 
-  const [showSave, setShowSave] = useState(false);
-
   const imageURL = screenshot?.image_url ?? null;
   const urlTitle = screenshot?.title ?? "";
   // cache-busting token for the shared storage object (bumped on refresh)
   const screenshotVersion = screenshot?.captured_at ?? null;
+
+  // Single source of truth for the "save" affordance: dirty when any editable
+  // field differs from the persisted column. Avoids the per-input setShowSave
+  // toggles that could clear the flag while another field was still edited.
+  const isDirty =
+    title !== (column.title ?? "") ||
+    description !== (column.description ?? "") ||
+    text !== (column.text ?? "");
   // A URL column is still loading until the parent resolves its screenshot.
   const loading = column.type === "url" && screenshot === undefined;
 
@@ -68,6 +74,7 @@ const ColumnComponent = memo(function ColumnComponent({
 
     try {
       await updateColumnTitle(supabase, column.id, title);
+      setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, title } : c)));
       titleInputRef.current?.blur();
     } catch (e) {
       console.error(e);
@@ -83,6 +90,7 @@ const ColumnComponent = memo(function ColumnComponent({
 
     try {
       await updateColumnDescription(supabase, column.id, description);
+      setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, description } : c)));
       descriptionInputRef.current?.blur();
     } catch (e) {
       console.error(e);
@@ -111,8 +119,6 @@ const ColumnComponent = memo(function ColumnComponent({
     try {
       await handleTitleChange(column);
       await handleDescriptionChange(column);
-
-      setShowSave(false);
     } catch (e) {
       console.error(e);
     }
@@ -155,14 +161,7 @@ const ColumnComponent = memo(function ColumnComponent({
                   ref={textInputRef}
                   value={text}
                   disabled={!isOwner}
-                  onChange={(e) => {
-                    const oldText = column.text ?? "";
-
-                    if (e.target.value !== oldText) {
-                      setShowSave(true);
-                    }
-                    setText(e.target.value);
-                  }}
+                  onChange={(e) => setText(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
@@ -177,13 +176,21 @@ const ColumnComponent = memo(function ColumnComponent({
                     <h1 className="font-mono">{column.url!}</h1>
                   </div>
                   <div className="mt-2 w-full">
-                    <img
-                      src={
-                        imageURL && screenshotVersion
-                          ? `${imageURL}?v=${encodeURIComponent(screenshotVersion)}`
-                          : (imageURL ?? undefined)
-                      }
-                    />
+                    {imageURL ? (
+                      <img
+                        src={
+                          screenshotVersion
+                            ? `${imageURL}?v=${encodeURIComponent(screenshotVersion)}`
+                            : imageURL
+                        }
+                        alt={urlTitle || "Website screenshot"}
+                        className="w-full rounded-md"
+                      />
+                    ) : (
+                      <div className="w-full rounded-md border p-4 text-center text-sm text-muted-foreground">
+                        No screenshot available
+                      </div>
+                    )}
                   </div>
                 </a>
               )}
@@ -197,15 +204,7 @@ const ColumnComponent = memo(function ColumnComponent({
                 disabled={!isOwner}
                 value={title}
                 className="border-none shadow-none"
-                onChange={(e) => {
-                  const oldTitle = column.title ?? "";
-                  if (e.target.value !== oldTitle) {
-                    setShowSave(true);
-                  } else {
-                    setShowSave(false);
-                  }
-                  setTitle(e.target.value);
-                }}
+                onChange={(e) => setTitle(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
@@ -221,15 +220,7 @@ const ColumnComponent = memo(function ColumnComponent({
                 disabled={!isOwner}
                 value={description}
                 className="border-none shadow-none"
-                onChange={(e) => {
-                  const oldDescription = column.description ?? "";
-                  if (e.target.value !== oldDescription) {
-                    setShowSave(true);
-                  } else {
-                    setShowSave(false);
-                  }
-                  setDescription(e.target.value);
-                }}
+                onChange={(e) => setDescription(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
@@ -243,7 +234,7 @@ const ColumnComponent = memo(function ColumnComponent({
               <p className="font-mono">{new Date(column.created_at).toDateString()}</p>
             </div>
             <div className="p-3 w-full flex justify-end">
-              {showSave ? (
+              {isDirty ? (
                 <button
                   onClick={() => handleSave(column)}
                   className="text-xs underline font-light px-2"

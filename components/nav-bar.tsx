@@ -1,10 +1,9 @@
 import { getUserProfile } from "@/lib/colosseum/user";
 import { createClient } from "@/lib/supabase/server";
 import { LandmarkIcon, ArrowRight } from "lucide-react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import Link from "next/link";
 import { ThemeSwitcher } from "./theme-switcher";
-import { LogoutButton } from "./logout-button";
+import { UserMenu } from "./user-menu";
 
 export default async function NavBar() {
   const supabase = await createClient();
@@ -38,16 +37,8 @@ export default async function NavBar() {
         <LandmarkIcon />
       </Link>
       <div className="flex flex-row space-x-2 items-center">
-        {userProfile && (
-          <Link href="/settings">
-            <Avatar>
-              <AvatarImage src={userProfile.avatar_url} />
-              <AvatarFallback>{userProfile.handle.charAt(0).toUpperCase()}</AvatarFallback>
-            </Avatar>
-          </Link>
-        )}
+        {userProfile && <UserMenu avatarUrl={userProfile.avatar_url} handle={userProfile.handle} />}
         <ThemeSwitcher />
-        <LogoutButton />
       </div>
     </nav>
   );

@@ -22,7 +22,7 @@ export default function ScreenShotPreview({
           className="w-full h-full object-top object-cover rounded-lg"
         />
       ) : (
-        <p>Website does not exist.</p>
+        <p className="px-4 text-center text-sm text-muted-foreground">Website does not exist.</p>
       )}
     </div>
   );

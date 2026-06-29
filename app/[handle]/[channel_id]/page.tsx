@@ -4,6 +4,7 @@ import BrandLink from "@/components/brand-link";
 import ColumnComponent from "@/components/column";
 import ManageChannelButton from "@/components/manage-channel-button";
 import ColumnInput from "@/components/column-input";
+import { Spinner } from "@/components/ui/spinner";
 import { Channel, getChannel } from "@/lib/colosseum/channel";
 import { Column, getChannelColumns } from "@/lib/colosseum/column";
 import { ColumnScreenshot, getScreenshotsForUrls } from "@/lib/colosseum/screenshot-data";
@@ -12,6 +13,7 @@ import { User } from "@supabase/supabase-js";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 export default function ChannelPage() {
   const params = useParams();
@@ -24,6 +26,7 @@ export default function ChannelPage() {
   const [user, setUser] = useState<User | null>(null);
   const [metaData, setMetaData] = useState<{ title: string; data: string }[]>();
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
 
   const router = useRouter();
@@ -97,6 +100,8 @@ export default function ChannelPage() {
       handleMetaData(channelResponse, columnsResponse);
     } catch (e) {
       console.error(e);
+      setFetchError(true);
+      toast.error("Failed to load channel.");
     } finally {
       setLoading(false);
     }
@@ -149,9 +154,30 @@ export default function ChannelPage() {
     };
   }, [columns, screenshots, supabase]);
 
+  if (loading) {
+    return (
+      <div className="w-full h-[60vh] flex items-center justify-center">
+        <Spinner variant="circle" className="size-8 text-black/30 dark:text-white/30" />
+      </div>
+    );
+  }
+
+  if (fetchError) {
+    return (
+      <div className="w-full p-12 space-y-2">
+        <h1 className="text-4xl">
+          <BrandLink /> <span className="font-extralight">/ {handle}</span>
+        </h1>
+        <p className="text-black/50 dark:text-white/50">
+          Something went wrong loading this channel.
+        </p>
+      </div>
+    );
+  }
+
   // `channel` stays null while a redirect (not-found / RLS-hidden) is in
   // flight, so guard on it too — `loading` is already false by then.
-  if (loading || !channel) {
+  if (!channel) {
     return null;
   }
 
@@ -186,30 +212,34 @@ export default function ChannelPage() {
           ))}
         </div>
       </div>
-      <div
-        className="grid gap-4 
+      {!isOwner && columns.length === 0 ? (
+        <p className="text-black/50 dark:text-white/50">No blocks yet.</p>
+      ) : (
+        <div
+          className="grid gap-4
                 grid-cols-5
                 3xl:grid-cols-7"
-      >
-        {isOwner ? (
-          <ColumnInput
-            user={user}
-            columns={columns}
-            setColumns={setColumns}
-            channel={channel}
-            handleMetaData={handleMetaData}
-          />
-        ) : null}
-        {columns.map((column) => (
-          <ColumnComponent
-            column={column}
-            isOwner={isOwner}
-            setColumns={setColumns}
-            screenshot={column.url ? screenshots.get(column.url) : undefined}
-            key={column.id}
-          />
-        ))}
-      </div>
+        >
+          {isOwner ? (
+            <ColumnInput
+              user={user}
+              columns={columns}
+              setColumns={setColumns}
+              channel={channel}
+              handleMetaData={handleMetaData}
+            />
+          ) : null}
+          {columns.map((column) => (
+            <ColumnComponent
+              column={column}
+              isOwner={isOwner}
+              setColumns={setColumns}
+              screenshot={column.url ? screenshots.get(column.url) : undefined}
+              key={column.id}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

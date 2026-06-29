@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Dialog,
   DialogContent,
@@ -8,19 +9,32 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Checkbox } from "./ui/checkbox";
 import { createClient } from "@/lib/supabase/client";
-import { Channel, updateChannel } from "@/lib/colosseum/channel";
-import { Pencil } from "lucide-react";
+import { Channel, deleteChannel, updateChannel } from "@/lib/colosseum/channel";
+import { Settings, Trash2 } from "lucide-react";
 
-export default function EditChannelButton({
+export default function ManageChannelButton({
   channel,
+  handle,
   onUpdated,
 }: {
   channel: Channel;
+  handle: string;
   onUpdated: (channel: Channel) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -29,6 +43,8 @@ export default function EditChannelButton({
   const [isPrivate, setPrivate] = useState(channel.private);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const router = useRouter();
 
   // Reset the form to the current channel whenever the dialog opens, so a
   // cancelled edit doesn't leave stale values behind on the next open.
@@ -62,16 +78,29 @@ export default function EditChannelButton({
     }
   };
 
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    try {
+      const supabase = createClient();
+      await deleteChannel(supabase, channel.id);
+      // The channel page is gone; send the owner back to their profile.
+      router.push(`/${handle}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred");
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button variant="secondary">
-          <Pencil />
-          <p>Edit channel</p>
+          <Settings />
+          <p>Manage channel</p>
         </Button>
       </DialogTrigger>
       <DialogContent>
-        <DialogTitle>Edit channel</DialogTitle>
+        <DialogTitle>Manage channel</DialogTitle>
         <DialogDescription>Update your channel’s details.</DialogDescription>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="grid gap-2">
@@ -104,6 +133,41 @@ export default function EditChannelButton({
             {isLoading ? "Saving..." : "Save changes"}
           </Button>
         </form>
+
+        <div className="border-t pt-4">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="outline"
+                className="w-full border-destructive bg-transparent text-destructive shadow-none hover:bg-destructive/10 hover:text-destructive"
+              >
+                <Trash2 />
+                <p>Delete channel</p>
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete this channel?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This permanently deletes the channel and all of its blocks. This can’t be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  disabled={isDeleting}
+                  onClick={(e) => {
+                    // Keep the dialog open until the delete + redirect resolves.
+                    e.preventDefault();
+                    handleDelete();
+                  }}
+                >
+                  {isDeleting ? "Deleting..." : "Delete"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
       </DialogContent>
     </Dialog>
   );

@@ -28,6 +28,10 @@ Use `bun`, never `npm`. A `Makefile` wraps the common ones:
 - PRs are **squash-merged**, so don't put the issue number in the commit
   subject — reference the issue in the PR description instead (the squash
   commit links the PR automatically).
+- **Before pushing, run `make check`** (format + lint + typecheck). CI runs
+  `bun run lint`, `bun run format:check`, and `bun run typecheck` and fails on
+  any of them — `format:check` does not auto-fix, so run `bun run format`
+  (or `make check`) first or CI will reject the unformatted code.
 
 ## Conventions
 

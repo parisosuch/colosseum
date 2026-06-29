@@ -78,10 +78,12 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
   const userProfile = await getPublicUserProfile(supabase, handle);
 
   if (!userProfile) {
-    // TODO: make this prettier
     return (
-      <div className="w-full flex items-center justify-center">
-        <h1 className="text-4xl font-semibold">This user does not exist!</h1>
+      <div className="w-full p-12 space-y-2">
+        <h1 className="text-4xl">
+          <BrandLink /> <span className="font-extralight">/ {handle}</span>
+        </h1>
+        <p className="text-black/50 dark:text-white/50">No one here.</p>
       </div>
     );
   }

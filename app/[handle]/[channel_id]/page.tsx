@@ -3,6 +3,7 @@
 import BrandLink from "@/components/brand-link";
 import ColumnComponent from "@/components/column";
 import EditChannelButton from "@/components/edit-channel-button";
+import DeleteChannelButton from "@/components/delete-channel-button";
 import ColumnInput from "@/components/column-input";
 import { Channel, getChannel } from "@/lib/colosseum/channel";
 import { Column, getChannelColumns } from "@/lib/colosseum/column";
@@ -167,7 +168,12 @@ export default function ChannelPage() {
         </Link>{" "}
         <span className="font-extralight">/</span> {channel.title}
       </h1>
-      {isOwner ? <EditChannelButton channel={channel} onUpdated={setChannel} /> : null}
+      {isOwner ? (
+        <div className="flex gap-2">
+          <EditChannelButton channel={channel} onUpdated={setChannel} />
+          <DeleteChannelButton channelId={channel.id} handle={handle} />
+        </div>
+      ) : null}
       <div className="flex flex-col space-y-4">
         <div className="flex flex-col">
           <h2 className="text-sm font-light">Description</h2>

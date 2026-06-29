@@ -37,8 +37,13 @@ export default async function NavBar() {
         <LandmarkIcon />
       </Link>
       <div className="flex flex-row space-x-2 items-center">
-        {userProfile && <UserMenu avatarUrl={userProfile.avatar_url} handle={userProfile.handle} />}
-        <ThemeSwitcher />
+        {/* Theme lives inside the avatar menu; a user who hasn't onboarded yet
+            (no profile) has no menu, so fall back to the standalone switcher. */}
+        {userProfile ? (
+          <UserMenu avatarUrl={userProfile.avatar_url} handle={userProfile.handle} />
+        ) : (
+          <ThemeSwitcher />
+        )}
       </div>
     </nav>
   );

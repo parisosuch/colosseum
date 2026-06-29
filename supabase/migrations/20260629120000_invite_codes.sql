@@ -55,6 +55,13 @@ declare
   v_code     text;
   v_redeemed boolean;
 begin
+  -- The very first account is the operator who self-hosted and deployed this;
+  -- there's no one to have issued them a code yet, so the first sign-up is
+  -- exempt. Every account after that requires a valid invite code.
+  if not exists (select 1 from auth.users) then
+    return new;
+  end if;
+
   v_code := nullif(btrim(new.raw_user_meta_data ->> 'invite_code'), '');
 
   if v_code is null then
@@ -105,6 +112,19 @@ as $$
   );
 $$;
 
+-- True once at least one account exists, i.e. invite codes are now required.
+-- The first sign-up (the self-hoster) happens while this is still false, so the
+-- sign-up form can hide the invite field for it.
+create or replace function public.invite_required()
+returns boolean
+language sql
+security definer
+set search_path = ''
+stable
+as $$
+  select exists (select 1 from auth.users);
+$$;
+
 -- ===========================================================================
 -- Row Level Security
 -- ===========================================================================
@@ -138,3 +158,6 @@ grant usage, select on all sequences in schema public to anon, authenticated, se
 
 revoke all on function public.invite_code_available(text) from public;
 grant execute on function public.invite_code_available(text) to anon, authenticated;
+
+revoke all on function public.invite_required() from public;
+grant execute on function public.invite_required() to anon, authenticated;

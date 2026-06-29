@@ -7,15 +7,10 @@
 --
 --   email:    test@example.com
 --   password: password123
-
--- --- bootstrap invite code -------------------------------------------------
--- Sign-ups are invite-gated by the auth.users trigger, which fires on the seed
--- insert below too — so a redeemable code must exist first. created_by is null
--- (no member owns the seed bootstrap); the demo account gets its own visible
--- code further down.
-insert into public.invite_code (code, max_uses, note)
-values ('DEVSEED', 1, 'Local dev bootstrap')
-on conflict (code) do nothing;
+--
+-- Sign-ups are invite-gated by the auth.users trigger, but the first account is
+-- exempt (the self-hoster). On a fresh `db reset` this test user is that first
+-- insert, so it needs no code; the demo account then owns a sample code below.
 
 -- --- test user -------------------------------------------------------------
 insert into auth.users (
@@ -43,7 +38,7 @@ insert into auth.users (
   extensions.crypt('password123', extensions.gen_salt('bf')),
   now(),
   '{"provider":"email","providers":["email"]}',
-  '{"invite_code":"DEVSEED"}',
+  '{}',
   now(),
   now(),
   '', '', '', ''

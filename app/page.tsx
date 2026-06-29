@@ -17,6 +17,9 @@ export default async function Home() {
 
   if (!user) {
     const noSignups = signupsDisabled();
+    // Invites are required once the first account exists; before that the
+    // self-hoster can sign up freely. Default to invite-only if the check fails.
+    const { data: inviteRequired } = await supabase.rpc("invite_required");
     return (
       <main className="min-h-screen flex flex-col items-center justify-center">
         <div className="flex flex-row items-center text-4xl font-semibold space-x-2">
@@ -24,7 +27,11 @@ export default async function Home() {
           <h1>Welcome to Colosseum.</h1>
         </div>
         <p className="text-muted-foreground">
-          {noSignups ? "Account creation is currently closed." : "Account creation is invite only."}
+          {noSignups
+            ? "Account creation is currently closed."
+            : (inviteRequired ?? true)
+              ? "Account creation is invite only."
+              : "Create the first account to get started."}
         </p>
         <div className="flex flex-row items-center mt-4 space-x-4">
           <Link href="/auth/login" className="flex flex-row items-center space-x-1">

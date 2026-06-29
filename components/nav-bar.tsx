@@ -39,10 +39,15 @@ export default async function NavBar() {
       </Link>
       <div className="flex flex-row space-x-2 items-center">
         {userProfile && (
-          <Avatar>
-            <AvatarImage src={userProfile.avatar_url} />
-            <AvatarFallback>{userProfile.handle.charAt(0).toUpperCase()}</AvatarFallback>
-          </Avatar>
+          <>
+            <Link href="/invites" className="text-sm underline">
+              Invites
+            </Link>
+            <Avatar>
+              <AvatarImage src={userProfile.avatar_url} />
+              <AvatarFallback>{userProfile.handle.charAt(0).toUpperCase()}</AvatarFallback>
+            </Avatar>
+          </>
         )}
         <ThemeSwitcher />
         <LogoutButton />

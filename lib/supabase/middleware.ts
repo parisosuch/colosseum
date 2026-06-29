@@ -49,7 +49,7 @@ export async function updateSession(request: NextRequest) {
   // path prefix (e.g. "/create-channel" also guards "/create-channel/..."").
   // Everything else — the landing page, public profiles (/[handle]), public
   // channels, and the /auth/* pages — stays open.
-  const protectedRoutes = ["/create-channel"];
+  const protectedRoutes = ["/create-channel", "/invites"];
   const { pathname } = request.nextUrl;
   const requiresAuth = protectedRoutes.some(
     (route) => pathname === route || pathname.startsWith(`${route}/`),

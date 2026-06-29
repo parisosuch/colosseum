@@ -23,9 +23,9 @@ export default async function Home() {
           <LandmarkIcon size={48} />
           <h1>Welcome to Colosseum.</h1>
         </div>
-        {noSignups && (
-          <p className="text-muted-foreground">Account creation is currently closed.</p>
-        )}
+        <p className="text-muted-foreground">
+          {noSignups ? "Account creation is currently closed." : "Account creation is invite only."}
+        </p>
         <div className="flex flex-row items-center mt-4 space-x-4">
           <Link href="/auth/login" className="flex flex-row items-center space-x-1">
             <p className="underline">Login</p>

@@ -8,6 +8,15 @@
 --   email:    test@example.com
 --   password: password123
 
+-- --- bootstrap invite code -------------------------------------------------
+-- Sign-ups are invite-gated by the auth.users trigger, which fires on the seed
+-- insert below too — so a redeemable code must exist first. created_by is null
+-- (no member owns the seed bootstrap); the demo account gets its own visible
+-- code further down.
+insert into public.invite_code (code, max_uses, note)
+values ('DEVSEED', 1, 'Local dev bootstrap')
+on conflict (code) do nothing;
+
 -- --- test user -------------------------------------------------------------
 insert into auth.users (
   instance_id,
@@ -34,7 +43,7 @@ insert into auth.users (
   extensions.crypt('password123', extensions.gen_salt('bf')),
   now(),
   '{"provider":"email","providers":["email"]}',
-  '{}',
+  '{"invite_code":"DEVSEED"}',
   now(),
   now(),
   '', '', '', ''
@@ -70,6 +79,12 @@ insert into public.user_profile (user_id, handle, about) values (
   'Local dev test account'
 )
 on conflict (user_id) do nothing;
+
+-- --- sample invite code owned by the demo account --------------------------
+-- Gives the /invites page something to render when logged in as the test user.
+insert into public.invite_code (code, created_by, max_uses, note)
+values ('WELCOME5', '00000000-0000-0000-0000-000000000001', 5, 'Share with friends')
+on conflict (code) do nothing;
 
 -- --- channels + columns ----------------------------------------------------
 with public_channel as (

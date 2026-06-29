@@ -32,7 +32,12 @@ create index invite_code_created_by_idx on public.invite_code (created_by);
 create table public.invite_redemption (
   id          bigint generated always as identity primary key,
   code        text not null references public.invite_code (code) on delete cascade,
-  user_id     uuid not null references auth.users (id) on delete cascade,
+  -- DEFERRABLE: the redemption row is written from a BEFORE INSERT trigger on
+  -- auth.users, before the new user row exists, so an immediate FK check would
+  -- fail. Deferring it to commit lets the trigger record the redemption while
+  -- still guaranteeing referential integrity once the transaction lands.
+  user_id     uuid not null references auth.users (id) on delete cascade
+                deferrable initially deferred,
   redeemed_at timestamptz not null default now(),
   unique (user_id)
 );

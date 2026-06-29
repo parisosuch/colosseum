@@ -66,8 +66,8 @@ export default function EditChannelButton({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button variant="secondary">
-          <p>Edit channel</p>
           <Pencil />
+          <p>Edit channel</p>
         </Button>
       </DialogTrigger>
       <DialogContent>

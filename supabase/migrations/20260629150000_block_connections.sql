@@ -62,6 +62,23 @@ create policy "column: insert own"
 -- ---------------------------------------------------------------------------
 alter table public.block_channel enable row level security;
 
+-- Ownership check used by the connect policy. SECURITY DEFINER so the lookup on
+-- "column" bypasses RLS — otherwise the connect policy (block_channel) -> column
+-- read policy -> block_channel forms a cycle Postgres rejects as infinite
+-- recursion.
+create or replace function public.owns_block(p_block_id bigint)
+returns boolean
+language sql
+security definer
+set search_path = ''
+stable
+as $$
+  select exists (
+    select 1 from public."column"
+    where id = p_block_id and created_by = auth.uid()
+  );
+$$;
+
 -- Visible when you can see the channel side of the connection (public or yours).
 create policy "block_channel: read via channel visibility"
   on public.block_channel for select
@@ -74,11 +91,13 @@ create policy "block_channel: read via channel visibility"
   );
 
 -- Connect: you must own both the channel and the block (single-user scope).
+-- Block ownership goes through owns_block (SECURITY DEFINER) to avoid an
+-- RLS recursion cycle with the column read policy.
 create policy "block_channel: connect own"
   on public.block_channel for insert to authenticated
   with check (
     exists (select 1 from public.channel c where c.id = block_channel.channel_id and c.owner_id = auth.uid())
-    and exists (select 1 from public."column" b where b.id = block_channel.block_id and b.created_by = auth.uid())
+    and public.owns_block(block_channel.block_id)
   );
 
 -- Disconnect: you may remove a block from a channel you own.
@@ -146,3 +165,6 @@ grant execute on function public.create_block(text, bigint, text, text, text) to
 
 revoke all on function public.get_channel_blocks(bigint) from public;
 grant execute on function public.get_channel_blocks(bigint) to anon, authenticated;
+
+revoke all on function public.owns_block(bigint) from public;
+grant execute on function public.owns_block(bigint) to authenticated;

@@ -18,8 +18,8 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
     const columnCount = await getChannelColumnCount(supabase, channel.id);
 
     return (
-      <div className="flex gap-8 p-2">
-        <div className="flex flex-col justify-center items-center space-y-1 w-[250px] h-[250px]">
+      <div className="flex flex-col md:flex-row gap-8 p-2">
+        <div className="flex flex-col justify-center items-center space-y-1 w-full md:w-[250px] h-[250px] shrink-0">
           <h2 className="text-lg">{channel.title}</h2>
           {channel.description ? <p className="text-center">{channel.description}</p> : null}
           <p className="text-sm dark:text-white/75 text-black/75 font-light">
@@ -30,7 +30,11 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
           {columns.map((column, index) => (
             <div
               key={column.id}
-              className={index >= 5 ? "md:hidden" : "border-2 rounded-md w-[250px] h-[250px]"}
+              className={
+                index >= 5
+                  ? "hidden"
+                  : "border-2 rounded-md w-[200px] h-[200px] sm:w-[250px] sm:h-[250px] shrink-0"
+              }
             >
               <ColumnPreview column={column} />
             </div>
@@ -102,7 +106,7 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
   }
 
   return (
-    <div className="w-full p-12 space-y-8">
+    <div className="w-full p-6 sm:p-12 space-y-8">
       <h1 className="text-4xl">
         <BrandLink /> <span className="font-extralight">/</span> {handle}
       </h1>

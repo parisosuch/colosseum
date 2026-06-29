@@ -126,9 +126,9 @@ const ColumnComponent = memo(function ColumnComponent({
 
   return (
     <Dialog>
-      <DialogTrigger>
-        <div className="group relative w-[300px]">
-          <div className="w-[300px] h-[300px] border rounded-lg text-left">
+      <DialogTrigger className="w-full">
+        <div className="group relative w-full">
+          <div className="w-full aspect-square border rounded-lg text-left">
             {column.type === "text" ? (
               <p className="text-sm line-clamp-[10] p-2">{column.text}</p>
             ) : loading ? (
@@ -155,9 +155,9 @@ const ColumnComponent = memo(function ColumnComponent({
         </div>
       </DialogTrigger>
       <DialogContent className="w-[97vw] !h-[97vh] !max-w-none p-4">
-        <div className="flex pt-4 px-4">
-          <div className="w-3/4 flex justify-center">
-            <div className="flex w-3/4 p-6 rounded-md">
+        <div className="flex flex-col md:flex-row pt-4 px-4 gap-4 overflow-y-auto">
+          <div className="w-full md:w-3/4 flex justify-center">
+            <div className="flex w-full md:w-3/4 p-6 rounded-md">
               {/* TODO: add ability to edit text in-line */}
               {column.text ? (
                 <Textarea
@@ -199,7 +199,7 @@ const ColumnComponent = memo(function ColumnComponent({
               )}
             </div>
           </div>
-          <div className="w-1/4 border rounded-lg space-y-2">
+          <div className="w-full md:w-1/4 border rounded-lg space-y-2 h-fit">
             <DialogTitle>
               <Input
                 ref={titleInputRef}

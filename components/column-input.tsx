@@ -130,7 +130,7 @@ export default function ColumnInput({
 
   return (
     <div
-      className={`relative w-[300px] h-[300px] rounded-lg dark:bg-white/10 bg-gray-100 
+      className={`relative w-full aspect-square rounded-lg dark:bg-white/10 bg-gray-100
         ${isDragging ? "border-2 border-dashed dark:border-white/20 border-gray-200" : ""}`}
       onDragOver={(e) => {
         e.preventDefault();

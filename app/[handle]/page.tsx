@@ -1,3 +1,4 @@
+import BrandLink from "@/components/brand-link";
 import ColumnPreview from "@/components/column-preview";
 import CreateChannelButton from "@/components/create-channel-button";
 import { Channel, getUserChannels, getUserPublicChannels } from "@/lib/colosseum/channel";
@@ -103,13 +104,7 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
   return (
     <div className="w-full p-12 space-y-8">
       <h1 className="text-4xl">
-        <Link
-          href="/"
-          className="dark:text-white/75 text-black/75 hover:dark:text-white/100 hover:text-black/100"
-        >
-          Colloseum
-        </Link>{" "}
-        <span className="font-extralight">/</span> {handle}
+        <BrandLink /> <span className="font-extralight">/</span> {handle}
       </h1>
       <div className="flex flex-col space-y-4">
         <div className="flex flex-col">

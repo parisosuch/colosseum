@@ -1,5 +1,6 @@
 "use client";
 
+import BrandLink from "@/components/brand-link";
 import ColumnComponent from "@/components/column";
 import ColumnInput from "@/components/column-input";
 import { Channel, getChannel } from "@/lib/colosseum/channel";
@@ -156,13 +157,7 @@ export default function ChannelPage() {
   return (
     <div className="w-full p-12 space-y-8">
       <h1 className="text-4xl">
-        <Link
-          href="/"
-          className="dark:text-white/75 text-black/75 hover:dark:text-white/100 hover:text-black/100"
-        >
-          Colloseum
-        </Link>{" "}
-        <span className="font-extralight">/</span>{" "}
+        <BrandLink /> <span className="font-extralight">/</span>{" "}
         <Link
           href={`/${handle}`}
           className="dark:text-white/75 text-black/75 hover:dark:text-white/100 hover:text-black/100"

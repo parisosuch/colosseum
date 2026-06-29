@@ -5,7 +5,6 @@ import { Channel, getUserChannels, getUserPublicChannels } from "@/lib/colosseum
 import { getChannelColumnCount, getChannelColumns } from "@/lib/colosseum/column";
 import { getPublicUserProfile } from "@/lib/colosseum/user";
 import { createClient } from "@/lib/supabase/server";
-import { LockIcon } from "lucide-react";
 import Link from "next/link";
 
 export default async function UserPage({ params }: { params: Promise<{ handle: string }> }) {
@@ -64,12 +63,6 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
               <div
                 className={`border-2 rounded-lg p-8 ${channel.private ? "border-red-500/50" : "border-gray-500/50"}`}
               >
-                {channel.private && (
-                  <div className="flex items-center gap-1 text-red-500 text-xs mb-2">
-                    <LockIcon className="size-3" />
-                    <span>Private</span>
-                  </div>
-                )}
                 <ChannelColumnsView channel={channel} />
               </div>
             </Link>

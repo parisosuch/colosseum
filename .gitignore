@@ -40,3 +40,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# generated seed screenshots (run `make db-seed` to (re)create)
+supabase/seed-screenshots/*
+!supabase/seed-screenshots/.gitkeep

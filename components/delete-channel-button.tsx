@@ -44,7 +44,10 @@ export default function DeleteChannelButton({
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button variant="destructive">
+        <Button
+          variant="outline"
+          className="border-destructive bg-transparent text-destructive shadow-none hover:bg-destructive/10 hover:text-destructive"
+        >
           <Trash2 />
           <p>Delete channel</p>
         </Button>

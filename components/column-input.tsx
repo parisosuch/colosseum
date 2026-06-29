@@ -2,11 +2,20 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { Dispatch, SetStateAction, useState, useRef } from "react";
-import { uploadURLColumn, uploadTextColumn, Column } from "@/lib/colosseum/column";
+import {
+  uploadURLColumn,
+  uploadTextColumn,
+  uploadImageColumn,
+  Column,
+} from "@/lib/colosseum/column";
 import { isURL } from "@/lib/utils";
 import { User } from "@supabase/supabase-js";
 import { Channel } from "@/lib/colosseum/channel";
 import { Spinner } from "./ui/spinner";
+
+// Kept in sync with the `blocks` bucket constraints in supabase/config.toml.
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10MB
+const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"];
 
 type ColumnInputProps = {
   user: User | null;
@@ -35,7 +44,9 @@ export default function ColumnInput({
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
-    if (selected) setFile(selected);
+    if (selected) handleFileUpload(selected);
+    // Reset so picking the same file again still fires onChange.
+    e.target.value = "";
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -44,9 +55,58 @@ export default function ColumnInput({
     setIsDragging(false);
 
     const droppedFile = e.dataTransfer.files?.[0];
-    if (droppedFile) setFile(droppedFile);
+    if (droppedFile) handleFileUpload(droppedFile);
+  };
 
-    // TODO: handle upload on drop
+  // Upload an image file to the `blocks` bucket and create an image column.
+  // Validates type/size client-side (the bucket enforces the same limits as a
+  // backstop). On any failure nothing is created and the error is surfaced.
+  const handleFileUpload = async (selected: File) => {
+    if (!user?.id || !channel) return;
+
+    setError(null);
+
+    if (!ALLOWED_IMAGE_TYPES.includes(selected.type)) {
+      setError("Only image files (PNG, JPEG, GIF, WebP, AVIF) are supported.");
+      return;
+    }
+    if (selected.size > MAX_IMAGE_BYTES) {
+      setError("That image is too large (max 10MB).");
+      return;
+    }
+
+    setFile(selected);
+    setLoading(true);
+    try {
+      const ext = selected.name.split(".").pop()?.toLowerCase() || "bin";
+      // Per-user prefix so storage RLS can gate writes to the owner's folder.
+      const path = `${user.id}/${channel.id}/${crypto.randomUUID()}.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("blocks")
+        .upload(path, selected, { contentType: selected.type, upsert: false });
+      if (uploadError) throw uploadError;
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("blocks").getPublicUrl(path);
+
+      const column = await uploadImageColumn(supabase, {
+        created_by: user.id,
+        channel_id: channel.id,
+        image: publicUrl,
+      });
+
+      const newColumns = [column, ...columns];
+      setColumns(newColumns);
+      handleMetaData(channel, newColumns);
+    } catch (e) {
+      console.error(e);
+      setError("Couldn't upload that image. Please try again.");
+    } finally {
+      setLoading(false);
+      setFile(null);
+    }
   };
 
   const screenshotURL = async (url: string) => {
@@ -175,10 +235,10 @@ export default function ColumnInput({
           <span className="pointer-events-auto">
             Type here... or{" "}
             <label className="underline cursor-pointer">
-              upload file
-              <input type="file" className="hidden" onChange={handleFileChange} />
+              upload an image
+              <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
             </label>{" "}
-            or drop a file
+            or drop one
           </span>
         </div>
       )}

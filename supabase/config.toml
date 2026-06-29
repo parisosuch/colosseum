@@ -130,6 +130,14 @@ objects_path = "./seed-screenshots"
 [storage.buckets.avatars]
 public = true
 
+# `blocks` backs image blocks (column.image). Public so getPublicUrl() links
+# resolve without signing; type/size are constrained here as a server-side
+# backstop to the client validation in components/column-input.tsx.
+[storage.buckets.blocks]
+public = true
+file_size_limit = "10MiB"
+allowed_mime_types = ["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"]
+
 # Allow connections via S3 compatible clients
 [storage.s3_protocol]
 enabled = true

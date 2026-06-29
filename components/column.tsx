@@ -131,6 +131,12 @@ const ColumnComponent = memo(function ColumnComponent({
           <div className="w-[300px] h-[300px] border rounded-lg text-left">
             {column.type === "text" ? (
               <p className="text-sm line-clamp-[10] p-2">{column.text}</p>
+            ) : column.type === "image" ? (
+              <img
+                src={column.image}
+                alt={column.title ?? "Image block"}
+                className="w-full h-full object-cover rounded-lg"
+              />
             ) : loading ? (
               <div className="w-full h-full flex items-center justify-center animate-pulse">
                 Loading...
@@ -171,6 +177,12 @@ const ColumnComponent = memo(function ColumnComponent({
                       handleTextChange(column.id);
                     }
                   }}
+                />
+              ) : column.type === "image" ? (
+                <img
+                  src={column.image}
+                  alt={column.title ?? "Image block"}
+                  className="max-h-[85vh] w-auto object-contain rounded-md"
                 />
               ) : (
                 <a href={column.url} target="_blank" className="size-11/12">

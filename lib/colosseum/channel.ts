@@ -63,6 +63,26 @@ export async function createChannel(
   return data;
 }
 
+// Updates an existing channel's editable fields. RLS ("channel: update own")
+// restricts this to the owner, so a non-owner gets no rows back and throws.
+export async function updateChannel(
+  supabase: SupabaseClient,
+  channel_id: number,
+  updates: { title: string; description?: string; private: boolean },
+): Promise<Channel> {
+  const { data, error } = await supabase
+    .from("channel")
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq("id", channel_id)
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+  return data;
+}
+
 // Returns null when the channel doesn't exist OR when RLS hides it from the
 // caller (e.g. a private channel they don't own). Callers must not distinguish
 // the two, so we don't leak the existence of private channels.

@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { Dispatch, SetStateAction, useState, useRef } from "react";
-import { uploadURLColumn, uploadTextColumn, Column } from "@/lib/colosseum/column";
+import { createBlock, Column } from "@/lib/colosseum/column";
 import { isURL } from "@/lib/utils";
 import { User } from "@supabase/supabase-js";
 import { Channel } from "@/lib/colosseum/channel";
@@ -86,19 +86,9 @@ export default function ColumnInput({
     // was created.
     let column: Column;
     try {
-      if (isUrlInput) {
-        column = await uploadURLColumn(supabase, {
-          created_by: user.id,
-          channel_id: channel.id,
-          text: urlText,
-        });
-      } else {
-        column = await uploadTextColumn(supabase, {
-          created_by: user.id,
-          channel_id: channel.id,
-          text,
-        });
-      }
+      column = isUrlInput
+        ? await createBlock(supabase, { type: "url", channel_id: channel.id, url: urlText })
+        : await createBlock(supabase, { type: "text", channel_id: channel.id, text });
     } catch (e) {
       console.error(e);
       setError("Couldn't add that block. Please try again.");

@@ -10,95 +10,108 @@ export type Column = {
   text?: string;
   image?: string;
   created_by: string;
-  channel_id: number;
 };
 
+// A channel a block is connected to — the shape needed to list/manage a block's
+// connections without pulling the full Channel row.
+export type BlockChannel = {
+  id: number;
+  title: string;
+  private: boolean;
+};
+
+// Blocks connected to a channel, newest connection first. Backed by the
+// get_channel_blocks function so the block_channel join (and its ordering) lives
+// in the database rather than relying on PostgREST embedding.
 export async function getChannelColumns(
   supabase: SupabaseClient,
   channel_id: number,
   limit?: number,
 ): Promise<Column[]> {
+  let query = supabase.rpc("get_channel_blocks", { p_channel_id: channel_id });
   if (limit) {
-    const { data, error } = await supabase
-      .from("column")
-      .select("*")
-      .eq("channel_id", channel_id)
-      .order("created_at", { ascending: false })
-      .limit(limit);
-
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    return data;
+    query = query.limit(limit);
   }
 
-  const { data, error } = await supabase
-    .from("column")
-    .select("*")
-    .eq("channel_id", channel_id)
-    .order("created_at", { ascending: false });
+  const { data, error } = await query;
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return data;
+  return data ?? [];
 }
 
-export async function uploadURLColumn(
+// Create a block and connect it to a channel in one transaction (create_block
+// RPC). created_by is taken from the authenticated session by the function.
+export async function createBlock(
   supabase: SupabaseClient,
-  column: {
-    created_by: string;
+  params: {
+    type: "url" | "text" | "image";
     channel_id: number;
-    text: string;
+    url?: string;
+    text?: string;
+    image?: string;
   },
 ): Promise<Column> {
-  const columnData = {
-    type: "url",
-    url: column.text,
-    channel_id: column.channel_id,
-    created_by: column.created_by,
-  };
-  const { data, error: insertError } = await supabase
-    .from("column")
-    .insert(columnData) // use insert instead of upsert
-    .select()
-    .single();
+  const { data, error } = await supabase.rpc("create_block", {
+    p_type: params.type,
+    p_channel_id: params.channel_id,
+    p_url: params.url ?? null,
+    p_text: params.text ?? null,
+    p_image: params.image ?? null,
+  });
 
-  if (insertError) {
-    throw new Error(insertError.message);
+  if (error) {
+    throw new Error(error.message);
   }
 
-  return data;
+  return data as Column;
 }
 
-export async function uploadTextColumn(
+// Channels a block is connected to (only those visible to the requester).
+export async function getBlockChannels(
   supabase: SupabaseClient,
-  column: {
-    created_by: string;
-    channel_id: number;
-    text: string;
-  },
-): Promise<Column> {
-  const columnData = {
-    type: "text",
-    text: column.text,
-    channel_id: column.channel_id,
-    created_by: column.created_by,
-  };
+  block_id: number,
+): Promise<BlockChannel[]> {
+  const { data, error } = await supabase
+    .from("block_channel")
+    .select("channel:channel(id, title, private)")
+    .eq("block_id", block_id);
 
-  const { data, error: insertError } = await supabase
-    .from("column")
-    .insert(columnData) // use insert instead of upsert
-    .select()
-    .single();
-
-  if (insertError) {
-    throw new Error(insertError.message);
+  if (error) {
+    throw new Error(error.message);
   }
 
-  return data;
+  return (data ?? []).map((row) => row.channel as unknown as BlockChannel);
+}
+
+export async function connectBlockToChannel(
+  supabase: SupabaseClient,
+  block_id: number,
+  channel_id: number,
+): Promise<void> {
+  const { error } = await supabase.from("block_channel").insert({ block_id, channel_id });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function disconnectBlockFromChannel(
+  supabase: SupabaseClient,
+  block_id: number,
+  channel_id: number,
+): Promise<void> {
+  const { error } = await supabase
+    .from("block_channel")
+    .delete()
+    .eq("block_id", block_id)
+    .eq("channel_id", channel_id);
+
+  if (error) {
+    throw new Error(error.message);
+  }
 }
 
 export async function updateColumnTitle(
@@ -141,8 +154,8 @@ export async function getChannelColumnCount(
   channel_id: number,
 ): Promise<number> {
   const { count, error } = await supabase
-    .from("column")
-    .select("id", { count: "exact" })
+    .from("block_channel")
+    .select("block_id", { count: "exact", head: true })
     .eq("channel_id", channel_id);
 
   if (error) {
@@ -150,7 +163,7 @@ export async function getChannelColumnCount(
   }
 
   if (count === null) {
-    throw new Error("Count for columns was null.");
+    throw new Error("Count for channel blocks was null.");
   }
 
   return count;

@@ -20,6 +20,7 @@ import { timeAgo } from "@/lib/utils";
 import { Textarea } from "./ui/textarea";
 import { Input } from "./ui/input";
 import ScreenShotPreview from "./screenshot-preview";
+import BlockConnections from "./block-connections";
 import { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import { GlobeIcon } from "lucide-react";
 
@@ -236,6 +237,7 @@ const ColumnComponent = memo(function ColumnComponent({
               <h3>Created on</h3>
               <p className="font-mono">{new Date(column.created_at).toDateString()}</p>
             </div>
+            <BlockConnections blockId={column.id} isOwner={isOwner} />
             <div className="p-3 w-full flex justify-end">
               {isDirty ? (
                 <button

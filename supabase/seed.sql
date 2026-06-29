@@ -71,7 +71,9 @@ insert into public.user_profile (user_id, handle, about) values (
 )
 on conflict (user_id) do nothing;
 
--- --- channels + columns ----------------------------------------------------
+-- --- channels, blocks, and connections -------------------------------------
+-- Blocks belong to a channel through block_channel (a block can live in many).
+-- The Supabase block is connected to BOTH channels to exercise connections.
 with public_channel as (
   insert into public.channel (title, description, private, owner_id)
   values (
@@ -91,19 +93,31 @@ private_channel as (
     '00000000-0000-0000-0000-000000000001'
   )
   returning id
+),
+supabase_block as (
+  insert into public."column" (type, url, title, created_by)
+  values ('url', 'https://supabase.com', 'Supabase', '00000000-0000-0000-0000-000000000001')
+  returning id
+),
+welcome_block as (
+  insert into public."column" (type, text, created_by)
+  values ('text', 'Welcome to Colosseum 👋', '00000000-0000-0000-0000-000000000001')
+  returning id
+),
+nextjs_block as (
+  insert into public."column" (type, url, title, created_by)
+  values ('url', 'https://nextjs.org', 'Next.js', '00000000-0000-0000-0000-000000000001')
+  returning id
 )
-insert into public."column" (type, url, text, title, created_by, channel_id)
-select 'url', 'https://supabase.com', null, 'Supabase',
-       '00000000-0000-0000-0000-000000000001'::uuid, public_channel.id
-from public_channel
+insert into public.block_channel (block_id, channel_id)
+select supabase_block.id, public_channel.id from supabase_block, public_channel
 union all
-select 'text', null, 'Welcome to Colosseum 👋', null,
-       '00000000-0000-0000-0000-000000000001'::uuid, public_channel.id
-from public_channel
+select welcome_block.id, public_channel.id from welcome_block, public_channel
 union all
-select 'url', 'https://nextjs.org', null, 'Next.js',
-       '00000000-0000-0000-0000-000000000001'::uuid, private_channel.id
-from private_channel;
+select nextjs_block.id, private_channel.id from nextjs_block, private_channel
+union all
+-- connection: the Supabase block also appears in the private channel
+select supabase_block.id, private_channel.id from supabase_block, private_channel;
 
 -- --- cached screenshots ----------------------------------------------------
 -- One row per seeded URL column so ColumnPreview renders a real image instead

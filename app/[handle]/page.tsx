@@ -60,8 +60,10 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
         <div className="flex flex-col space-y-4">
           {channels.map((channel) => (
             <Link key={channel.id} href={`/${handle}/${channel.id}`}>
-              <div className="border-2 border-gray-500/50 rounded-lg p-8">
-                <ChannelColumnsView channel={channel}></ChannelColumnsView>
+              <div
+                className={`border-2 rounded-lg p-8 transition-colors ${channel.private ? "border-red-500/50 hover:border-red-500" : "border-gray-500/50 hover:border-gray-500"}`}
+              >
+                <ChannelColumnsView channel={channel} />
               </div>
             </Link>
           ))}
@@ -78,10 +80,12 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
   const userProfile = await getPublicUserProfile(supabase, handle);
 
   if (!userProfile) {
-    // TODO: make this prettier
     return (
-      <div className="w-full flex items-center justify-center">
-        <h1 className="text-4xl font-semibold">This user does not exist!</h1>
+      <div className="w-full p-12 space-y-2">
+        <h1 className="text-4xl">
+          <BrandLink /> <span className="font-extralight">/ {handle}</span>
+        </h1>
+        <p className="text-black/50 dark:text-white/50">No one here.</p>
       </div>
     );
   }

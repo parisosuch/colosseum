@@ -22,6 +22,7 @@ import { Input } from "./ui/input";
 import ScreenShotPreview from "./screenshot-preview";
 import { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import { GlobeIcon } from "lucide-react";
+import { toast } from "sonner";
 
 type ColumnComponentProps = {
   column: Column;
@@ -98,12 +99,14 @@ const ColumnComponent = memo(function ColumnComponent({
   };
 
   const handleTextChange = async (column_id: number) => {
-    await updateColumnText(supabase, column_id, text);
-    textInputRef.current?.blur();
-    // update column text
-    setColumns((prev) =>
-      prev.map((column) => (column.id === column_id ? { ...column, text: text } : column)),
-    );
+    try {
+      await updateColumnText(supabase, column_id, text);
+      textInputRef.current?.blur();
+      setColumns((prev) => prev.map((col) => (col.id === column_id ? { ...col, text } : col)));
+    } catch (e) {
+      console.error(e);
+      throw e;
+    }
   };
 
   const handleDeleteColumn = async (column: Column) => {
@@ -119,8 +122,13 @@ const ColumnComponent = memo(function ColumnComponent({
     try {
       await handleTitleChange(column);
       await handleDescriptionChange(column);
+      if (text !== (column.text ?? "")) {
+        await handleTextChange(column.id);
+      }
+      toast.success("Saved.");
     } catch (e) {
       console.error(e);
+      toast.error("Couldn't save. Please try again.");
     }
   };
 
@@ -158,19 +166,12 @@ const ColumnComponent = memo(function ColumnComponent({
         <div className="flex pt-4 px-4">
           <div className="w-3/4 flex justify-center">
             <div className="flex w-3/4 p-6 rounded-md">
-              {/* TODO: add ability to edit text in-line */}
               {column.text ? (
                 <Textarea
                   ref={textInputRef}
                   value={text}
                   disabled={!isOwner}
                   onChange={(e) => setText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleTextChange(column.id);
-                    }
-                  }}
                 />
               ) : (
                 <a href={column.url} target="_blank" className="size-11/12">

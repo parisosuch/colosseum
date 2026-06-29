@@ -9,17 +9,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -38,6 +27,8 @@ export default function ManageChannelButton({
   onUpdated: (channel: Channel) => void;
 }) {
   const [open, setOpen] = useState(false);
+  // Which panel the single dialog is showing.
+  const [view, setView] = useState<"manage" | "confirmDelete">("manage");
   const [title, setTitle] = useState(channel.title);
   const [description, setDescription] = useState(channel.description ?? "");
   const [isPrivate, setPrivate] = useState(channel.private);
@@ -46,10 +37,11 @@ export default function ManageChannelButton({
   const [isDeleting, setIsDeleting] = useState(false);
   const router = useRouter();
 
-  // Reset the form to the current channel whenever the dialog opens, so a
-  // cancelled edit doesn't leave stale values behind on the next open.
+  // Reset the form (and panel) to the current channel whenever the dialog
+  // opens, so a cancelled edit doesn't leave stale values behind next open.
   const handleOpenChange = (next: boolean) => {
     if (next) {
+      setView("manage");
       setTitle(channel.title);
       setDescription(channel.description ?? "");
       setPrivate(channel.private);
@@ -80,6 +72,7 @@ export default function ManageChannelButton({
 
   const handleDelete = async () => {
     setIsDeleting(true);
+    setError(null);
     try {
       const supabase = createClient();
       await deleteChannel(supabase, channel.id);
@@ -100,74 +93,73 @@ export default function ManageChannelButton({
         </Button>
       </DialogTrigger>
       <DialogContent>
-        <DialogTitle>Manage channel</DialogTitle>
-        <DialogDescription>Update your channel’s details.</DialogDescription>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div className="grid gap-2">
-            <Label htmlFor="edit-title">Title</Label>
-            <Input
-              id="edit-title"
-              type="text"
-              required
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-            />
-            <Label htmlFor="edit-description">Description</Label>
-            <Input
-              id="edit-description"
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-            <div className="flex items-center gap-2 pt-1">
-              <Checkbox
-                id="edit-private"
-                checked={isPrivate}
-                onCheckedChange={(state) => setPrivate(state === true)}
-              />
-              <Label htmlFor="edit-private">Private channel</Label>
-            </div>
-          </div>
-          {error && <p className="text-sm text-red-500">{error}</p>}
-          <Button type="submit" disabled={isLoading}>
-            {isLoading ? "Saving..." : "Save changes"}
-          </Button>
-        </form>
+        {view === "manage" ? (
+          <>
+            <DialogTitle>Manage channel</DialogTitle>
+            <DialogDescription>Update your channel’s details.</DialogDescription>
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="edit-title">Title</Label>
+                <Input
+                  id="edit-title"
+                  type="text"
+                  required
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                />
+                <Label htmlFor="edit-description">Description</Label>
+                <Input
+                  id="edit-description"
+                  type="text"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+                <div className="flex items-center gap-2 pt-1">
+                  <Checkbox
+                    id="edit-private"
+                    checked={isPrivate}
+                    onCheckedChange={(state) => setPrivate(state === true)}
+                  />
+                  <Label htmlFor="edit-private">Private channel</Label>
+                </div>
+              </div>
+              {error && <p className="text-sm text-red-500">{error}</p>}
+              <Button type="submit" disabled={isLoading}>
+                {isLoading ? "Saving..." : "Save changes"}
+              </Button>
+            </form>
 
-        <div className="border-t pt-4">
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
+            <div className="border-t pt-4">
               <Button
                 variant="outline"
                 className="w-full border-destructive bg-transparent text-destructive shadow-none hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => {
+                  setError(null);
+                  setView("confirmDelete");
+                }}
               >
                 <Trash2 />
                 <p>Delete channel</p>
               </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Delete this channel?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This permanently deletes the channel and all of its blocks. This can’t be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  disabled={isDeleting}
-                  onClick={(e) => {
-                    // Keep the dialog open until the delete + redirect resolves.
-                    e.preventDefault();
-                    handleDelete();
-                  }}
-                >
-                  {isDeleting ? "Deleting..." : "Delete"}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <DialogTitle>Delete this channel?</DialogTitle>
+            <DialogDescription>
+              This permanently deletes the channel and all of its blocks. This can’t be undone.
+            </DialogDescription>
+            {error && <p className="text-sm text-red-500">{error}</p>}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" disabled={isDeleting} onClick={() => setView("manage")}>
+                Cancel
+              </Button>
+              <Button variant="destructive" disabled={isDeleting} onClick={handleDelete}>
+                {isDeleting ? "Deleting..." : "Delete channel"}
+              </Button>
+            </div>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

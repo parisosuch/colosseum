@@ -21,12 +21,20 @@ Use `bun`, never `npm`. A `Makefile` wraps the common ones:
 - `make db-reset` — recreate DB, apply migrations + seed
 - `make help` — list everything
 
+## Git
+
+- **Conventional Commits** (`feat:`, `fix:`, `docs:`, `chore:`, etc.).
+- **Branch off `main`** for every change; open a PR back into `main`.
+- PRs are **squash-merged**, so don't put the issue number in the commit
+  subject — reference the issue in the PR description instead (the squash
+  commit links the PR automatically).
+
 ## Conventions
 
 - **Never co-author commits or PRs.** Do not add `Co-Authored-By:` trailers or
   "Generated with Claude Code" footers to commit messages or PR bodies.
-- Keep issue/PR numbers (`#nn`) out of source comments. They're fine in commit
-  messages and PR descriptions.
+- Keep issue/PR numbers (`#nn`) out of source comments. They're fine in PR
+  descriptions.
 - Data access lives in `lib/colosseum/` (e.g. `user.ts`, `channel.ts`,
   `column.ts`). Use `.maybeSingle()` for lookups that may legitimately miss;
   `.single()` only when a row must exist.

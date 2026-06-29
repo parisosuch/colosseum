@@ -6,8 +6,8 @@ export default function CreateChannelButton() {
   return (
     <Link href="/create-channel">
       <Button variant="secondary">
-        <p>Create channel</p>
         <PlusIcon />
+        <p>Create channel</p>
       </Button>
     </Link>
   );

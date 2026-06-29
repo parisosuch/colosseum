@@ -63,6 +63,17 @@ export async function createChannel(
   return data;
 }
 
+// Deletes a channel. The "channel: delete own" RLS policy restricts this to
+// the owner, and the channel's columns are removed by the ON DELETE CASCADE
+// foreign key. Screenshots are a shared per-URL cache and are left untouched.
+export async function deleteChannel(supabase: SupabaseClient, channel_id: number): Promise<void> {
+  const { error } = await supabase.from("channel").delete().eq("id", channel_id);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 // Updates an existing channel's editable fields. RLS ("channel: update own")
 // restricts this to the owner, so a non-owner gets no rows back and throws.
 export async function updateChannel(

@@ -22,7 +22,7 @@ export default async function SettingsPage() {
   }
 
   return (
-    <div className="w-full p-12 space-y-8">
+    <div className="w-full max-w-xl p-12 space-y-8">
       <h1 className="text-4xl">
         <BrandLink /> <span className="font-extralight">/ settings</span>
       </h1>

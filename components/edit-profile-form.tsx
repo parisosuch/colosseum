@@ -98,13 +98,17 @@ export function EditProfileForm({ profile }: { profile: UserProfile }) {
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-6 max-w-md">
       <div className="flex items-center gap-4">
-        <button type="button" onClick={() => fileInputRef.current?.click()}>
-          <Avatar className="size-16 cursor-pointer">
-            <AvatarImage src={avatarPreview ?? undefined} />
-            <AvatarFallback>{handle.charAt(0).toUpperCase()}</AvatarFallback>
-          </Avatar>
+        <Avatar className="size-16">
+          <AvatarImage src={avatarPreview ?? undefined} />
+          <AvatarFallback>{handle.charAt(0).toUpperCase()}</AvatarFallback>
+        </Avatar>
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="text-sm underline"
+        >
+          Change
         </button>
-        <div className="text-sm text-black/50 dark:text-white/50">Click avatar to change photo</div>
         <input
           ref={fileInputRef}
           type="file"

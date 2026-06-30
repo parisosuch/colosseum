@@ -13,6 +13,26 @@ export type Column = {
   channel_id: number;
 };
 
+// Fetch a single block by id. Returns null when it doesn't exist or RLS hides
+// it (a block in a private channel the requester doesn't own), so callers can
+// render a not-found state without leaking which case it was.
+export async function getColumn(
+  supabase: SupabaseClient,
+  column_id: number,
+): Promise<Column | null> {
+  const { data, error } = await supabase
+    .from("column")
+    .select("*")
+    .eq("id", column_id)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
 export async function getChannelColumns(
   supabase: SupabaseClient,
   channel_id: number,

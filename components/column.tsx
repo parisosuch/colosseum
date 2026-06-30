@@ -21,12 +21,16 @@ import { Textarea } from "./ui/textarea";
 import { Input } from "./ui/input";
 import ScreenShotPreview from "./screenshot-preview";
 import { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
-import { GlobeIcon } from "lucide-react";
+import { GlobeIcon, LinkIcon } from "lucide-react";
+import Link from "next/link";
+import { toast } from "sonner";
 
 type ColumnComponentProps = {
   column: Column;
   setColumns: React.Dispatch<React.SetStateAction<Column[]>>;
   isOwner: boolean;
+  // Owner handle, used to build the block's permalink (/[handle]/[channel]/[id]).
+  handle: string;
   // Screenshot data hydrated by the parent (one batched query for the whole
   // channel). `undefined` means "not loaded yet" for a URL column; a resolved
   // value may still have a null image_url when no screenshot exists.
@@ -37,6 +41,7 @@ const ColumnComponent = memo(function ColumnComponent({
   column,
   setColumns,
   isOwner,
+  handle,
   screenshot,
 }: ColumnComponentProps) {
   const [title, setTitle] = useState(column.title ?? "");
@@ -98,12 +103,14 @@ const ColumnComponent = memo(function ColumnComponent({
   };
 
   const handleTextChange = async (column_id: number) => {
-    await updateColumnText(supabase, column_id, text);
-    textInputRef.current?.blur();
-    // update column text
-    setColumns((prev) =>
-      prev.map((column) => (column.id === column_id ? { ...column, text: text } : column)),
-    );
+    try {
+      await updateColumnText(supabase, column_id, text);
+      textInputRef.current?.blur();
+      setColumns((prev) => prev.map((col) => (col.id === column_id ? { ...col, text } : col)));
+    } catch (e) {
+      console.error(e);
+      throw e;
+    }
   };
 
   const handleDeleteColumn = async (column: Column) => {
@@ -119,16 +126,21 @@ const ColumnComponent = memo(function ColumnComponent({
     try {
       await handleTitleChange(column);
       await handleDescriptionChange(column);
+      if (text !== (column.text ?? "")) {
+        await handleTextChange(column.id);
+      }
+      toast.success("Saved.");
     } catch (e) {
       console.error(e);
+      toast.error("Couldn't save. Please try again.");
     }
   };
 
   return (
     <Dialog>
-      <DialogTrigger>
-        <div className="group relative w-[300px]">
-          <div className="w-[300px] h-[300px] border rounded-lg text-left">
+      <DialogTrigger className="w-full">
+        <div className="group relative w-full">
+          <div className="w-full aspect-square border rounded-lg text-left">
             {column.type === "text" ? (
               <p className="text-sm line-clamp-[10] p-2">{column.text}</p>
             ) : column.type === "image" ? (
@@ -161,22 +173,15 @@ const ColumnComponent = memo(function ColumnComponent({
         </div>
       </DialogTrigger>
       <DialogContent className="w-[97vw] !h-[97vh] !max-w-none p-4">
-        <div className="flex pt-4 px-4">
-          <div className="w-3/4 flex justify-center">
-            <div className="flex w-3/4 p-6 rounded-md">
-              {/* TODO: add ability to edit text in-line */}
+        <div className="flex flex-col md:flex-row pt-4 px-4 gap-4 overflow-y-auto">
+          <div className="w-full md:w-3/4 flex justify-center">
+            <div className="flex w-full md:w-3/4 p-6 rounded-md">
               {column.text ? (
                 <Textarea
                   ref={textInputRef}
                   value={text}
                   disabled={!isOwner}
                   onChange={(e) => setText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleTextChange(column.id);
-                    }
-                  }}
                 />
               ) : column.type === "image" ? (
                 <img
@@ -211,7 +216,7 @@ const ColumnComponent = memo(function ColumnComponent({
               )}
             </div>
           </div>
-          <div className="w-1/4 border rounded-lg space-y-2">
+          <div className="w-full md:w-1/4 border rounded-lg space-y-2 h-fit">
             <DialogTitle>
               <Input
                 ref={titleInputRef}
@@ -248,7 +253,14 @@ const ColumnComponent = memo(function ColumnComponent({
               <h3>Created on</h3>
               <p className="font-mono">{new Date(column.created_at).toDateString()}</p>
             </div>
-            <div className="p-3 w-full flex justify-end">
+            <div className="p-3 w-full flex justify-end items-center gap-2">
+              <Link
+                href={`/${handle}/${column.channel_id}/${column.id}`}
+                className="text-xs underline font-light flex items-center gap-1"
+              >
+                <LinkIcon className="size-3" />
+                permalink
+              </Link>
               {isDirty ? (
                 <button
                   onClick={() => handleSave(column)}

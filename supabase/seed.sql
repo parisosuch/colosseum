@@ -7,6 +7,10 @@
 --
 --   email:    test@example.com
 --   password: password123
+--
+-- Sign-ups are invite-gated by the auth.users trigger, but the first account is
+-- exempt (the self-hoster). On a fresh `db reset` this test user is that first
+-- insert, so it needs no code; the demo account then owns a sample code below.
 
 -- --- test user -------------------------------------------------------------
 insert into auth.users (
@@ -70,6 +74,12 @@ insert into public.user_profile (user_id, handle, about) values (
   'Local dev test account'
 )
 on conflict (user_id) do nothing;
+
+-- --- sample invite code owned by the demo account --------------------------
+-- Gives the /invites page something to render when logged in as the test user.
+insert into public.invite_code (code, created_by, max_uses, note)
+values ('WELCOME5', '00000000-0000-0000-0000-000000000001', 5, 'Share with friends')
+on conflict (code) do nothing;
 
 -- --- channels + columns ----------------------------------------------------
 with public_channel as (

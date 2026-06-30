@@ -1,10 +1,9 @@
 import { getUserProfile } from "@/lib/colosseum/user";
 import { createClient } from "@/lib/supabase/server";
 import { LandmarkIcon, ArrowRight } from "lucide-react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import Link from "next/link";
 import { ThemeSwitcher } from "./theme-switcher";
-import { LogoutButton } from "./logout-button";
+import { UserMenu } from "./user-menu";
 
 export default async function NavBar() {
   const supabase = await createClient();
@@ -38,19 +37,18 @@ export default async function NavBar() {
         <LandmarkIcon />
       </Link>
       <div className="flex flex-row space-x-2 items-center">
-        {userProfile && (
+        {/* Theme lives inside the avatar menu; a user who hasn't onboarded yet
+            (no profile) has no menu, so fall back to the standalone switcher. */}
+        {userProfile ? (
           <>
             <Link href="/invites" className="text-sm underline">
               Invites
             </Link>
-            <Avatar>
-              <AvatarImage src={userProfile.avatar_url} />
-              <AvatarFallback>{userProfile.handle.charAt(0).toUpperCase()}</AvatarFallback>
-            </Avatar>
+            <UserMenu avatarUrl={userProfile.avatar_url} handle={userProfile.handle} />
           </>
+        ) : (
+          <ThemeSwitcher />
         )}
-        <ThemeSwitcher />
-        <LogoutButton />
       </div>
     </nav>
   );

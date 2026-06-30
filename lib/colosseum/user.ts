@@ -77,6 +77,28 @@ export async function getUserProfile(
   return data;
 }
 
+export async function updateUserProfile(
+  client: SupabaseClient,
+  user_id: string,
+  updates: { handle?: string; about?: string; avatar_url?: string },
+): Promise<UserProfile> {
+  const { data, error } = await client
+    .from("user_profile")
+    .update(updates)
+    .eq("user_id", user_id)
+    .select("*")
+    .single();
+
+  if (error) {
+    if ((error as PostgrestError).code === "23505") {
+      throw new HandleTakenError(updates.handle ?? "");
+    }
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
 // Creates the user_profile row for a freshly signed-up user. Throws
 // HandleTakenError when the chosen handle is already in use.
 export async function createUserProfile(

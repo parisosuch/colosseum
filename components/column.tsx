@@ -35,6 +35,8 @@ type ColumnComponentProps = {
   // channel). `undefined` means "not loaded yet" for a URL column; a resolved
   // value may still have a null image_url when no screenshot exists.
   screenshot?: ColumnScreenshot;
+  // "grid" (square card, the default) or "list" (compact full-width row).
+  view?: "grid" | "list";
 };
 
 const ColumnComponent = memo(function ColumnComponent({
@@ -43,6 +45,7 @@ const ColumnComponent = memo(function ColumnComponent({
   isOwner,
   handle,
   screenshot,
+  view = "grid",
 }: ColumnComponentProps) {
   const [title, setTitle] = useState(column.title ?? "");
   const [description, setDescription] = useState(column.description ?? "");
@@ -136,41 +139,60 @@ const ColumnComponent = memo(function ColumnComponent({
     }
   };
 
+  const thumbnail = (
+    <>
+      {column.type === "text" ? (
+        <p className="text-sm line-clamp-[10] p-2">{column.text}</p>
+      ) : column.type === "image" ? (
+        <img
+          src={column.image}
+          alt={column.title ?? "Image block"}
+          className="w-full h-full object-cover rounded-lg"
+        />
+      ) : loading ? (
+        <div className="w-full h-full flex items-center justify-center animate-pulse">
+          Loading...
+        </div>
+      ) : (
+        <ScreenShotPreview image_url={imageURL} version={screenshotVersion} />
+      )}
+    </>
+  );
+
+  const listLabel =
+    column.title || urlTitle || column.url || (column.type === "text" ? column.text : "Untitled");
+
   return (
     <Dialog>
       <DialogTrigger className="w-full">
-        <div className="group relative w-full">
-          <div className="w-full aspect-square border rounded-lg text-left">
-            {column.type === "text" ? (
-              <p className="text-sm line-clamp-[10] p-2">{column.text}</p>
-            ) : column.type === "image" ? (
-              <img
-                src={column.image}
-                alt={column.title ?? "Image block"}
-                className="w-full h-full object-cover rounded-lg"
-              />
-            ) : loading ? (
-              <div className="w-full h-full flex items-center justify-center animate-pulse">
-                Loading...
-              </div>
-            ) : (
-              <ScreenShotPreview image_url={imageURL} version={screenshotVersion} />
-            )}
+        {view === "list" ? (
+          <div className="group flex w-full items-center gap-3 border rounded-lg p-2 text-left">
+            <div className="size-16 shrink-0 overflow-hidden rounded-md">{thumbnail}</div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm">{listLabel}</p>
+              <p className="text-xs font-light text-muted-foreground">
+                {timeAgo(new Date(column.created_at))}
+              </p>
+            </div>
           </div>
-          {column.type === "url" ? (
-            // Reserve one caption line even when the URL has no title — otherwise
-            // an untitled block is a line shorter than its siblings (and its own
-            // hover state, which shows the timestamp) and visibly shifts.
-            <p className="group-hover:hidden pt-1 text-xs font-light">{urlTitle || " "}</p>
-          ) : (
-            <p className="pt-1 text-xs font-light opacity-0 group-hover:hidden select-none">
-              placeholder
+        ) : (
+          <div className="group relative w-full">
+            <div className="w-full aspect-square border rounded-lg text-left">{thumbnail}</div>
+            {column.type === "url" ? (
+              // Reserve one caption line even when the URL has no title — otherwise
+              // an untitled block is a line shorter than its siblings (and its own
+              // hover state, which shows the timestamp) and visibly shifts.
+              <p className="group-hover:hidden pt-1 text-xs font-light">{urlTitle || " "}</p>
+            ) : (
+              <p className="pt-1 text-xs font-light opacity-0 group-hover:hidden select-none">
+                placeholder
+              </p>
+            )}
+            <p className="hidden group-hover:block pt-1 text-xs font-light">
+              {timeAgo(new Date(column.created_at))}
             </p>
-          )}
-          <p className="hidden group-hover:block pt-1 text-xs font-light">
-            {timeAgo(new Date(column.created_at))}
-          </p>
-        </div>
+          </div>
+        )}
       </DialogTrigger>
       <DialogContent className="w-[97vw] !h-[97vh] !max-w-none p-4">
         <div className="flex flex-col md:flex-row pt-4 px-4 gap-4 overflow-y-auto">

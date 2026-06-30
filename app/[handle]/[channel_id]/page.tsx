@@ -5,12 +5,14 @@ import ColumnComponent from "@/components/column";
 import ManageChannelButton from "@/components/manage-channel-button";
 import ExportChannelButton from "@/components/export-channel-button";
 import ColumnInput from "@/components/column-input";
+import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Channel, getChannel } from "@/lib/colosseum/channel";
 import { Column, getChannelColumns } from "@/lib/colosseum/column";
 import { ColumnScreenshot, getScreenshotsForUrls } from "@/lib/colosseum/screenshot-data";
 import { createClient } from "@/lib/supabase/client";
 import { User } from "@supabase/supabase-js";
+import { LayoutGrid, List } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -29,6 +31,7 @@ export default function ChannelPage() {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
+  const [view, setView] = useState<"grid" | "list">("grid");
 
   const router = useRouter();
   const supabase = createClient();
@@ -199,6 +202,22 @@ export default function ChannelPage() {
           <ManageChannelButton channel={channel} handle={handle} onUpdated={setChannel} />
         ) : null}
         <ExportChannelButton channel={channel} columns={columns} screenshots={screenshots} />
+        <Button
+          variant={view === "grid" ? "secondary" : "ghost"}
+          size="icon"
+          aria-label="Grid view"
+          onClick={() => setView("grid")}
+        >
+          <LayoutGrid />
+        </Button>
+        <Button
+          variant={view === "list" ? "secondary" : "ghost"}
+          size="icon"
+          aria-label="List view"
+          onClick={() => setView("list")}
+        >
+          <List />
+        </Button>
       </div>
       <div className="flex flex-col space-y-4">
         <div className="flex flex-col">
@@ -219,22 +238,22 @@ export default function ChannelPage() {
         <p className="text-black/50 dark:text-white/50">No blocks yet.</p>
       ) : (
         <div
-          className="grid gap-4
-                grid-cols-2
-                md:grid-cols-3
-                lg:grid-cols-4
-                xl:grid-cols-5
-                2xl:grid-cols-6
-                3xl:grid-cols-7"
+          className={
+            view === "grid"
+              ? "grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 3xl:grid-cols-7"
+              : "flex flex-col gap-2"
+          }
         >
           {isOwner ? (
-            <ColumnInput
-              user={user}
-              columns={columns}
-              setColumns={setColumns}
-              channel={channel}
-              handleMetaData={handleMetaData}
-            />
+            <div className={view === "list" ? "max-w-xs" : undefined}>
+              <ColumnInput
+                user={user}
+                columns={columns}
+                setColumns={setColumns}
+                channel={channel}
+                handleMetaData={handleMetaData}
+              />
+            </div>
           ) : null}
           {columns.map((column) => (
             <ColumnComponent
@@ -243,6 +262,7 @@ export default function ChannelPage() {
               handle={handle}
               setColumns={setColumns}
               screenshot={column.url ? screenshots.get(column.url) : undefined}
+              view={view}
               key={column.id}
             />
           ))}

@@ -3,6 +3,7 @@
 import BrandLink from "@/components/brand-link";
 import ColumnComponent from "@/components/column";
 import ManageChannelButton from "@/components/manage-channel-button";
+import ExportChannelButton from "@/components/export-channel-button";
 import ColumnInput from "@/components/column-input";
 import { Spinner } from "@/components/ui/spinner";
 import { Channel, getChannel } from "@/lib/colosseum/channel";
@@ -193,9 +194,12 @@ export default function ChannelPage() {
         </Link>{" "}
         <span className="font-extralight">/</span> {channel.title}
       </h1>
-      {isOwner ? (
-        <ManageChannelButton channel={channel} handle={handle} onUpdated={setChannel} />
-      ) : null}
+      <div className="flex items-center gap-2">
+        {isOwner ? (
+          <ManageChannelButton channel={channel} handle={handle} onUpdated={setChannel} />
+        ) : null}
+        <ExportChannelButton channel={channel} columns={columns} screenshots={screenshots} />
+      </div>
       <div className="flex flex-col space-y-4">
         <div className="flex flex-col">
           <h2 className="text-sm font-light">Description</h2>

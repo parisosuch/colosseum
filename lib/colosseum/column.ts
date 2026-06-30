@@ -1,5 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 
+import { sanitizeSearch } from "@/lib/utils";
+
 export type Column = {
   id: number;
   created_at: string;
@@ -64,6 +66,33 @@ export async function getChannelColumns(
   }
 
   return data;
+}
+
+// Blocks the user created whose title/description/text/url match `query`.
+// Used by the nav search box, so capped to a handful of results. Returns []
+// for an empty/whitespace-only query rather than the user's whole block list.
+export async function searchUserColumns(
+  supabase: SupabaseClient,
+  user_id: string,
+  query: string,
+): Promise<Column[]> {
+  const term = sanitizeSearch(query);
+  if (!term) {
+    return [];
+  }
+
+  const pattern = `%${term}%`;
+  const { data, error } = await supabase
+    .from("column")
+    .select("*")
+    .eq("created_by", user_id)
+    .or(["title", "description", "text", "url"].map((col) => `${col}.ilike.${pattern}`).join(","))
+    .limit(10);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+  return data ?? [];
 }
 
 export async function uploadURLColumn(

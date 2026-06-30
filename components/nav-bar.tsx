@@ -2,6 +2,7 @@ import { getUserProfile } from "@/lib/colosseum/user";
 import { createClient } from "@/lib/supabase/server";
 import { LandmarkIcon, ArrowRight } from "lucide-react";
 import Link from "next/link";
+import SearchBar from "./search-bar";
 import { ThemeSwitcher } from "./theme-switcher";
 import { UserMenu } from "./user-menu";
 
@@ -36,6 +37,11 @@ export default async function NavBar() {
       <Link href="/">
         <LandmarkIcon />
       </Link>
+      {userProfile ? (
+        <div className="hidden sm:block flex-1 max-w-xs">
+          <SearchBar userId={user.id} handle={userProfile.handle} />
+        </div>
+      ) : null}
       <div className="flex flex-row space-x-2 items-center">
         {/* Theme lives inside the avatar menu; a user who hasn't onboarded yet
             (no profile) has no menu, so fall back to the standalone switcher. */}

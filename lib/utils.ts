@@ -39,6 +39,18 @@ export function isURL(text: string): boolean {
   return true;
 }
 
+// Parses a comma-separated tags input into a deduped, trimmed list.
+export function parseTags(input: string): string[] {
+  return [
+    ...new Set(
+      input
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
 export function timeAgo(date: Date) {
   const now = new Date();
   const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);

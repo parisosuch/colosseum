@@ -4,6 +4,7 @@ import React, { useState, useRef, memo } from "react";
 import { Column } from "@/lib/colosseum/column";
 import {
   updateColumnDescription,
+  updateColumnTags,
   updateColumnText,
   updateColumnTitle,
   deleteColumn,
@@ -16,9 +17,11 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { createClient } from "@/lib/supabase/client";
-import { timeAgo } from "@/lib/utils";
+import { parseTags, timeAgo } from "@/lib/utils";
 import { Textarea } from "./ui/textarea";
 import { Input } from "./ui/input";
+import { Badge } from "./ui/badge";
+import { Label } from "./ui/label";
 import ScreenShotPreview from "./screenshot-preview";
 import { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import { GlobeIcon, LinkIcon } from "lucide-react";
@@ -46,6 +49,7 @@ const ColumnComponent = memo(function ColumnComponent({
 }: ColumnComponentProps) {
   const [title, setTitle] = useState(column.title ?? "");
   const [description, setDescription] = useState(column.description ?? "");
+  const [tags, setTags] = useState(column.tags.join(", "));
 
   const [text, setText] = useState(column.text ?? "");
 
@@ -60,7 +64,8 @@ const ColumnComponent = memo(function ColumnComponent({
   const isDirty =
     title !== (column.title ?? "") ||
     description !== (column.description ?? "") ||
-    text !== (column.text ?? "");
+    text !== (column.text ?? "") ||
+    parseTags(tags).join(", ") !== column.tags.join(", ");
   // A URL column is still loading until the parent resolves its screenshot.
   const loading = column.type === "url" && screenshot === undefined;
 
@@ -102,6 +107,20 @@ const ColumnComponent = memo(function ColumnComponent({
     }
   };
 
+  const handleTagsChange = async (column: Column) => {
+    const newTags = parseTags(tags);
+    if (newTags.join(", ") === column.tags.join(", ")) {
+      return;
+    }
+
+    try {
+      await updateColumnTags(supabase, column.id, newTags);
+      setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, tags: newTags } : c)));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const handleTextChange = async (column_id: number) => {
     try {
       await updateColumnText(supabase, column_id, text);
@@ -126,6 +145,7 @@ const ColumnComponent = memo(function ColumnComponent({
     try {
       await handleTitleChange(column);
       await handleDescriptionChange(column);
+      await handleTagsChange(column);
       if (text !== (column.text ?? "")) {
         await handleTextChange(column.id);
       }
@@ -249,6 +269,34 @@ const ColumnComponent = memo(function ColumnComponent({
                 }}
               />
             </DialogDescription>
+            <div className="px-3 space-y-1">
+              <Label htmlFor={`tags-${column.id}`} className="text-xs font-light">
+                Tags
+              </Label>
+              {isOwner ? (
+                <Input
+                  id={`tags-${column.id}`}
+                  placeholder="comma, separated, tags"
+                  value={tags}
+                  className="border-none shadow-none px-0"
+                  onChange={(e) => setTags(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleTagsChange(column);
+                    }
+                  }}
+                />
+              ) : column.tags.length > 0 ? (
+                <div className="flex flex-wrap gap-1">
+                  {column.tags.map((tag) => (
+                    <Badge key={tag} variant="secondary">
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+              ) : null}
+            </div>
             <div className="flex w-full justify-between text-xs p-3">
               <h3>Created on</h3>
               <p className="font-mono">{new Date(column.created_at).toDateString()}</p>

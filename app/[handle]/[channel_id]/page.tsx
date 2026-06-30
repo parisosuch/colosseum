@@ -5,6 +5,7 @@ import ColumnComponent from "@/components/column";
 import ManageChannelButton from "@/components/manage-channel-button";
 import ExportChannelButton from "@/components/export-channel-button";
 import ColumnInput from "@/components/column-input";
+import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { Channel, getChannel } from "@/lib/colosseum/channel";
 import { Column, getChannelColumns } from "@/lib/colosseum/column";
@@ -205,6 +206,15 @@ export default function ChannelPage() {
           <h2 className="text-sm font-light">Description</h2>
           {channel.description ? <p className="">{channel.description}</p> : null}
         </div>
+        {channel.tags.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {channel.tags.map((tag) => (
+              <Badge key={tag} variant="secondary">
+                {tag}
+              </Badge>
+            ))}
+          </div>
+        ) : null}
         <div className="flex flex-col">
           <h2 className="text-sm font-light">Meta</h2>
           {metaData!.map((meta, index) => (

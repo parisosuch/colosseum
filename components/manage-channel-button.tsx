@@ -16,6 +16,7 @@ import { Label } from "./ui/label";
 import { Checkbox } from "./ui/checkbox";
 import { createClient } from "@/lib/supabase/client";
 import { Channel, deleteChannel, updateChannel } from "@/lib/colosseum/channel";
+import { parseTags } from "@/lib/utils";
 import { Settings, Trash2 } from "lucide-react";
 
 export default function ManageChannelButton({
@@ -32,6 +33,7 @@ export default function ManageChannelButton({
   const [view, setView] = useState<"manage" | "confirmDelete">("manage");
   const [title, setTitle] = useState(channel.title);
   const [description, setDescription] = useState(channel.description ?? "");
+  const [tags, setTags] = useState(channel.tags.join(", "));
   const [isPrivate, setPrivate] = useState(channel.private);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -45,6 +47,7 @@ export default function ManageChannelButton({
       setView("manage");
       setTitle(channel.title);
       setDescription(channel.description ?? "");
+      setTags(channel.tags.join(", "));
       setPrivate(channel.private);
       setError(null);
     }
@@ -61,6 +64,7 @@ export default function ManageChannelButton({
         title,
         description,
         private: isPrivate,
+        tags: parseTags(tags),
       });
       onUpdated(updated);
       setOpen(false);
@@ -120,6 +124,14 @@ export default function ManageChannelButton({
                   type="text"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
+                />
+                <Label htmlFor="edit-tags">Tags</Label>
+                <Input
+                  id="edit-tags"
+                  type="text"
+                  placeholder="comma, separated, tags"
+                  value={tags}
+                  onChange={(e) => setTags(e.target.value)}
                 />
                 <div className="flex items-center gap-2 pt-1">
                   <Checkbox

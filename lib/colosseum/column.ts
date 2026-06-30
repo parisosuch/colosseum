@@ -11,6 +11,7 @@ export type Column = {
   image?: string;
   created_by: string;
   channel_id: number;
+  tags: string[];
 };
 
 // Fetch a single block by id. Returns null when it doesn't exist or RLS hides
@@ -171,6 +172,18 @@ export async function updateColumnDescription(
     .from("column")
     .update({ description: description })
     .eq("id", column_id);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function updateColumnTags(
+  supabase: SupabaseClient,
+  column_id: number,
+  tags: string[],
+): Promise<void> {
+  const { error } = await supabase.from("column").update({ tags }).eq("id", column_id);
 
   if (error) {
     throw new Error(error.message);

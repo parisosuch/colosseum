@@ -8,6 +8,7 @@ export type Channel = {
   private: boolean;
   owner_id: string;
   updated_at?: string;
+  tags: string[];
 };
 
 export async function getUserPublicChannels(
@@ -79,7 +80,7 @@ export async function deleteChannel(supabase: SupabaseClient, channel_id: number
 export async function updateChannel(
   supabase: SupabaseClient,
   channel_id: number,
-  updates: { title: string; description?: string; private: boolean },
+  updates: { title: string; description?: string; private: boolean; tags?: string[] },
 ): Promise<Channel> {
   const { data, error } = await supabase
     .from("channel")

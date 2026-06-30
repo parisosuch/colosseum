@@ -215,7 +215,8 @@ export default function ColumnInput({
         <textarea
           ref={textareaRef}
           disabled={loading}
-          className={`w-full h-full bg-transparent resize-none focus:outline-none p-3 leading-normal text-sm ${loading ? "hidden" : ""}`}
+          aria-label="Add a block — type text or paste a link"
+          className={`w-full h-full bg-transparent resize-none rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset p-3 leading-normal text-sm ${loading ? "hidden" : ""}`}
           value={text}
           onChange={(e) => {
             setText(e.target.value);
@@ -232,7 +233,7 @@ export default function ColumnInput({
 
       {/* Overlay placeholder with clickable Upload */}
       {!text && !file && (
-        <div className="absolute inset-0 px-3 pt-3 text-sm leading-normal text-gray-500 flex items-start pointer-events-none">
+        <div className="absolute inset-0 px-3 pt-3 text-sm leading-normal text-muted-foreground flex items-start pointer-events-none">
           <span>
             Type here... or{" "}
             <label className="underline cursor-pointer pointer-events-auto">

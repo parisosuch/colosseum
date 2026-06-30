@@ -64,6 +64,12 @@ const ColumnComponent = memo(function ColumnComponent({
   // A URL column is still loading until the parent resolves its screenshot.
   const loading = column.type === "url" && screenshot === undefined;
 
+  // Accessible name for the otherwise icon/image-only card button, so screen
+  // readers announce what opening it leads to rather than reading nothing (an
+  // untitled image) or stray caption text.
+  const cardName = column.title || urlTitle || column.text?.slice(0, 60);
+  const triggerLabel = cardName ? `Open block: ${cardName}` : `Open ${column.type} block`;
+
   const titleInputRef = useRef<HTMLInputElement>(null);
   const descriptionInputRef = useRef<HTMLInputElement>(null);
   const textInputRef = useRef<HTMLTextAreaElement>(null);
@@ -138,7 +144,7 @@ const ColumnComponent = memo(function ColumnComponent({
 
   return (
     <Dialog>
-      <DialogTrigger className="w-full">
+      <DialogTrigger className="w-full" aria-label={triggerLabel}>
         <div className="group relative w-full">
           <div className="w-full aspect-square border rounded-lg text-left">
             {column.type === "text" ? (
@@ -154,7 +160,11 @@ const ColumnComponent = memo(function ColumnComponent({
                 Loading...
               </div>
             ) : (
-              <ScreenShotPreview image_url={imageURL} version={screenshotVersion} />
+              <ScreenShotPreview
+                image_url={imageURL}
+                version={screenshotVersion}
+                title={urlTitle}
+              />
             )}
           </div>
           {column.type === "url" ? (
@@ -192,7 +202,7 @@ const ColumnComponent = memo(function ColumnComponent({
               ) : (
                 <a href={column.url} target="_blank" className="size-11/12">
                   <div className="flex flex-row space-x-2 items-center border border-1 rounded-md px-2 py-1">
-                    <GlobeIcon className="size-4" />
+                    <GlobeIcon className="size-4" aria-hidden="true" />
                     <h1 className="font-mono">{column.url!}</h1>
                   </div>
                   <div className="mt-2 w-full">
@@ -258,20 +268,20 @@ const ColumnComponent = memo(function ColumnComponent({
                 href={`/${handle}/${column.channel_id}/${column.id}`}
                 className="text-xs underline font-light flex items-center gap-1"
               >
-                <LinkIcon className="size-3" />
+                <LinkIcon className="size-3" aria-hidden="true" />
                 permalink
               </Link>
               {isDirty ? (
                 <button
                   onClick={() => handleSave(column)}
-                  className="text-xs underline font-light px-2"
+                  className="text-xs underline font-light px-2 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   save
                 </button>
               ) : null}
               {isOwner ? (
                 <button
-                  className="text-xs underline font-light"
+                  className="text-xs underline font-light rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   onClick={() => {
                     handleDeleteColumn(column);
                   }}

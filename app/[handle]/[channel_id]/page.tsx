@@ -169,9 +169,7 @@ export default function ChannelPage() {
         <h1 className="text-4xl">
           <BrandLink /> <span className="font-extralight">/ {handle}</span>
         </h1>
-        <p className="text-black/50 dark:text-white/50">
-          Something went wrong loading this channel.
-        </p>
+        <p className="text-muted-foreground">Something went wrong loading this channel.</p>
       </div>
     );
   }
@@ -188,7 +186,7 @@ export default function ChannelPage() {
         <BrandLink /> <span className="font-extralight">/</span>{" "}
         <Link
           href={`/${handle}`}
-          className="dark:text-white/75 text-black/75 hover:dark:text-white/100 hover:text-black/100"
+          className="underline dark:text-white/75 text-black/75 hover:dark:text-white/100 hover:text-black/100"
         >
           {handle}
         </Link>{" "}
@@ -216,7 +214,7 @@ export default function ChannelPage() {
         </div>
       </div>
       {!isOwner && columns.length === 0 ? (
-        <p className="text-black/50 dark:text-white/50">No blocks yet.</p>
+        <p className="text-muted-foreground">No blocks yet.</p>
       ) : (
         <div
           className="grid gap-4

@@ -14,13 +14,13 @@ export default async function NavBar() {
   if (!user) {
     return (
       <nav className="w-full flex justify-between p-4">
-        <Link href="/">
-          <LandmarkIcon />
+        <Link href="/" aria-label="Home">
+          <LandmarkIcon aria-hidden="true" />
         </Link>
         <div className="flex flex-row space-x-2 items-center">
           <Link href="/auth/login" className="flex flex-row items-center justify-center space-x-1">
             <p className="underline">Login</p>
-            <ArrowRight size={16} />
+            <ArrowRight size={16} aria-hidden="true" />
           </Link>
           <ThemeSwitcher />
         </div>
@@ -33,8 +33,8 @@ export default async function NavBar() {
 
   return (
     <nav className="w-full flex justify-between p-4">
-      <Link href="/">
-        <LandmarkIcon />
+      <Link href="/" aria-label="Home">
+        <LandmarkIcon aria-hidden="true" />
       </Link>
       <div className="flex flex-row space-x-2 items-center">
         {/* Theme lives inside the avatar menu; a user who hasn't onboarded yet

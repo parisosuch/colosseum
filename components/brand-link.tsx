@@ -6,7 +6,7 @@ export default function BrandLink() {
   return (
     <Link
       href="/"
-      className="dark:text-white/75 text-black/75 hover:dark:text-white/100 hover:text-black/100"
+      className="underline dark:text-white/75 text-black/75 hover:dark:text-white/100 hover:text-black/100"
     >
       Colosseum
     </Link>

@@ -40,12 +40,7 @@ export default async function NavBar() {
         {/* Theme lives inside the avatar menu; a user who hasn't onboarded yet
             (no profile) has no menu, so fall back to the standalone switcher. */}
         {userProfile ? (
-          <>
-            <Link href="/invites" className="text-sm underline">
-              Invites
-            </Link>
-            <UserMenu avatarUrl={userProfile.avatar_url} handle={userProfile.handle} />
-          </>
+          <UserMenu avatarUrl={userProfile.avatar_url} handle={userProfile.handle} />
         ) : (
           <ThemeSwitcher />
         )}

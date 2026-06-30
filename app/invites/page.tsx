@@ -27,7 +27,7 @@ export default async function InvitesPage() {
 
   return (
     <div className="w-full p-6 sm:p-12 space-y-8">
-      <h1 className="text-4xl">
+      <h1 className="text-2xl sm:text-4xl">
         <BrandLink /> <span className="font-extralight">/</span> invites
       </h1>
       <p className="text-sm font-light text-muted-foreground max-w-prose">

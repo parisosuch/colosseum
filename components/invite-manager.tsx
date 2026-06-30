@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { PlusIcon, CheckIcon, CopyIcon } from "lucide-react";
+import { PlusIcon, CheckIcon, CopyIcon, Trash2Icon } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/client";
-import { createInviteCode, InviteCode } from "@/lib/colosseum/invite";
+import { createInviteCode, revokeInviteCode, InviteCode } from "@/lib/colosseum/invite";
 import { Button } from "@/components/ui/button";
 
 export default function InviteManager({
@@ -32,6 +32,19 @@ export default function InviteManager({
       setError("Couldn't create an invite. Please try again.");
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleRevoke = async (code: string) => {
+    setError(null);
+    const prev = codes;
+    setCodes((cs) => cs.filter((c) => c.code !== code));
+    try {
+      await revokeInviteCode(supabase, code);
+    } catch (e) {
+      console.error(e);
+      setCodes(prev);
+      setError("Couldn't revoke that invite. Please try again.");
     }
   };
 
@@ -94,6 +107,15 @@ export default function InviteManager({
                       </>
                     )}
                   </button>
+                  {invite.uses === 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => handleRevoke(invite.code)}
+                      className="flex items-center gap-1 text-sm text-red-500 underline"
+                    >
+                      <Trash2Icon size={14} /> Revoke
+                    </button>
+                  ) : null}
                 </div>
               </li>
             );

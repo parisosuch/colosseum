@@ -64,3 +64,12 @@ export async function createInviteCode(
 
   return data;
 }
+
+// Revoke an unused code. RLS only permits deleting the caller's own codes with
+// uses = 0, so a spent code can't be revoked (and wouldn't matter — it's done).
+export async function revokeInviteCode(supabase: SupabaseClient, code: string): Promise<void> {
+  const { error } = await supabase.from("invite_code").delete().eq("code", code);
+  if (error) {
+    throw new Error(error.message);
+  }
+}

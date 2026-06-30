@@ -66,3 +66,32 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Design system: typographic scale + shared text affordances. See DESIGN.md. */
+@layer components {
+  /* Page title / breadcrumb header. */
+  .text-display {
+    @apply text-2xl font-semibold tracking-tight sm:text-4xl;
+  }
+  /* Section title within a page. */
+  .text-title {
+    @apply text-2xl font-semibold tracking-tight;
+  }
+  /* Sub-section / card heading. */
+  .text-heading {
+    @apply text-lg font-medium;
+  }
+  /* Eyebrow label above a value ("Description", "Meta", "Created"). */
+  .text-label {
+    @apply text-xs font-medium uppercase tracking-wide text-muted-foreground;
+  }
+  /* Secondary metadata: timestamps, counts, captions. */
+  .text-caption {
+    @apply text-xs text-muted-foreground;
+  }
+  /* Low-emphasis link used in breadcrumb headers (token colors don't take an
+     alpha modifier, so the black/white pair is spelled out here once). */
+  .link-subtle {
+    @apply text-black/75 transition-colors hover:text-black dark:text-white/75 dark:hover:text-white;
+  }
+}

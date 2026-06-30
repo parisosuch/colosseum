@@ -108,11 +108,7 @@ export default function ApiTokenManager({
             <code className="flex-1 break-all rounded bg-black/5 p-2 font-mono text-sm dark:bg-white/10">
               {newToken}
             </code>
-            <button
-              type="button"
-              onClick={handleCopy}
-              className="flex items-center gap-1 text-sm underline"
-            >
+            <Button type="button" variant="outline" size="sm" onClick={handleCopy}>
               {copied ? (
                 <>
                   <CheckIcon size={14} /> Copied
@@ -122,7 +118,7 @@ export default function ApiTokenManager({
                   <CopyIcon size={14} /> Copy
                 </>
               )}
-            </button>
+            </Button>
           </div>
         </div>
       ) : null}
@@ -142,13 +138,15 @@ export default function ApiTokenManager({
                     : "Never used"}
                 </span>
               </div>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => handleRevoke(token.id)}
-                className="flex items-center gap-1 text-sm text-red-500 underline"
+                className="text-destructive hover:text-destructive"
               >
                 <Trash2Icon size={14} /> Revoke
-              </button>
+              </Button>
             </li>
           ))}
         </ul>

@@ -1,4 +1,4 @@
-import BrandLink from "@/components/brand-link";
+import PageHeader from "@/components/page-header";
 import ColumnPreview from "@/components/column-preview";
 import CreateChannelButton from "@/components/create-channel-button";
 import { Channel, getUserChannels, getUserPublicChannels } from "@/lib/colosseum/channel";
@@ -20,11 +20,9 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
     return (
       <div className="flex flex-col md:flex-row gap-8 p-2">
         <div className="flex flex-col justify-center items-center space-y-1 w-full md:w-[250px] md:h-[250px] shrink-0">
-          <h2 className="text-lg">{channel.title}</h2>
+          <h2 className="text-heading">{channel.title}</h2>
           {channel.description ? <p className="text-center">{channel.description}</p> : null}
-          <p className="text-sm dark:text-white/75 text-black/75 font-light">
-            {columnCount} column(s)
-          </p>
+          <p className="text-caption">{columnCount} column(s)</p>
         </div>
         <div className="hidden md:flex gap-8 overflow-x-auto">
           {columns.map((column, index) => (
@@ -49,7 +47,7 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
       return (
         <div className="w-full flex items-center justify-center">
           <div className="w-1/2 flex space-x-4 items-center">
-            <h1 className="text-4xl font-semibold">
+            <h1 className="text-display">
               Looks like {isOwner ? "you" : "they"} have no channels.
             </h1>
             {isOwner ? <CreateChannelButton /> : null}
@@ -86,10 +84,8 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
   if (!userProfile) {
     return (
       <div className="w-full p-12 space-y-2">
-        <h1 className="text-4xl">
-          <BrandLink /> <span className="font-extralight">/ {handle}</span>
-        </h1>
-        <p className="text-black/50 dark:text-white/50">No one here.</p>
+        <PageHeader crumbs={[{ label: handle }]} />
+        <p className="text-muted-foreground">No one here.</p>
       </div>
     );
   }
@@ -111,16 +107,14 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
 
   return (
     <div className="w-full p-6 sm:p-12 space-y-8">
-      <h1 className="text-2xl sm:text-4xl">
-        <BrandLink /> <span className="font-extralight">/</span> {handle}
-      </h1>
+      <PageHeader crumbs={[{ label: handle }]} />
       <div className="flex flex-col space-y-4">
         <div className="flex flex-col">
-          <h2 className="text-sm font-light">About</h2>
+          <h2 className="text-label">About</h2>
           {userProfile.about ? <p className="">{userProfile.about}</p> : null}
         </div>
         <div className="flex flex-col">
-          <h2 className="text-sm font-light">Joined</h2>
+          <h2 className="text-label">Joined</h2>
           <p>
             {new Date(userProfile.created_at).toLocaleString("default", {
               month: "long",

@@ -1,6 +1,6 @@
 "use client";
 
-import BrandLink from "@/components/brand-link";
+import PageHeader from "@/components/page-header";
 import ColumnComponent from "@/components/column";
 import ManageChannelButton from "@/components/manage-channel-button";
 import ExportChannelButton from "@/components/export-channel-button";
@@ -11,7 +11,6 @@ import { Column, getChannelColumns } from "@/lib/colosseum/column";
 import { ColumnScreenshot, getScreenshotsForUrls } from "@/lib/colosseum/screenshot-data";
 import { createClient } from "@/lib/supabase/client";
 import { User } from "@supabase/supabase-js";
-import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -158,7 +157,7 @@ export default function ChannelPage() {
   if (loading) {
     return (
       <div className="w-full h-[60vh] flex items-center justify-center">
-        <Spinner variant="circle" className="size-8 text-black/30 dark:text-white/30" />
+        <Spinner variant="circle" className="size-8 text-muted-foreground" />
       </div>
     );
   }
@@ -166,12 +165,8 @@ export default function ChannelPage() {
   if (fetchError) {
     return (
       <div className="w-full p-12 space-y-2">
-        <h1 className="text-4xl">
-          <BrandLink /> <span className="font-extralight">/ {handle}</span>
-        </h1>
-        <p className="text-black/50 dark:text-white/50">
-          Something went wrong loading this channel.
-        </p>
+        <PageHeader crumbs={[{ label: handle }]} />
+        <p className="text-muted-foreground">Something went wrong loading this channel.</p>
       </div>
     );
   }
@@ -184,16 +179,7 @@ export default function ChannelPage() {
 
   return (
     <div className="w-full p-6 sm:p-12 space-y-8">
-      <h1 className="text-2xl sm:text-4xl">
-        <BrandLink /> <span className="font-extralight">/</span>{" "}
-        <Link
-          href={`/${handle}`}
-          className="dark:text-white/75 text-black/75 hover:dark:text-white/100 hover:text-black/100"
-        >
-          {handle}
-        </Link>{" "}
-        <span className="font-extralight">/</span> {channel.title}
-      </h1>
+      <PageHeader crumbs={[{ label: handle, href: `/${handle}` }, { label: channel.title }]} />
       <div className="flex items-center gap-2">
         {isOwner ? (
           <ManageChannelButton channel={channel} handle={handle} onUpdated={setChannel} />
@@ -202,11 +188,11 @@ export default function ChannelPage() {
       </div>
       <div className="flex flex-col space-y-4">
         <div className="flex flex-col">
-          <h2 className="text-sm font-light">Description</h2>
+          <h2 className="text-label">Description</h2>
           {channel.description ? <p className="">{channel.description}</p> : null}
         </div>
         <div className="flex flex-col">
-          <h2 className="text-sm font-light">Meta</h2>
+          <h2 className="text-label">Meta</h2>
           {metaData!.map((meta, index) => (
             <div key={index} className="flex w-full max-w-[350px] justify-between">
               <h3>{meta.title}</h3>
@@ -216,7 +202,7 @@ export default function ChannelPage() {
         </div>
       </div>
       {!isOwner && columns.length === 0 ? (
-        <p className="text-black/50 dark:text-white/50">No blocks yet.</p>
+        <p className="text-muted-foreground">No blocks yet.</p>
       ) : (
         <div
           className="grid gap-4

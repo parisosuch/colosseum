@@ -48,6 +48,37 @@ export function apiError(message: string, status: number): NextResponse {
 
 export type ApiAuth = { userId: string; supabase: SupabaseClient };
 
+// Resolve a raw bearer token to its owning user. Shared by the REST API
+// (authenticateApiToken, below, after parsing the Authorization header) and
+// the MCP endpoint (app/api/[transport]/route.ts), whose framework parses the
+// header for us. Returns null for an unknown token; throws on a DB error so
+// callers can distinguish "invalid token" from "auth backend unavailable".
+export async function resolveApiToken(token: string): Promise<ApiAuth | null> {
+  const hash = hashToken(token);
+  const supabase = serviceClient();
+
+  const { data, error } = await supabase
+    .from("api_token")
+    .select("user_id")
+    .eq("token_hash", hash)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+  if (!data) {
+    return null;
+  }
+
+  // Best-effort usage timestamp; never fail the request over it.
+  void supabase
+    .from("api_token")
+    .update({ last_used_at: new Date().toISOString() })
+    .eq("token_hash", hash);
+
+  return { userId: data.user_id, supabase };
+}
+
 // Resolve the `Authorization: Bearer <token>` header to the owning user. On
 // success returns the user id plus a service-role client for the handler to use
 // (RLS can't apply — there's no session — so handlers authorize explicitly).
@@ -63,30 +94,16 @@ export async function authenticateApiToken(req: Request): Promise<ApiAuth | Next
     return apiError("Missing bearer token.", 401);
   }
 
-  const hash = hashToken(token);
-  const supabase = serviceClient();
-
-  const { data, error } = await supabase
-    .from("api_token")
-    .select("user_id")
-    .eq("token_hash", hash)
-    .maybeSingle();
-
-  if (error) {
-    console.error(error);
+  try {
+    const auth = await resolveApiToken(token);
+    if (!auth) {
+      return apiError("Invalid API token.", 401);
+    }
+    return auth;
+  } catch (e) {
+    console.error(e);
     return apiError("Authentication failed.", 500);
   }
-  if (!data) {
-    return apiError("Invalid API token.", 401);
-  }
-
-  // Best-effort usage timestamp; never fail the request over it.
-  void supabase
-    .from("api_token")
-    .update({ last_used_at: new Date().toISOString() })
-    .eq("token_hash", hash);
-
-  return { userId: data.user_id, supabase };
 }
 
 // Persist a freshly generated token. The hash + non-secret prefix are stored;

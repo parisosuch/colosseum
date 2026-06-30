@@ -7,6 +7,7 @@ import { isURL } from "@/lib/utils";
 import { User } from "@supabase/supabase-js";
 import { Channel } from "@/lib/colosseum/channel";
 import { Spinner } from "./ui/spinner";
+import { toast } from "sonner";
 
 type ColumnInputProps = {
   user: User | null;
@@ -27,7 +28,6 @@ export default function ColumnInput({
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -77,8 +77,6 @@ export default function ColumnInput({
     if (!user?.id || text === "") return;
     if (!channel) return;
 
-    setError(null);
-
     const isUrlInput = isURL(text);
     const urlText = text.startsWith("https://") ? text : "https://" + text;
 
@@ -101,7 +99,7 @@ export default function ColumnInput({
       }
     } catch (e) {
       console.error(e);
-      setError("Couldn't add that block. Please try again.");
+      toast.error("Couldn't add that block. Please try again.");
       return;
     }
 
@@ -109,13 +107,14 @@ export default function ColumnInput({
     // the column from appearing — it's already inserted, and the preview falls
     // back to "no screenshot". Always clear loading via finally so the spinner
     // can never get stuck.
+    let screenshotFailed = false;
     if (isUrlInput) {
       setLoading(true);
       try {
         await screenshotURL(urlText);
       } catch (e) {
         console.error(e);
-        setError("Block added, but the screenshot for that link couldn't be captured.");
+        screenshotFailed = true;
       } finally {
         setLoading(false);
       }
@@ -126,11 +125,16 @@ export default function ColumnInput({
     setColumns(newColumns);
     setText("");
     handleMetaData(channel, newColumns);
+    if (screenshotFailed) {
+      toast.warning("Block added, but the screenshot for that link couldn't be captured.");
+    } else {
+      toast.success("Block added.");
+    }
   };
 
   return (
     <div
-      className={`relative w-[300px] h-[300px] rounded-lg dark:bg-white/10 bg-gray-100 
+      className={`relative w-full aspect-square rounded-lg dark:bg-white/10 bg-gray-100
         ${isDragging ? "border-2 border-dashed dark:border-white/20 border-gray-200" : ""}`}
       onDragOver={(e) => {
         e.preventDefault();
@@ -157,7 +161,6 @@ export default function ColumnInput({
           value={text}
           onChange={(e) => {
             setText(e.target.value);
-            if (error) setError(null);
           }}
           placeholder=""
           onKeyDown={(e) => {
@@ -172,9 +175,9 @@ export default function ColumnInput({
       {/* Overlay placeholder with clickable Upload */}
       {!text && !file && (
         <div className="absolute inset-0 px-3 pt-3 text-sm leading-normal text-gray-500 flex items-start pointer-events-none">
-          <span className="pointer-events-auto">
+          <span>
             Type here... or{" "}
-            <label className="underline cursor-pointer">
+            <label className="underline cursor-pointer pointer-events-auto">
               upload file
               <input type="file" className="hidden" onChange={handleFileChange} />
             </label>{" "}
@@ -193,12 +196,6 @@ export default function ColumnInput({
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-100/60 dark:bg-black/50 z-10">
           <Spinner variant="circle" className="size-10" />
-        </div>
-      )}
-
-      {error && !loading && (
-        <div className="absolute inset-x-0 bottom-0 z-20 rounded-b-lg bg-red-500/90 p-2 text-xs text-white">
-          {error}
         </div>
       )}
     </div>

@@ -1,17 +1,10 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { hasEnvVars } from "../utils";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
   });
-
-  // If the env vars are not set, skip middleware check. You can remove this
-  // once you setup the project.
-  if (!hasEnvVars) {
-    return supabaseResponse;
-  }
 
   // With Fluid compute, don't put this client in a global environment
   // variable. Always create a new one on each request.
@@ -49,7 +42,7 @@ export async function updateSession(request: NextRequest) {
   // path prefix (e.g. "/create-channel" also guards "/create-channel/..."").
   // Everything else — the landing page, public profiles (/[handle]), public
   // channels, and the /auth/* pages — stays open.
-  const protectedRoutes = ["/create-channel"];
+  const protectedRoutes = ["/create-channel", "/invites", "/settings"];
   const { pathname } = request.nextUrl;
   const requiresAuth = protectedRoutes.some(
     (route) => pathname === route || pathname.startsWith(`${route}/`),

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { Laptop, LogOutIcon, Moon, SettingsIcon, Sun } from "lucide-react";
+import { Laptop, LogOutIcon, MailIcon, Moon, SettingsIcon, Sun } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -49,6 +49,11 @@ export function UserMenu({ avatarUrl, handle }: { avatarUrl?: string; handle: st
         <DropdownMenuItem onSelect={() => router.push("/settings")}>
           <SettingsIcon />
           Settings
+        </DropdownMenuItem>
+
+        <DropdownMenuItem onSelect={() => router.push("/invites")}>
+          <MailIcon />
+          Invites
         </DropdownMenuItem>
 
         <DropdownMenuSub>

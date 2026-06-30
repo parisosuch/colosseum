@@ -22,8 +22,8 @@ export default async function SettingsPage() {
   }
 
   return (
-    <div className="w-full max-w-xl p-12 space-y-8">
-      <h1 className="text-4xl">
+    <div className="w-full max-w-xl p-6 sm:p-12 space-y-8">
+      <h1 className="text-2xl sm:text-4xl">
         <BrandLink /> <span className="font-extralight">/ settings</span>
       </h1>
       <EditProfileForm profile={profile} />

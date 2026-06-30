@@ -182,8 +182,8 @@ export default function ChannelPage() {
   }
 
   return (
-    <div className="w-full p-12 space-y-8">
-      <h1 className="text-4xl">
+    <div className="w-full p-6 sm:p-12 space-y-8">
+      <h1 className="text-2xl sm:text-4xl">
         <BrandLink /> <span className="font-extralight">/</span>{" "}
         <Link
           href={`/${handle}`}
@@ -204,8 +204,7 @@ export default function ChannelPage() {
         <div className="flex flex-col">
           <h2 className="text-sm font-light">Meta</h2>
           {metaData!.map((meta, index) => (
-            // TODO: change the width to be responsive and appropriate for each screen size.
-            <div key={index} className="flex w-[350px] justify-between">
+            <div key={index} className="flex w-full max-w-[350px] justify-between">
               <h3>{meta.title}</h3>
               <p className="font-mono">{meta.data}</p>
             </div>
@@ -217,7 +216,11 @@ export default function ChannelPage() {
       ) : (
         <div
           className="grid gap-4
-                grid-cols-5
+                grid-cols-2
+                md:grid-cols-3
+                lg:grid-cols-4
+                xl:grid-cols-5
+                2xl:grid-cols-6
                 3xl:grid-cols-7"
         >
           {isOwner ? (

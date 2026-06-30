@@ -18,19 +18,23 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
     const columnCount = await getChannelColumnCount(supabase, channel.id);
 
     return (
-      <div className="flex gap-8 p-2">
-        <div className="flex flex-col justify-center items-center space-y-1 w-[250px] h-[250px]">
+      <div className="flex flex-col md:flex-row gap-8 p-2">
+        <div className="flex flex-col justify-center items-center space-y-1 w-full md:w-[250px] md:h-[250px] shrink-0">
           <h2 className="text-lg">{channel.title}</h2>
           {channel.description ? <p className="text-center">{channel.description}</p> : null}
           <p className="text-sm dark:text-white/75 text-black/75 font-light">
             {columnCount} column(s)
           </p>
         </div>
-        <div className="flex gap-8 overflow-x-auto">
+        <div className="hidden md:flex gap-8 overflow-x-auto">
           {columns.map((column, index) => (
             <div
               key={column.id}
-              className={index >= 5 ? "md:hidden" : "border-2 rounded-md w-[250px] h-[250px]"}
+              className={
+                index >= 5
+                  ? "hidden"
+                  : "border-2 rounded-md w-[200px] h-[200px] sm:w-[250px] sm:h-[250px] shrink-0"
+              }
             >
               <ColumnPreview column={column} />
             </div>
@@ -57,11 +61,11 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
     return (
       <div className="space-y-4">
         {isOwner ? <CreateChannelButton /> : null}
-        <div className="flex flex-col space-y-4">
+        <div className="grid grid-cols-1 gap-4 md:flex md:flex-col md:space-y-4 md:gap-0">
           {channels.map((channel) => (
             <Link key={channel.id} href={`/${handle}/${channel.id}`}>
               <div
-                className={`border-2 rounded-lg p-8 transition-colors ${channel.private ? "border-red-500/50 hover:border-red-500" : "border-gray-500/50 hover:border-gray-500"}`}
+                className={`flex aspect-square items-center justify-center p-4 md:block md:aspect-auto md:p-8 border-2 rounded-lg transition-colors ${channel.private ? "bg-red-500/5 border-red-500/50 hover:border-red-500" : "border-gray-500/50 hover:border-gray-500"}`}
               >
                 <ChannelColumnsView channel={channel} />
               </div>
@@ -106,8 +110,8 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
   }
 
   return (
-    <div className="w-full p-12 space-y-8">
-      <h1 className="text-4xl">
+    <div className="w-full p-6 sm:p-12 space-y-8">
+      <h1 className="text-2xl sm:text-4xl">
         <BrandLink /> <span className="font-extralight">/</span> {handle}
       </h1>
       <div className="flex flex-col space-y-4">

@@ -134,7 +134,7 @@ export default function ColumnInput({
 
   return (
     <div
-      className={`relative w-[300px] h-[300px] rounded-lg dark:bg-white/10 bg-gray-100 
+      className={`relative w-full aspect-square rounded-lg dark:bg-white/10 bg-gray-100
         ${isDragging ? "border-2 border-dashed dark:border-white/20 border-gray-200" : ""}`}
       onDragOver={(e) => {
         e.preventDefault();
@@ -175,9 +175,9 @@ export default function ColumnInput({
       {/* Overlay placeholder with clickable Upload */}
       {!text && !file && (
         <div className="absolute inset-0 px-3 pt-3 text-sm leading-normal text-gray-500 flex items-start pointer-events-none">
-          <span className="pointer-events-auto">
+          <span>
             Type here... or{" "}
-            <label className="underline cursor-pointer">
+            <label className="underline cursor-pointer pointer-events-auto">
               upload file
               <input type="file" className="hidden" onChange={handleFileChange} />
             </label>{" "}

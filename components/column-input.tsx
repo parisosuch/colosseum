@@ -175,9 +175,9 @@ export default function ColumnInput({
       {/* Overlay placeholder with clickable Upload */}
       {!text && !file && (
         <div className="absolute inset-0 px-3 pt-3 text-sm leading-normal text-gray-500 flex items-start pointer-events-none">
-          <span className="pointer-events-auto">
+          <span>
             Type here... or{" "}
-            <label className="underline cursor-pointer">
+            <label className="underline cursor-pointer pointer-events-auto">
               upload file
               <input type="file" className="hidden" onChange={handleFileChange} />
             </label>{" "}

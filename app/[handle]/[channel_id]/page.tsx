@@ -183,7 +183,7 @@ export default function ChannelPage() {
 
   return (
     <div className="w-full p-6 sm:p-12 space-y-8">
-      <h1 className="text-4xl">
+      <h1 className="text-2xl sm:text-4xl">
         <BrandLink /> <span className="font-extralight">/</span>{" "}
         <Link
           href={`/${handle}`}
@@ -216,8 +216,7 @@ export default function ChannelPage() {
       ) : (
         <div
           className="grid gap-4
-                grid-cols-1
-                sm:grid-cols-2
+                grid-cols-2
                 md:grid-cols-3
                 lg:grid-cols-4
                 xl:grid-cols-5

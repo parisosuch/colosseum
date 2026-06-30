@@ -13,6 +13,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 
 type ExportChannelButtonProps = {
   channel: Channel;
@@ -48,17 +49,23 @@ export default function ExportChannelButton({
   };
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="secondary">
-          <DownloadIcon />
-          <p>Export</p>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        <DropdownMenuItem onSelect={() => exportAs("json")}>JSON</DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => exportAs("csv")}>CSV</DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <TooltipProvider>
+      <Tooltip>
+        <DropdownMenu>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <Button variant="secondary" size="icon" aria-label="Export">
+                <DownloadIcon />
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem onSelect={() => exportAs("json")}>JSON</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => exportAs("csv")}>CSV</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <TooltipContent>Export</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }

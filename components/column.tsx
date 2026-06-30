@@ -21,13 +21,16 @@ import { Textarea } from "./ui/textarea";
 import { Input } from "./ui/input";
 import ScreenShotPreview from "./screenshot-preview";
 import { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
-import { GlobeIcon } from "lucide-react";
+import { GlobeIcon, LinkIcon } from "lucide-react";
+import Link from "next/link";
 import { toast } from "sonner";
 
 type ColumnComponentProps = {
   column: Column;
   setColumns: React.Dispatch<React.SetStateAction<Column[]>>;
   isOwner: boolean;
+  // Owner handle, used to build the block's permalink (/[handle]/[channel]/[id]).
+  handle: string;
   // Screenshot data hydrated by the parent (one batched query for the whole
   // channel). `undefined` means "not loaded yet" for a URL column; a resolved
   // value may still have a null image_url when no screenshot exists.
@@ -38,6 +41,7 @@ const ColumnComponent = memo(function ColumnComponent({
   column,
   setColumns,
   isOwner,
+  handle,
   screenshot,
 }: ColumnComponentProps) {
   const [title, setTitle] = useState(column.title ?? "");
@@ -237,7 +241,14 @@ const ColumnComponent = memo(function ColumnComponent({
               <h3>Created on</h3>
               <p className="font-mono">{new Date(column.created_at).toDateString()}</p>
             </div>
-            <div className="p-3 w-full flex justify-end">
+            <div className="p-3 w-full flex justify-end items-center gap-2">
+              <Link
+                href={`/${handle}/${column.channel_id}/${column.id}`}
+                className="text-xs underline font-light flex items-center gap-1"
+              >
+                <LinkIcon className="size-3" />
+                permalink
+              </Link>
               {isDirty ? (
                 <button
                   onClick={() => handleSave(column)}

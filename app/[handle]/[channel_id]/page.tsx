@@ -240,6 +240,7 @@ export default function ChannelPage() {
             <ColumnComponent
               column={column}
               isOwner={isOwner}
+              handle={handle}
               setColumns={setColumns}
               screenshot={column.url ? screenshots.get(column.url) : undefined}
               key={column.id}

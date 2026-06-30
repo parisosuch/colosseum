@@ -2,11 +2,16 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { Dispatch, SetStateAction, useState, useRef } from "react";
-import { createBlock, Column } from "@/lib/colosseum/column";
+import { createBlock, uploadImageColumn, Column } from "@/lib/colosseum/column";
 import { isURL } from "@/lib/utils";
 import { User } from "@supabase/supabase-js";
 import { Channel } from "@/lib/colosseum/channel";
 import { Spinner } from "./ui/spinner";
+import { toast } from "sonner";
+
+// Kept in sync with the `blocks` bucket constraints in supabase/config.toml.
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10MB
+const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"];
 
 type ColumnInputProps = {
   user: User | null;
@@ -27,7 +32,6 @@ export default function ColumnInput({
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -35,7 +39,9 @@ export default function ColumnInput({
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
-    if (selected) setFile(selected);
+    if (selected) handleFileUpload(selected);
+    // Reset so picking the same file again still fires onChange.
+    e.target.value = "";
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -44,9 +50,56 @@ export default function ColumnInput({
     setIsDragging(false);
 
     const droppedFile = e.dataTransfer.files?.[0];
-    if (droppedFile) setFile(droppedFile);
+    if (droppedFile) handleFileUpload(droppedFile);
+  };
 
-    // TODO: handle upload on drop
+  // Upload an image file to the `blocks` bucket and create an image column.
+  // Validates type/size client-side (the bucket enforces the same limits as a
+  // backstop). On any failure nothing is created and the error is surfaced.
+  const handleFileUpload = async (selected: File) => {
+    if (!user?.id || !channel) return;
+
+    if (!ALLOWED_IMAGE_TYPES.includes(selected.type)) {
+      toast.error("Only image files (PNG, JPEG, GIF, WebP, AVIF) are supported.");
+      return;
+    }
+    if (selected.size > MAX_IMAGE_BYTES) {
+      toast.error("That image is too large (max 10MB).");
+      return;
+    }
+
+    setFile(selected);
+    setLoading(true);
+    try {
+      const ext = selected.name.split(".").pop()?.toLowerCase() || "bin";
+      // Per-user prefix so storage RLS can gate writes to the owner's folder.
+      const path = `${user.id}/${channel.id}/${crypto.randomUUID()}.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("blocks")
+        .upload(path, selected, { contentType: selected.type, upsert: false });
+      if (uploadError) throw uploadError;
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("blocks").getPublicUrl(path);
+
+      const column = await uploadImageColumn(supabase, {
+        created_by: user.id,
+        channel_id: channel.id,
+        image: publicUrl,
+      });
+
+      const newColumns = [column, ...columns];
+      setColumns(newColumns);
+      handleMetaData(channel, newColumns);
+    } catch (e) {
+      console.error(e);
+      toast.error("Couldn't upload that image. Please try again.");
+    } finally {
+      setLoading(false);
+      setFile(null);
+    }
   };
 
   const screenshotURL = async (url: string) => {
@@ -77,8 +130,6 @@ export default function ColumnInput({
     if (!user?.id || text === "") return;
     if (!channel) return;
 
-    setError(null);
-
     const isUrlInput = isURL(text);
     const urlText = text.startsWith("https://") ? text : "https://" + text;
 
@@ -91,7 +142,7 @@ export default function ColumnInput({
         : await createBlock(supabase, { type: "text", channel_id: channel.id, text });
     } catch (e) {
       console.error(e);
-      setError("Couldn't add that block. Please try again.");
+      toast.error("Couldn't add that block. Please try again.");
       return;
     }
 
@@ -99,13 +150,14 @@ export default function ColumnInput({
     // the column from appearing — it's already inserted, and the preview falls
     // back to "no screenshot". Always clear loading via finally so the spinner
     // can never get stuck.
+    let screenshotFailed = false;
     if (isUrlInput) {
       setLoading(true);
       try {
         await screenshotURL(urlText);
       } catch (e) {
         console.error(e);
-        setError("Block added, but the screenshot for that link couldn't be captured.");
+        screenshotFailed = true;
       } finally {
         setLoading(false);
       }
@@ -116,11 +168,16 @@ export default function ColumnInput({
     setColumns(newColumns);
     setText("");
     handleMetaData(channel, newColumns);
+    if (screenshotFailed) {
+      toast.warning("Block added, but the screenshot for that link couldn't be captured.");
+    } else {
+      toast.success("Block added.");
+    }
   };
 
   return (
     <div
-      className={`relative w-[300px] h-[300px] rounded-lg dark:bg-white/10 bg-gray-100 
+      className={`relative w-full aspect-square rounded-lg dark:bg-white/10 bg-gray-100
         ${isDragging ? "border-2 border-dashed dark:border-white/20 border-gray-200" : ""}`}
       onDragOver={(e) => {
         e.preventDefault();
@@ -147,7 +204,6 @@ export default function ColumnInput({
           value={text}
           onChange={(e) => {
             setText(e.target.value);
-            if (error) setError(null);
           }}
           placeholder=""
           onKeyDown={(e) => {
@@ -162,13 +218,13 @@ export default function ColumnInput({
       {/* Overlay placeholder with clickable Upload */}
       {!text && !file && (
         <div className="absolute inset-0 px-3 pt-3 text-sm leading-normal text-gray-500 flex items-start pointer-events-none">
-          <span className="pointer-events-auto">
+          <span>
             Type here... or{" "}
-            <label className="underline cursor-pointer">
-              upload file
-              <input type="file" className="hidden" onChange={handleFileChange} />
+            <label className="underline cursor-pointer pointer-events-auto">
+              upload an image
+              <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
             </label>{" "}
-            or drop a file
+            or drop one
           </span>
         </div>
       )}
@@ -183,12 +239,6 @@ export default function ColumnInput({
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-100/60 dark:bg-black/50 z-10">
           <Spinner variant="circle" className="size-10" />
-        </div>
-      )}
-
-      {error && !loading && (
-        <div className="absolute inset-x-0 bottom-0 z-20 rounded-b-lg bg-red-500/90 p-2 text-xs text-white">
-          {error}
         </div>
       )}
     </div>

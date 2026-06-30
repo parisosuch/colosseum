@@ -20,6 +20,26 @@ export type BlockChannel = {
   private: boolean;
 };
 
+// Fetch a single block by id. Returns null when it doesn't exist or RLS hides
+// it (a block in a private channel the requester doesn't own), so callers can
+// render a not-found state without leaking which case it was.
+export async function getColumn(
+  supabase: SupabaseClient,
+  column_id: number,
+): Promise<Column | null> {
+  const { data, error } = await supabase
+    .from("column")
+    .select("*")
+    .eq("id", column_id)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
 // Blocks connected to a channel, newest connection first. Backed by the
 // get_channel_blocks function so the block_channel join (and its ordering) lives
 // in the database rather than relying on PostgREST embedding.
@@ -112,6 +132,35 @@ export async function disconnectBlockFromChannel(
   if (error) {
     throw new Error(error.message);
   }
+}
+
+export async function uploadImageColumn(
+  supabase: SupabaseClient,
+  column: {
+    created_by: string;
+    channel_id: number;
+    // Public URL of the already-uploaded storage object.
+    image: string;
+  },
+): Promise<Column> {
+  const columnData = {
+    type: "image",
+    image: column.image,
+    channel_id: column.channel_id,
+    created_by: column.created_by,
+  };
+
+  const { data, error: insertError } = await supabase
+    .from("column")
+    .insert(columnData)
+    .select()
+    .single();
+
+  if (insertError) {
+    throw new Error(insertError.message);
+  }
+
+  return data;
 }
 
 export async function updateColumnTitle(

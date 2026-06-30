@@ -1,0 +1,149 @@
+"use client";
+
+import { useState, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+import {
+  updateUserProfile,
+  HandleTakenError,
+  normalizeHandle,
+  validateHandle,
+  UserProfile,
+} from "@/lib/colosseum/user";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
+
+export function EditProfileForm({ profile }: { profile: UserProfile }) {
+  const [handle, setHandle] = useState(profile.handle);
+  const [about, setAbout] = useState(profile.about ?? "");
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(profile.avatar_url ?? null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const router = useRouter();
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarFile(file);
+    setAvatarPreview(URL.createObjectURL(file));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    const supabase = createClient();
+
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        router.push("/auth/login");
+        return;
+      }
+
+      const normalized = normalizeHandle(handle);
+      const validationError = validateHandle(normalized);
+      if (validationError) {
+        toast.error(validationError);
+        return;
+      }
+
+      let avatar_url = profile.avatar_url;
+
+      if (avatarFile) {
+        const { error: uploadError } = await supabase.storage
+          .from("avatars")
+          .upload(user.id, avatarFile, { upsert: true });
+        if (uploadError) throw uploadError;
+        const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(user.id);
+        // Bust the CDN cache so the nav bar picks up the new image immediately.
+        avatar_url = `${urlData.publicUrl}?v=${Date.now()}`;
+      }
+
+      const updates: { handle?: string; about?: string; avatar_url?: string } = {};
+      if (normalized !== profile.handle) updates.handle = normalized;
+      if (about !== (profile.about ?? "")) updates.about = about;
+      if (avatar_url !== profile.avatar_url) updates.avatar_url = avatar_url;
+
+      if (Object.keys(updates).length > 0) {
+        await updateUserProfile(supabase, user.id, updates);
+      }
+
+      toast.success("Profile saved.");
+
+      // If the handle changed, navigate to the new profile URL.
+      if (normalized !== profile.handle) {
+        window.location.assign(`/${normalized}`);
+      } else {
+        router.refresh();
+      }
+    } catch (err) {
+      if (err instanceof HandleTakenError) {
+        toast.error("That handle is already taken.");
+      } else {
+        toast.error(err instanceof Error ? err.message : "Something went wrong.");
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="flex flex-col gap-6 max-w-md">
+      <div className="flex items-center gap-4">
+        <Avatar className="size-16">
+          <AvatarImage src={avatarPreview ?? undefined} />
+          <AvatarFallback>{handle.charAt(0).toUpperCase()}</AvatarFallback>
+        </Avatar>
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="text-sm underline"
+        >
+          Change
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleAvatarChange}
+        />
+      </div>
+
+      <div className="grid gap-2">
+        <Label htmlFor="handle">Handle</Label>
+        <Input
+          id="handle"
+          type="text"
+          value={handle}
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          onChange={(e) => setHandle(e.target.value)}
+        />
+      </div>
+
+      <div className="grid gap-2">
+        <Label htmlFor="about">About</Label>
+        <Textarea
+          id="about"
+          value={about}
+          placeholder="Tell people a bit about yourself"
+          onChange={(e) => setAbout(e.target.value)}
+        />
+      </div>
+
+      <Button type="submit" disabled={isLoading}>
+        {isLoading ? "Saving..." : "Save changes"}
+      </Button>
+    </form>
+  );
+}

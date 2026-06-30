@@ -10,10 +10,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-export function SignUpForm({ className, ...props }: React.ComponentPropsWithoutRef<"div">) {
+export function SignUpForm({
+  className,
+  inviteRequired = true,
+  ...props
+}: React.ComponentPropsWithoutRef<"div"> & { inviteRequired?: boolean }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [repeatPassword, setRepeatPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
@@ -30,12 +35,38 @@ export function SignUpForm({ className, ...props }: React.ComponentPropsWithoutR
       return;
     }
 
+    const code = inviteCode.trim();
+    if (inviteRequired && !code) {
+      setError("An invite code is required to sign up.");
+      setIsLoading(false);
+      return;
+    }
+
     try {
+      if (inviteRequired) {
+        // Pre-flight check so a bad code fails fast with a clear message. The
+        // auth.users trigger is the authoritative gate; this is only UX, and a
+        // code consumed between here and signUp still surfaces via the catch.
+        const { data: codeOk, error: checkError } = await supabase.rpc("invite_code_available", {
+          p_code: code,
+        });
+        if (checkError) throw checkError;
+        if (!codeOk) {
+          setError("That invite code is invalid or has already been used.");
+          setIsLoading(false);
+          return;
+        }
+      }
+
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           emailRedirectTo: `${window.location.origin}/auth/onboarding`,
+          // GoTrue stores this on the user's raw_user_meta_data, where the
+          // invite-enforcement trigger reads and redeems it. Omitted for the
+          // first account, which the trigger exempts.
+          data: inviteRequired ? { invite_code: code } : {},
         },
       });
       if (error) throw error;
@@ -51,7 +82,16 @@ export function SignUpForm({ className, ...props }: React.ComponentPropsWithoutR
         router.push("/auth/sign-up-success");
       }
     } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : "An error occurred");
+      const message = error instanceof Error ? error.message : "An error occurred";
+      // A trigger exception during sign-up surfaces from GoTrue as a generic
+      // "Database error saving new user" rather than our raised text, so a
+      // race where the code is exhausted between the pre-check and signUp would
+      // otherwise show an opaque message. Map it back to the likely cause.
+      setError(
+        /database error/i.test(message)
+          ? "That invite code is invalid or has already been used."
+          : message,
+      );
     } finally {
       setIsLoading(false);
     }
@@ -62,7 +102,11 @@ export function SignUpForm({ className, ...props }: React.ComponentPropsWithoutR
       <Card>
         <CardHeader>
           <CardTitle className="text-2xl">Sign up</CardTitle>
-          <CardDescription>Create a new account</CardDescription>
+          <CardDescription>
+            {inviteRequired
+              ? "Colosseum is invite only — you'll need a code."
+              : "Create the first account for this Colosseum."}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSignUp}>
@@ -102,6 +146,21 @@ export function SignUpForm({ className, ...props }: React.ComponentPropsWithoutR
                   onChange={(e) => setRepeatPassword(e.target.value)}
                 />
               </div>
+              {inviteRequired && (
+                <div className="grid gap-2">
+                  <Label htmlFor="invite-code">Invite code</Label>
+                  <Input
+                    id="invite-code"
+                    type="text"
+                    autoCapitalize="characters"
+                    autoComplete="off"
+                    placeholder="Required"
+                    required
+                    value={inviteCode}
+                    onChange={(e) => setInviteCode(e.target.value)}
+                  />
+                </div>
+              )}
               {error && <p className="text-sm text-red-500">{error}</p>}
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? "Creating an account..." : "Sign up"}

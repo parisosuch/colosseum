@@ -2,9 +2,15 @@ import Link from "next/link";
 
 import { SignUpForm } from "@/components/sign-up-form";
 import { signupsDisabled } from "@/lib/colosseum/config";
+import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
-export default function Page() {
+export default async function Page() {
+  // The first account ever (the self-hoster) signs up without a code; after
+  // that, invites are required. Default to requiring a code if the check fails.
+  const supabase = await createClient();
+  const { data: inviteRequired } = await supabase.rpc("invite_required");
+
   return (
     <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
       <div className="w-full max-w-sm">
@@ -24,7 +30,7 @@ export default function Page() {
             <CardContent />
           </Card>
         ) : (
-          <SignUpForm />
+          <SignUpForm inviteRequired={inviteRequired ?? true} />
         )}
       </div>
     </div>

@@ -138,7 +138,7 @@ const ColumnComponent = memo(function ColumnComponent({
 
   return (
     <Dialog>
-      <DialogTrigger className="w-full">
+      <DialogTrigger className="cv-card w-full">
         <div className="group relative w-full">
           <div className="w-full aspect-square border rounded-lg text-left">
             {column.type === "text" ? (

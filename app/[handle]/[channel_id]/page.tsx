@@ -5,16 +5,26 @@ import ColumnComponent from "@/components/column";
 import ManageChannelButton from "@/components/manage-channel-button";
 import ExportChannelButton from "@/components/export-channel-button";
 import ColumnInput from "@/components/column-input";
+import ChannelControls from "@/components/channel-controls";
 import { Spinner } from "@/components/ui/spinner";
 import { Channel, getChannel } from "@/lib/colosseum/channel";
-import { Column, getChannelColumns } from "@/lib/colosseum/column";
+import {
+  Column,
+  ColumnFilter,
+  ColumnSort,
+  getChannelColumnCount,
+  getChannelColumns,
+} from "@/lib/colosseum/column";
 import { ColumnScreenshot, getScreenshotsForUrls } from "@/lib/colosseum/screenshot-data";
 import { createClient } from "@/lib/supabase/client";
 import { User } from "@supabase/supabase-js";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+
+// How many blocks to load per page (initial load and each load-more).
+const PAGE_SIZE = 50;
 
 export default function ChannelPage() {
   const params = useParams();
@@ -25,100 +35,210 @@ export default function ChannelPage() {
   const [columns, setColumns] = useState<Column[]>([]);
   const [screenshots, setScreenshots] = useState<Map<string, ColumnScreenshot>>(new Map());
   const [user, setUser] = useState<User | null>(null);
-  const [metaData, setMetaData] = useState<{ title: string; data: string }[]>();
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
 
+  // Channel-wide stats, kept independent of the paged/filtered `columns` list so
+  // the meta panel always reflects the whole channel.
+  const [totalCount, setTotalCount] = useState(0);
+  const [newestAt, setNewestAt] = useState<string | null>(null);
+
+  // Search / filter / sort controls. `debouncedSearch` is what actually drives
+  // the query, so typing doesn't fire a request per keystroke.
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<ColumnFilter>("all");
+  const [sort, setSort] = useState<ColumnSort>("newest");
+
+  // Paging state for the current control selection.
+  const [loadingPage, setLoadingPage] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+
   const router = useRouter();
   const supabase = createClient();
 
-  const handleMetaData = (channelData: Channel, columnsData: Column[]) => {
-    const lastModifiedChannel = columnsData.at(0);
-    let lastModifiedChannelDays: string;
-    if (!lastModifiedChannel) {
-      lastModifiedChannelDays = "-";
-    } else {
-      const today = new Date();
-      const lastDate = new Date(lastModifiedChannel.created_at);
-      const diffInMs = today.getTime() - lastDate.getTime();
-      const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
-      lastModifiedChannelDays = diffInDays === 0 ? "Today" : `${diffInDays} days ago`;
+  const isFiltered = debouncedSearch.trim() !== "" || typeFilter !== "all";
+
+  const metaData = useMemo(() => {
+    if (!channel) return [];
+
+    let lastModified = "-";
+    if (newestAt) {
+      const diffInDays = Math.floor((Date.now() - new Date(newestAt).getTime()) / 86400000);
+      lastModified = diffInDays === 0 ? "Today" : `${diffInDays} days ago`;
     }
 
-    setMetaData([
+    return [
       {
         title: "Created On",
-        data: new Date(channelData.created_at).toLocaleString("default", {
+        data: new Date(channel.created_at).toLocaleString("default", {
           month: "long",
           day: "numeric",
           year: "numeric",
         }),
       },
-      {
-        title: "Last Modified",
-        data: lastModifiedChannelDays,
-      },
-      {
-        title: "Length",
-        data: columnsData.length.toString(),
-      },
-    ]);
-  };
+      { title: "Last Modified", data: lastModified },
+      { title: "Length", data: totalCount.toString() },
+    ];
+  }, [channel, newestAt, totalCount]);
 
-  const fetchData = async () => {
-    setLoading(true);
-
-    try {
-      const channelResponse = await getChannel(supabase, parseInt(channel_id, 10));
-      if (!channelResponse) {
-        // null = the channel doesn't exist or RLS hides it from this user
-        // (e.g. a private channel they don't own). Don't leak which; redirect.
-        router.push("/");
-        return;
-      }
-      setChannel(channelResponse);
-
-      const { data: userData } = await supabase.auth.getUser();
-      const currentUser = userData.user;
-
-      const match = !currentUser ? false : channelResponse.owner_id === currentUser.id;
-
-      setIsOwner(match);
-
-      if (channelResponse.private) {
-        if (!currentUser || currentUser.id !== channelResponse.owner_id) {
-          router.push("/"); // redirect safely in client component
-          return;
-        }
-      }
-
-      setUser(currentUser);
-
-      const columnsResponse = await getChannelColumns(supabase, parseInt(channel_id, 10));
-      setColumns(columnsResponse);
-
-      handleMetaData(channelResponse, columnsResponse);
-    } catch (e) {
-      console.error(e);
-      setFetchError(true);
-      toast.error("Failed to load channel.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Load the channel, resolve ownership/visibility, and seed the channel-wide
+  // stats. The block list itself is loaded by the paging effect below once the
+  // channel is set.
   useEffect(() => {
     if (!channel_id) {
       return;
     }
 
-    fetchData();
+    let cancelled = false;
+    const id = parseInt(channel_id, 10);
+
+    (async () => {
+      setLoading(true);
+      try {
+        const channelResponse = await getChannel(supabase, id);
+        if (!channelResponse) {
+          // null = the channel doesn't exist or RLS hides it from this user
+          // (e.g. a private channel they don't own). Don't leak which; redirect.
+          router.push("/");
+          return;
+        }
+
+        const { data: userData } = await supabase.auth.getUser();
+        const currentUser = userData.user;
+
+        if (channelResponse.private) {
+          if (!currentUser || currentUser.id !== channelResponse.owner_id) {
+            router.push("/"); // redirect safely in client component
+            return;
+          }
+        }
+
+        const [count, newest] = await Promise.all([
+          getChannelColumnCount(supabase, id),
+          getChannelColumns(supabase, id, { sort: "newest", limit: 1 }),
+        ]);
+
+        if (cancelled) return;
+
+        setChannel(channelResponse);
+        setUser(currentUser);
+        setIsOwner(!!currentUser && channelResponse.owner_id === currentUser.id);
+        setTotalCount(count);
+        setNewestAt(newest[0]?.created_at ?? null);
+      } catch (e) {
+        console.error(e);
+        if (!cancelled) {
+          setFetchError(true);
+          toast.error("Failed to load channel.");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [channel_id, supabase, router]);
 
-  // Hydrate screenshots for all URL columns in a single batched query instead
-  // of each ColumnComponent fetching its own. Runs on load and whenever a new
-  // URL column appears (only the missing ones are fetched).
+  // Debounce the search box so each keystroke doesn't fire a query.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Load (or reload) the first page whenever the channel or any control changes.
+  // The previous list stays on screen until the new one resolves, so changing a
+  // control doesn't flash an empty grid.
+  useEffect(() => {
+    if (!channel) return;
+
+    let cancelled = false;
+    setLoadingPage(true);
+    (async () => {
+      try {
+        const first = await getChannelColumns(supabase, channel.id, {
+          search: debouncedSearch,
+          type: typeFilter,
+          sort,
+          limit: PAGE_SIZE,
+          offset: 0,
+        });
+        if (cancelled) return;
+        setColumns(first);
+        setHasMore(first.length === PAGE_SIZE);
+      } catch (e) {
+        console.error(e);
+        if (!cancelled) toast.error("Failed to load blocks.");
+      } finally {
+        if (!cancelled) setLoadingPage(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [channel, debouncedSearch, typeFilter, sort, supabase]);
+
+  // Append the next page. Offset is the count already loaded.
+  const loadMore = useCallback(async () => {
+    if (!channel || loadingMore || loadingPage || !hasMore) return;
+
+    setLoadingMore(true);
+    try {
+      const next = await getChannelColumns(supabase, channel.id, {
+        search: debouncedSearch,
+        type: typeFilter,
+        sort,
+        limit: PAGE_SIZE,
+        offset: columns.length,
+      });
+      setColumns((prev) => [...prev, ...next]);
+      setHasMore(next.length === PAGE_SIZE);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [
+    channel,
+    loadingMore,
+    loadingPage,
+    hasMore,
+    supabase,
+    debouncedSearch,
+    typeFilter,
+    sort,
+    columns.length,
+  ]);
+
+  // Observe a sentinel below the grid; load the next page as it nears the
+  // viewport. A ref keeps the observer callback pointed at the latest loadMore
+  // without re-creating the observer on every render.
+  const loadMoreRef = useRef(loadMore);
+  loadMoreRef.current = loadMore;
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) loadMoreRef.current();
+      },
+      { rootMargin: "600px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [loading]);
+
+  // Hydrate screenshots for the loaded URL columns in one batched (chunked)
+  // query instead of each ColumnComponent fetching its own. Runs as pages
+  // append; only URLs not already resolved are fetched.
   useEffect(() => {
     const missing = columns
       .filter((c) => c.type === "url" && c.url && !screenshots.has(c.url))
@@ -154,6 +274,13 @@ export default function ChannelPage() {
       cancelled = true;
     };
   }, [columns, screenshots, supabase]);
+
+  // A new block is the newest and bumps the channel length; reflect that in the
+  // stats without refetching the whole channel.
+  const handleBlockAdded = useCallback(() => {
+    setTotalCount((c) => c + 1);
+    setNewestAt(new Date().toISOString());
+  }, []);
 
   if (loading) {
     return (
@@ -198,7 +325,7 @@ export default function ChannelPage() {
         {isOwner ? (
           <ManageChannelButton channel={channel} handle={handle} onUpdated={setChannel} />
         ) : null}
-        <ExportChannelButton channel={channel} columns={columns} screenshots={screenshots} />
+        <ExportChannelButton channel={channel} />
       </div>
       <div className="flex flex-col space-y-4">
         <div className="flex flex-col">
@@ -207,7 +334,7 @@ export default function ChannelPage() {
         </div>
         <div className="flex flex-col">
           <h2 className="text-sm font-light">Meta</h2>
-          {metaData!.map((meta, index) => (
+          {metaData.map((meta, index) => (
             <div key={index} className="flex w-full max-w-[350px] justify-between">
               <h3>{meta.title}</h3>
               <p className="font-mono">{meta.data}</p>
@@ -215,38 +342,66 @@ export default function ChannelPage() {
           ))}
         </div>
       </div>
-      {!isOwner && columns.length === 0 ? (
+
+      {totalCount > 0 ? (
+        <ChannelControls
+          search={search}
+          onSearchChange={setSearch}
+          type={typeFilter}
+          onTypeChange={setTypeFilter}
+          sort={sort}
+          onSortChange={setSort}
+        />
+      ) : null}
+
+      {!isOwner && totalCount === 0 ? (
         <p className="text-black/50 dark:text-white/50">No blocks yet.</p>
       ) : (
-        <div
-          className="grid gap-4
+        <>
+          <div
+            className="grid gap-4
                 grid-cols-2
                 md:grid-cols-3
                 lg:grid-cols-4
                 xl:grid-cols-5
                 2xl:grid-cols-6
                 3xl:grid-cols-7"
-        >
-          {isOwner ? (
-            <ColumnInput
-              user={user}
-              columns={columns}
-              setColumns={setColumns}
-              channel={channel}
-              handleMetaData={handleMetaData}
-            />
+          >
+            {isOwner ? (
+              <ColumnInput
+                user={user}
+                columns={columns}
+                setColumns={setColumns}
+                channel={channel}
+                onBlockAdded={handleBlockAdded}
+              />
+            ) : null}
+            {columns.map((column) => (
+              <ColumnComponent
+                column={column}
+                isOwner={isOwner}
+                handle={handle}
+                setColumns={setColumns}
+                screenshot={column.url ? screenshots.get(column.url) : undefined}
+                key={column.id}
+              />
+            ))}
+          </div>
+
+          {!loadingPage && columns.length === 0 ? (
+            <p className="text-black/50 dark:text-white/50">
+              {isFiltered ? "No blocks match your search." : "No blocks yet."}
+            </p>
           ) : null}
-          {columns.map((column) => (
-            <ColumnComponent
-              column={column}
-              isOwner={isOwner}
-              handle={handle}
-              setColumns={setColumns}
-              screenshot={column.url ? screenshots.get(column.url) : undefined}
-              key={column.id}
-            />
-          ))}
-        </div>
+
+          {/* Infinite-scroll sentinel + load-more spinner. */}
+          <div ref={sentinelRef} className="h-1" />
+          {loadingMore ? (
+            <div className="w-full flex justify-center py-4">
+              <Spinner variant="circle" className="size-6 text-black/30 dark:text-white/30" />
+            </div>
+          ) : null}
+        </>
       )}
     </div>
   );

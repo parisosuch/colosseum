@@ -13,6 +13,16 @@ export default async function ColumnPreview({ column }: { column: Column }) {
     );
   }
 
+  if (column.type === "image") {
+    return (
+      <img
+        src={column.image}
+        alt={column.title ?? "Image block"}
+        className="w-full h-full object-cover rounded-md"
+      />
+    );
+  }
+
   // get the image url of the screenshot
   const supabase = await createClient();
 

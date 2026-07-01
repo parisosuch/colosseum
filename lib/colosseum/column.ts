@@ -22,6 +22,12 @@ export async function getColumn(
   supabase: SupabaseClient,
   column_id: number,
 ): Promise<Column | null> {
+  // A non-numeric route param (e.g. parseInt("foo") → NaN) is never a real id;
+  // treat it as not-found instead of letting Postgres reject NaN for a bigint.
+  if (!Number.isFinite(column_id)) {
+    return null;
+  }
+
   const { data, error } = await supabase
     .from("column")
     .select("*")

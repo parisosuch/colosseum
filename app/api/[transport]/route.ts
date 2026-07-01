@@ -208,7 +208,7 @@ const handler = createMcpHandler(
           { supabase, userId },
         ) => {
           await requireChannel(supabase, userId, channelId, "read");
-          return { blocks: await getChannelColumns(supabase, channelId, limit) };
+          return { blocks: await getChannelColumns(supabase, channelId, { limit }) };
         },
       ),
     );

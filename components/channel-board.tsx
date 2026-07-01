@@ -2,6 +2,7 @@
 
 import PageHeader from "@/components/page-header";
 import ColumnComponent from "@/components/column";
+import BlockModal from "@/components/block-modal";
 import ManageChannelButton from "@/components/manage-channel-button";
 import ExportChannelButton from "@/components/export-channel-button";
 import ColumnInput from "@/components/column-input";
@@ -78,6 +79,7 @@ export default function ChannelBoard({
 
   // Which block's modal is open, so it can step to a sibling block in place.
   const [openId, setOpenId] = useState<number | null>(null);
+  const openBlock = useCallback((id: number) => setOpenId(id), []);
 
   const supabase = createClient();
 
@@ -246,8 +248,15 @@ export default function ChannelBoard({
   );
 
   const openIndex = openId == null ? -1 : columns.findIndex((c) => c.id === openId);
+  const openColumn = openIndex >= 0 ? columns[openIndex] : null;
   const hasPrev = openIndex > 0;
   const hasNext = openIndex >= 0 && openIndex < columns.length - 1;
+
+  // If the open block leaves the list (deleted, or filtered out by a control
+  // change), close the modal instead of stranding it on a gone block.
+  useEffect(() => {
+    if (openId != null && !columns.some((c) => c.id === openId)) setOpenId(null);
+  }, [columns, openId]);
 
   return (
     <div className="w-full p-6 sm:p-12 space-y-8">
@@ -311,16 +320,8 @@ export default function ChannelBoard({
               : columns.map((column) => (
                   <ColumnComponent
                     column={column}
-                    isOwner={isOwner}
-                    handle={handle}
-                    setColumns={setColumns}
                     screenshot={column.url ? screenshots.get(column.url) : undefined}
-                    open={openId === column.id}
-                    onOpenChange={(o) => setOpenId(o ? column.id : null)}
-                    onPrev={() => navigate(-1)}
-                    onNext={() => navigate(1)}
-                    hasPrev={hasPrev}
-                    hasNext={hasNext}
+                    onOpen={openBlock}
                     key={column.id}
                   />
                 ))}
@@ -341,6 +342,22 @@ export default function ChannelBoard({
           ) : null}
         </>
       )}
+
+      <BlockModal
+        column={openColumn}
+        open={openId != null}
+        onOpenChange={(o) => {
+          if (!o) setOpenId(null);
+        }}
+        isOwner={isOwner}
+        handle={handle}
+        setColumns={setColumns}
+        screenshot={openColumn?.url ? screenshots.get(openColumn.url) : undefined}
+        onPrev={() => navigate(-1)}
+        onNext={() => navigate(1)}
+        hasPrev={hasPrev}
+        hasNext={hasNext}
+      />
     </div>
   );
 }

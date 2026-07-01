@@ -177,6 +177,20 @@ export async function updateColumnDescription(
   }
 }
 
+// Set title and/or description in one update — used to pre-fill a URL block
+// from its page metadata after capture.
+export async function updateColumnMeta(
+  supabase: SupabaseClient,
+  column_id: number,
+  fields: { title?: string; description?: string },
+): Promise<void> {
+  const { error } = await supabase.from("column").update(fields).eq("id", column_id);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 export async function deleteColumn(supabase: SupabaseClient, column_id: number): Promise<void> {
   const { error } = await supabase.from("column").delete().eq("id", column_id);
 

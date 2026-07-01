@@ -39,6 +39,16 @@ export function isURL(text: string): boolean {
   return true;
 }
 
+// Escapes ilike wildcards so a literal `%`/`_` in a search term isn't treated
+// as one, and strips the characters PostgREST uses to delimit an `.or(...)`
+// filter so a search term can't break out of it.
+export function sanitizeSearch(term: string): string {
+  return term
+    .replace(/[%_]/g, (m) => `\\${m}`)
+    .replace(/[(),]/g, " ")
+    .trim();
+}
+
 export function timeAgo(date: Date) {
   const now = new Date();
   const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);

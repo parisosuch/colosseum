@@ -33,31 +33,75 @@ export async function getColumn(
   return data;
 }
 
+export type ColumnSort = "newest" | "oldest" | "title_az" | "title_za";
+export type ColumnFilter = "all" | "url" | "text" | "image";
+
+// Options for querying a channel's blocks. Every channel-page control feeds the
+// same query so search, type-filter, ordering and paging compose server-side
+// (rather than filtering a fully-loaded list on the client).
+export type ColumnQuery = {
+  // Case-insensitive substring matched against title/description/text/url.
+  search?: string;
+  // Block type to keep; "all" (the default) applies no type filter.
+  type?: ColumnFilter;
+  // Result ordering; defaults to "newest".
+  sort?: ColumnSort;
+  // Page size. Omit for all rows (used by exports and the profile preview).
+  limit?: number;
+  // Row offset for paged load-more; used together with `limit`.
+  offset?: number;
+};
+
+// Escape ilike wildcards so a literal `%`/`_` in the query isn't treated as one,
+// and drop the characters PostgREST uses to delimit an `.or(...)` filter so a
+// search term can't break out of it.
+function sanitizeSearch(term: string): string {
+  return term
+    .replace(/[%_]/g, (m) => `\\${m}`)
+    .replace(/[(),]/g, " ")
+    .trim();
+}
+
 export async function getChannelColumns(
   supabase: SupabaseClient,
   channel_id: number,
-  limit?: number,
+  query: ColumnQuery = {},
 ): Promise<Column[]> {
-  if (limit) {
-    const { data, error } = await supabase
-      .from("column")
-      .select("*")
-      .eq("channel_id", channel_id)
-      .order("created_at", { ascending: false })
-      .limit(limit);
+  const { search, type = "all", sort = "newest", limit, offset = 0 } = query;
 
-    if (error) {
-      throw new Error(error.message);
-    }
+  let builder = supabase.from("column").select("*").eq("channel_id", channel_id);
 
-    return data;
+  if (type !== "all") {
+    builder = builder.eq("type", type);
   }
 
-  const { data, error } = await supabase
-    .from("column")
-    .select("*")
-    .eq("channel_id", channel_id)
-    .order("created_at", { ascending: false });
+  const term = search ? sanitizeSearch(search) : "";
+  if (term) {
+    const pattern = `%${term}%`;
+    builder = builder.or(
+      ["title", "description", "text", "url"].map((col) => `${col}.ilike.${pattern}`).join(","),
+    );
+  }
+
+  switch (sort) {
+    case "oldest":
+      builder = builder.order("created_at", { ascending: true });
+      break;
+    case "title_az":
+      builder = builder.order("title", { ascending: true, nullsFirst: false });
+      break;
+    case "title_za":
+      builder = builder.order("title", { ascending: false, nullsFirst: false });
+      break;
+    default:
+      builder = builder.order("created_at", { ascending: false });
+  }
+
+  if (limit !== undefined) {
+    builder = builder.range(offset, offset + limit - 1);
+  }
+
+  const { data, error } = await builder;
 
   if (error) {
     throw new Error(error.message);

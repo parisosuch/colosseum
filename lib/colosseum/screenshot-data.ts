@@ -12,9 +12,15 @@ export type ColumnScreenshot = {
   captured_at: string | null;
 };
 
-// Batch-fetch cached screenshot rows for many URLs in a single query, instead
-// of one request per column. Returns a map keyed by url; URLs without a cached
-// screenshot are simply absent from the map.
+// Max URLs per `.in("url", …)` query. The lookup is a GET, so the URL list
+// rides in the request URL; chunking keeps it under the length cap PostgREST
+// and proxies enforce when a channel has hundreds of URL blocks.
+const SCREENSHOT_CHUNK_SIZE = 100;
+
+// Batch-fetch cached screenshot rows for many URLs, instead of one request per
+// column. Splits the URLs into bounded chunks (run in parallel) so the request
+// URL can't overflow, then merges them. Returns a map keyed by url; URLs
+// without a cached screenshot are simply absent from the map.
 export async function getScreenshotsForUrls(
   supabase: SupabaseClient,
   urls: string[],
@@ -24,17 +30,30 @@ export async function getScreenshotsForUrls(
     return screenshots;
   }
 
-  const { data, error } = await supabase
-    .from("screenshot")
-    .select("url, image_url, title, captured_at")
-    .in("url", urls);
-
-  if (error) {
-    throw new Error(error.message);
+  const chunks: string[][] = [];
+  for (let i = 0; i < urls.length; i += SCREENSHOT_CHUNK_SIZE) {
+    chunks.push(urls.slice(i, i + SCREENSHOT_CHUNK_SIZE));
   }
 
-  for (const row of data ?? []) {
-    screenshots.set(row.url, row as ColumnScreenshot);
+  const results = await Promise.all(
+    chunks.map(async (chunk) => {
+      const { data, error } = await supabase
+        .from("screenshot")
+        .select("url, image_url, title, captured_at")
+        .in("url", chunk);
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      return data ?? [];
+    }),
+  );
+
+  for (const rows of results) {
+    for (const row of rows) {
+      screenshots.set(row.url, row as ColumnScreenshot);
+    }
   }
   return screenshots;
 }

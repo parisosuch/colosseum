@@ -1,5 +1,11 @@
 # Colosseum
 
+## Docs
+
+- [REST API](docs/api.md) — CRUD your channels and blocks programmatically.
+- [MCP server](docs/mcp.md) — connect Claude Desktop, Claude Code, or any
+  other MCP client to manage your channels and blocks.
+
 ## Local development (Supabase in Docker)
 
 This project runs against a full Supabase stack in Docker, managed by the

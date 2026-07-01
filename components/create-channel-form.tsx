@@ -1,7 +1,5 @@
 "use client";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import React, { useState } from "react";
 import { Button } from "./ui/button";
@@ -13,10 +11,7 @@ import { createChannel } from "@/lib/colosseum/channel";
 import { Checkbox } from "./ui/checkbox";
 import { getUserProfile } from "@/lib/colosseum/user";
 
-export default function CreateChannelForm({
-  className,
-  ...props
-}: React.ComponentPropsWithoutRef<"div">) {
+export default function CreateChannelForm() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [isPrivate, setPrivate] = useState<boolean>(false);
@@ -61,48 +56,40 @@ export default function CreateChannelForm({
   };
 
   return (
-    <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-2xl">Create Channel</CardTitle>
-          <CardDescription>Start stashing your web.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit}>
-            <div className="flex flex-col gap-6">
-              <div className="grid gap-2">
-                <Label htmlFor="text">Title</Label>
-                <Input
-                  id="title"
-                  type="text"
-                  placeholder=""
-                  required
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                />
-                <Label htmlFor="text">Description</Label>
-                <Input
-                  id="description"
-                  type="text"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                />
-                <Label htmlFor="text">Private Channel</Label>
-                <Checkbox
-                  id="private"
-                  checked={isPrivate}
-                  onCheckedChange={(state) => setPrivate(state === true)}
-                />
-              </div>
-              {error && <p className="text-sm text-red-500">{error}</p>}
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? "Creating channel..." : "Create channel"}
-                <PlusIcon />
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+    <form onSubmit={handleSubmit}>
+      <div className="flex flex-col gap-6">
+        <div className="grid gap-2">
+          <Label htmlFor="title">Title</Label>
+          <Input
+            id="title"
+            type="text"
+            placeholder=""
+            required
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+          <Label htmlFor="description">Description</Label>
+          <Input
+            id="description"
+            type="text"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+          <div className="mt-2 flex items-center gap-2">
+            <Checkbox
+              id="private"
+              checked={isPrivate}
+              onCheckedChange={(state) => setPrivate(state === true)}
+            />
+            <Label htmlFor="private">Private channel</Label>
+          </div>
+        </div>
+        {error && <p className="text-sm text-red-500">{error}</p>}
+        <Button type="submit" className="w-full" disabled={isLoading}>
+          {isLoading ? "Creating channel..." : "Create channel"}
+          <PlusIcon />
+        </Button>
+      </div>
+    </form>
   );
 }

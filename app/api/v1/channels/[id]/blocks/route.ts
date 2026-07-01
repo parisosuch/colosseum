@@ -44,7 +44,7 @@ export async function GET(req: Request, { params }: Ctx) {
   }
 
   try {
-    const blocks = await getChannelColumns(auth.supabase, channelId, limit);
+    const blocks = await getChannelColumns(auth.supabase, channelId, { limit });
     return json({ blocks });
   } catch (e) {
     console.error(e);

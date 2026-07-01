@@ -66,3 +66,14 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer utilities {
+  /* Let the browser skip layout/paint for offscreen blocks in long channel
+     grids. The intrinsic size is a placeholder for a not-yet-rendered card
+     (square preview + caption line); the browser substitutes the real size
+     once a card scrolls into view. */
+  .cv-card {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 320px;
+  }
+}

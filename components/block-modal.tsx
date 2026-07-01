@@ -59,7 +59,7 @@ export default function BlockModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="w-[97vw] !h-[97vh] !max-w-none p-4"
+        className="w-[97vw] !h-[97vh] !max-w-none p-4 outline-none"
         onKeyDown={(e) => {
           // Arrow keys step between blocks — but not while editing a field,
           // where the arrows should move the cursor.
@@ -74,26 +74,6 @@ export default function BlockModal({
           }
         }}
       >
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Previous block"
-          disabled={!hasPrev}
-          onClick={onPrev}
-          className="absolute left-2 top-1/2 z-10 -translate-y-1/2"
-        >
-          <ChevronLeft />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Next block"
-          disabled={!hasNext}
-          onClick={onNext}
-          className="absolute right-2 top-1/2 z-10 -translate-y-1/2"
-        >
-          <ChevronRight />
-        </Button>
         {displayColumn ? (
           <BlockModalBody
             key={displayColumn.id}
@@ -102,6 +82,10 @@ export default function BlockModal({
             handle={handle}
             setColumns={setColumns}
             screenshot={screenshot}
+            onPrev={onPrev}
+            onNext={onNext}
+            hasPrev={hasPrev}
+            hasNext={hasNext}
           />
         ) : null}
       </DialogContent>
@@ -117,12 +101,20 @@ function BlockModalBody({
   handle,
   setColumns,
   screenshot,
+  onPrev,
+  onNext,
+  hasPrev,
+  hasNext,
 }: {
   column: Column;
   isOwner: boolean;
   handle: string;
   setColumns: Dispatch<SetStateAction<Column[]>>;
   screenshot?: ColumnScreenshot;
+  onPrev: () => void;
+  onNext: () => void;
+  hasPrev: boolean;
+  hasNext: boolean;
 }) {
   const [title, setTitle] = useState(column.title ?? "");
   const [description, setDescription] = useState(column.description ?? "");
@@ -239,68 +231,90 @@ function BlockModalBody({
           )}
         </div>
       </div>
-      <div className="w-full md:w-1/4 border rounded-lg space-y-2 h-fit">
-        <DialogTitle>
-          <Input
-            ref={titleInputRef}
-            placeholder="No title"
-            disabled={!isOwner}
-            value={title}
-            className="border-none shadow-none"
-            onChange={(e) => setTitle(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                handleTitleChange();
-              }
-            }}
-          />
-        </DialogTitle>
-        <DialogDescription>
-          <Textarea
-            ref={descriptionInputRef}
-            placeholder="No description"
-            disabled={!isOwner}
-            value={description}
-            rows={1}
-            // field-sizing grows the box with its content; shift+Enter adds a
-            // line, Enter saves.
-            className="resize-none border-none shadow-none [field-sizing:content]"
-            onChange={(e) => setDescription(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleDescriptionChange();
-              }
-            }}
-          />
-        </DialogDescription>
-        <div className="flex w-full justify-between text-xs p-3">
-          <h3>Created on</h3>
-          <p className="font-mono">{new Date(column.created_at).toDateString()}</p>
-        </div>
-        <div className="p-3 w-full flex justify-end items-center gap-2">
-          <Button asChild variant="link" size="sm">
-            <Link href={`/${handle}/${column.channel_id}/${column.id}`}>
-              <LinkIcon className="size-3" />
-              Permalink
-            </Link>
+      <div className="w-full md:w-1/4 space-y-2">
+        <div className="flex justify-end gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Previous block"
+            disabled={!hasPrev}
+            onClick={onPrev}
+          >
+            <ChevronLeft />
           </Button>
-          {isDirty ? (
-            <Button size="sm" onClick={handleSave}>
-              Save
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Next block"
+            disabled={!hasNext}
+            onClick={onNext}
+          >
+            <ChevronRight />
+          </Button>
+        </div>
+        <div className="border rounded-lg space-y-2 h-fit">
+          <DialogTitle>
+            <Input
+              ref={titleInputRef}
+              placeholder="No title"
+              disabled={!isOwner}
+              value={title}
+              className="border-none shadow-none"
+              onChange={(e) => setTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleTitleChange();
+                }
+              }}
+            />
+          </DialogTitle>
+          <DialogDescription>
+            <Textarea
+              ref={descriptionInputRef}
+              placeholder="No description"
+              disabled={!isOwner}
+              value={description}
+              rows={1}
+              // field-sizing grows the box with its content; shift+Enter adds a
+              // line, Enter saves.
+              className="resize-none border-none shadow-none [field-sizing:content]"
+              onChange={(e) => setDescription(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleDescriptionChange();
+                }
+              }}
+            />
+          </DialogDescription>
+          <div className="flex w-full justify-between text-xs p-3">
+            <h3>Created on</h3>
+            <p className="font-mono">{new Date(column.created_at).toDateString()}</p>
+          </div>
+          <div className="p-3 w-full flex justify-end items-center gap-2">
+            <Button asChild variant="link" size="sm">
+              <Link href={`/${handle}/${column.channel_id}/${column.id}`}>
+                <LinkIcon className="size-3" />
+                Permalink
+              </Link>
             </Button>
-          ) : null}
-          {isOwner ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-destructive hover:text-destructive"
-              onClick={handleDelete}
-            >
-              Delete
-            </Button>
-          ) : null}
+            {isDirty ? (
+              <Button size="sm" onClick={handleSave}>
+                Save
+              </Button>
+            ) : null}
+            {isOwner ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-destructive hover:text-destructive"
+                onClick={handleDelete}
+              >
+                Delete
+              </Button>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>

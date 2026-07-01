@@ -91,11 +91,12 @@ export default function InviteManager({
                   <span className="text-sm text-muted-foreground">
                     {exhausted ? "Used" : `${invite.uses}/${invite.max_uses} used`}
                   </span>
-                  <button
+                  <Button
                     type="button"
+                    variant="outline"
+                    size="sm"
                     onClick={() => handleCopy(invite.code)}
                     disabled={exhausted}
-                    className="flex items-center gap-1 text-sm underline disabled:no-underline disabled:opacity-40"
                   >
                     {copied === invite.code ? (
                       <>
@@ -106,15 +107,17 @@ export default function InviteManager({
                         <CopyIcon size={14} /> Copy
                       </>
                     )}
-                  </button>
+                  </Button>
                   {invite.uses === 0 ? (
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="sm"
                       onClick={() => handleRevoke(invite.code)}
-                      className="flex items-center gap-1 text-sm text-red-500 underline"
+                      className="text-destructive hover:text-destructive"
                     >
                       <Trash2Icon size={14} /> Revoke
-                    </button>
+                    </Button>
                   ) : null}
                 </div>
               </li>

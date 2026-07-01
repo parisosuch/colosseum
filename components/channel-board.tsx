@@ -1,6 +1,6 @@
 "use client";
 
-import BrandLink from "@/components/brand-link";
+import PageHeader from "@/components/page-header";
 import ColumnComponent from "@/components/column";
 import ManageChannelButton from "@/components/manage-channel-button";
 import ExportChannelButton from "@/components/export-channel-button";
@@ -12,7 +12,6 @@ import { Column, ColumnFilter, ColumnSort, getChannelColumns } from "@/lib/colos
 import { ColumnScreenshot, getScreenshotsForUrls } from "@/lib/colosseum/screenshot-data";
 import { createClient } from "@/lib/supabase/client";
 import { User } from "@supabase/supabase-js";
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -233,16 +232,7 @@ export default function ChannelBoard({
 
   return (
     <div className="w-full p-6 sm:p-12 space-y-8">
-      <h1 className="text-2xl sm:text-4xl">
-        <BrandLink /> <span className="font-extralight">/</span>{" "}
-        <Link
-          href={`/${handle}`}
-          className="dark:text-white/75 text-black/75 hover:dark:text-white/100 hover:text-black/100"
-        >
-          {handle}
-        </Link>{" "}
-        <span className="font-extralight">/</span> {channel.title}
-      </h1>
+      <PageHeader crumbs={[{ label: handle, href: `/${handle}` }, { label: channel.title }]} />
       <div className="flex items-center gap-2">
         {isOwner ? (
           <ManageChannelButton channel={channel} handle={handle} onUpdated={setChannel} />
@@ -251,11 +241,11 @@ export default function ChannelBoard({
       </div>
       <div className="flex flex-col space-y-4">
         <div className="flex flex-col">
-          <h2 className="text-sm font-light">Description</h2>
+          <h2 className="text-label">Description</h2>
           {channel.description ? <p className="">{channel.description}</p> : null}
         </div>
         <div className="flex flex-col">
-          <h2 className="text-sm font-light">Meta</h2>
+          <h2 className="text-label">Meta</h2>
           {metaData.map((meta, index) => (
             <div key={index} className="flex w-full max-w-[350px] justify-between">
               <h3>{meta.title}</h3>
@@ -277,7 +267,7 @@ export default function ChannelBoard({
       ) : null}
 
       {!isOwner && totalCount === 0 ? (
-        <p className="text-black/50 dark:text-white/50">No blocks yet.</p>
+        <p className="text-muted-foreground">No blocks yet.</p>
       ) : (
         <>
           <div
@@ -312,7 +302,7 @@ export default function ChannelBoard({
           </div>
 
           {!loadingPage && columns.length === 0 ? (
-            <p className="text-black/50 dark:text-white/50">
+            <p className="text-muted-foreground">
               {isFiltered ? "No blocks match your search." : "No blocks yet."}
             </p>
           ) : null}
@@ -321,7 +311,7 @@ export default function ChannelBoard({
           <div ref={sentinelRef} className="h-1" />
           {loadingMore ? (
             <div className="w-full flex justify-center py-4">
-              <Spinner variant="circle" className="size-6 text-black/30 dark:text-white/30" />
+              <Spinner variant="circle" className="size-6 text-muted-foreground" />
             </div>
           ) : null}
         </>

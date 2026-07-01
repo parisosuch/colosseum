@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { createClient } from "@/lib/supabase/client";
 import { timeAgo } from "@/lib/utils";
+import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
 import { Input } from "./ui/input";
 import ScreenShotPreview from "./screenshot-preview";
@@ -161,13 +162,13 @@ const ColumnComponent = memo(function ColumnComponent({
             // Reserve one caption line even when the URL has no title — otherwise
             // an untitled block is a line shorter than its siblings (and its own
             // hover state, which shows the timestamp) and visibly shifts.
-            <p className="group-hover:hidden truncate pt-1 text-xs font-light">{urlTitle || " "}</p>
+            <p className="group-hover:hidden truncate pt-1 text-caption">{urlTitle || " "}</p>
           ) : (
-            <p className="pt-1 text-xs font-light opacity-0 group-hover:hidden select-none">
+            <p className="pt-1 text-caption opacity-0 group-hover:hidden select-none">
               placeholder
             </p>
           )}
-          <p className="hidden group-hover:block pt-1 text-xs font-light">
+          <p className="hidden group-hover:block pt-1 text-caption">
             {timeAgo(new Date(column.created_at))}
           </p>
         </div>
@@ -254,30 +255,26 @@ const ColumnComponent = memo(function ColumnComponent({
               <p className="font-mono">{new Date(column.created_at).toDateString()}</p>
             </div>
             <div className="p-3 w-full flex justify-end items-center gap-2">
-              <Link
-                href={`/${handle}/${column.channel_id}/${column.id}`}
-                className="text-xs underline font-light flex items-center gap-1"
-              >
-                <LinkIcon className="size-3" />
-                permalink
-              </Link>
+              <Button asChild variant="link" size="sm">
+                <Link href={`/${handle}/${column.channel_id}/${column.id}`}>
+                  <LinkIcon className="size-3" />
+                  Permalink
+                </Link>
+              </Button>
               {isDirty ? (
-                <button
-                  onClick={() => handleSave(column)}
-                  className="text-xs underline font-light px-2"
-                >
-                  save
-                </button>
+                <Button size="sm" onClick={() => handleSave(column)}>
+                  Save
+                </Button>
               ) : null}
               {isOwner ? (
-                <button
-                  className="text-xs underline font-light"
-                  onClick={() => {
-                    handleDeleteColumn(column);
-                  }}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => handleDeleteColumn(column)}
                 >
-                  delete
-                </button>
+                  Delete
+                </Button>
               ) : null}
             </div>
           </div>

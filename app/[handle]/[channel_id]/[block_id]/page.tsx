@@ -1,8 +1,7 @@
 import { GlobeIcon } from "lucide-react";
 import { Metadata } from "next";
-import Link from "next/link";
 
-import BrandLink from "@/components/brand-link";
+import PageHeader from "@/components/page-header";
 import { getChannel } from "@/lib/colosseum/channel";
 import { Column, getColumn } from "@/lib/colosseum/column";
 import { createClient } from "@/lib/supabase/server";
@@ -43,9 +42,7 @@ export default async function BlockPage({ params }: BlockPageParams) {
   if (notFound) {
     return (
       <div className="w-full p-6 sm:p-12 space-y-8">
-        <h1 className="text-4xl">
-          <BrandLink /> <span className="font-extralight">/</span> block
-        </h1>
+        <PageHeader crumbs={[{ label: "block" }]} />
         <p className="text-muted-foreground">This block doesn&apos;t exist.</p>
       </div>
     );
@@ -71,23 +68,13 @@ export default async function BlockPage({ params }: BlockPageParams) {
 
   return (
     <div className="w-full p-6 sm:p-12 space-y-8">
-      <h1 className="text-4xl">
-        <BrandLink /> <span className="font-extralight">/</span>{" "}
-        <Link
-          href={`/${handle}`}
-          className="dark:text-white/75 text-black/75 hover:dark:text-white/100 hover:text-black/100"
-        >
-          {handle}
-        </Link>{" "}
-        <span className="font-extralight">/</span>{" "}
-        <Link
-          href={`/${handle}/${channel_id}`}
-          className="dark:text-white/75 text-black/75 hover:dark:text-white/100 hover:text-black/100"
-        >
-          {channel?.title ?? "channel"}
-        </Link>{" "}
-        <span className="font-extralight">/</span> {blockLabel(column)}
-      </h1>
+      <PageHeader
+        crumbs={[
+          { label: handle, href: `/${handle}` },
+          { label: channel?.title ?? "channel", href: `/${handle}/${channel_id}` },
+          { label: blockLabel(column) },
+        ]}
+      />
 
       <div className="flex flex-col lg:flex-row gap-8">
         <div className="w-full lg:w-3/4">
@@ -127,17 +114,17 @@ export default async function BlockPage({ params }: BlockPageParams) {
 
         <aside className="w-full lg:w-1/4 space-y-4">
           <div className="flex flex-col">
-            <h2 className="text-sm font-light">Title</h2>
+            <h2 className="text-label">Title</h2>
             <p>{column.title || <span className="text-muted-foreground">No title</span>}</p>
           </div>
           <div className="flex flex-col">
-            <h2 className="text-sm font-light">Description</h2>
+            <h2 className="text-label">Description</h2>
             <p>
               {column.description || <span className="text-muted-foreground">No description</span>}
             </p>
           </div>
           <div className="flex flex-col">
-            <h2 className="text-sm font-light">Created</h2>
+            <h2 className="text-label">Created</h2>
             <p className="font-mono">{new Date(column.created_at).toDateString()}</p>
           </div>
         </aside>

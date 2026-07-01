@@ -22,7 +22,7 @@ import { Textarea } from "./ui/textarea";
 import { Input } from "./ui/input";
 import ScreenShotPreview from "./screenshot-preview";
 import { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
-import { GlobeIcon, LinkIcon } from "lucide-react";
+import { ChevronLeft, ChevronRight, GlobeIcon, LinkIcon } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 
@@ -36,6 +36,14 @@ type ColumnComponentProps = {
   // channel). `undefined` means "not loaded yet" for a URL column; a resolved
   // value may still have a null image_url when no screenshot exists.
   screenshot?: ColumnScreenshot;
+  // Modal open state + block-to-block navigation, controlled by the parent so
+  // one open modal can step to a sibling block (arrows / keyboard).
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onPrev?: () => void;
+  onNext?: () => void;
+  hasPrev?: boolean;
+  hasNext?: boolean;
 };
 
 const ColumnComponent = memo(function ColumnComponent({
@@ -44,6 +52,12 @@ const ColumnComponent = memo(function ColumnComponent({
   isOwner,
   handle,
   screenshot,
+  open,
+  onOpenChange,
+  onPrev,
+  onNext,
+  hasPrev,
+  hasNext,
 }: ColumnComponentProps) {
   const [title, setTitle] = useState(column.title ?? "");
   const [description, setDescription] = useState(column.description ?? "");
@@ -66,7 +80,7 @@ const ColumnComponent = memo(function ColumnComponent({
   const loading = column.type === "url" && screenshot === undefined;
 
   const titleInputRef = useRef<HTMLInputElement>(null);
-  const descriptionInputRef = useRef<HTMLInputElement>(null);
+  const descriptionInputRef = useRef<HTMLTextAreaElement>(null);
   const textInputRef = useRef<HTMLTextAreaElement>(null);
 
   const supabase = createClient();
@@ -138,7 +152,7 @@ const ColumnComponent = memo(function ColumnComponent({
   };
 
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger className="cv-card w-full">
         <div className="group relative w-full">
           <div className="w-full aspect-square border rounded-lg text-left">
@@ -173,8 +187,47 @@ const ColumnComponent = memo(function ColumnComponent({
           </p>
         </div>
       </DialogTrigger>
-      <DialogContent className="w-[97vw] !h-[97vh] !max-w-none p-4">
-        <div className="flex flex-col md:flex-row pt-4 px-4 gap-4 overflow-y-auto">
+      <DialogContent
+        className="w-[97vw] !h-[97vh] !max-w-none p-4"
+        onKeyDown={(e) => {
+          // Arrow keys step between blocks — but not while editing a field,
+          // where the arrows should move the cursor.
+          const tag = (e.target as HTMLElement).tagName;
+          if (tag === "INPUT" || tag === "TEXTAREA") return;
+          if (e.key === "ArrowLeft" && hasPrev) {
+            e.preventDefault();
+            onPrev?.();
+          } else if (e.key === "ArrowRight" && hasNext) {
+            e.preventDefault();
+            onNext?.();
+          }
+        }}
+      >
+        {onPrev ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Previous block"
+            disabled={!hasPrev}
+            onClick={onPrev}
+            className="absolute left-2 top-1/2 z-10 -translate-y-1/2"
+          >
+            <ChevronLeft />
+          </Button>
+        ) : null}
+        {onNext ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Next block"
+            disabled={!hasNext}
+            onClick={onNext}
+            className="absolute right-2 top-1/2 z-10 -translate-y-1/2"
+          >
+            <ChevronRight />
+          </Button>
+        ) : null}
+        <div className="flex flex-col md:flex-row pt-4 px-4 gap-4 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <div className="w-full md:w-3/4 flex justify-center">
             <div className="flex w-full md:w-3/4 p-6 rounded-md">
               {column.text ? (
@@ -235,15 +288,18 @@ const ColumnComponent = memo(function ColumnComponent({
               />
             </DialogTitle>
             <DialogDescription>
-              <Input
+              <Textarea
                 ref={descriptionInputRef}
                 placeholder="No description"
                 disabled={!isOwner}
                 value={description}
-                className="border-none shadow-none"
+                rows={1}
+                // field-sizing grows the box with its content; shift+Enter adds
+                // a line, Enter saves.
+                className="resize-none border-none shadow-none [field-sizing:content]"
                 onChange={(e) => setDescription(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") {
+                  if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     handleDescriptionChange(column);
                   }

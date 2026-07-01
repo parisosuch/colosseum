@@ -13,7 +13,8 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
   const supabase = await createClient();
 
   const ChannelColumnsView = async ({ channel }: { channel: Channel }) => {
-    const columns = await getChannelColumns(supabase, channel.id);
+    // Only the first 5 previews are shown, so don't fetch the whole channel.
+    const columns = await getChannelColumns(supabase, channel.id, { limit: 5 });
 
     const columnCount = await getChannelColumnCount(supabase, channel.id);
 

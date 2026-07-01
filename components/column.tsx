@@ -158,7 +158,7 @@ const ColumnComponent = memo(function ColumnComponent({
 
   return (
     <Dialog>
-      <DialogTrigger className="w-full">
+      <DialogTrigger className="cv-card w-full">
         <div className="group relative w-full">
           <div className="w-full aspect-square border rounded-lg text-left">
             {column.type === "text" ? (
@@ -181,7 +181,7 @@ const ColumnComponent = memo(function ColumnComponent({
             // Reserve one caption line even when the URL has no title — otherwise
             // an untitled block is a line shorter than its siblings (and its own
             // hover state, which shows the timestamp) and visibly shifts.
-            <p className="group-hover:hidden pt-1 text-xs font-light">{urlTitle || " "}</p>
+            <p className="group-hover:hidden truncate pt-1 text-xs font-light">{urlTitle || " "}</p>
           ) : (
             <p className="pt-1 text-xs font-light opacity-0 group-hover:hidden select-none">
               placeholder

@@ -1,11 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { DownloadIcon } from "lucide-react";
+import { toast } from "sonner";
 
 import { Channel } from "@/lib/colosseum/channel";
-import { Column } from "@/lib/colosseum/column";
-import { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
+import { getChannelColumns } from "@/lib/colosseum/column";
+import { getScreenshotsForUrls } from "@/lib/colosseum/screenshot-data";
 import { buildChannelExport, exportFilename, toCSV, toJSON } from "@/lib/colosseum/export";
+import { createClient } from "@/lib/supabase/client";
 import { Button } from "./ui/button";
 import {
   DropdownMenu,
@@ -17,8 +20,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/t
 
 type ExportChannelButtonProps = {
   channel: Channel;
-  columns: Column[];
-  screenshots: Map<string, ColumnScreenshot>;
 };
 
 function downloadFile(filename: string, contents: string, mimeType: string) {
@@ -34,17 +35,31 @@ function downloadFile(filename: string, contents: string, mimeType: string) {
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-export default function ExportChannelButton({
-  channel,
-  columns,
-  screenshots,
-}: ExportChannelButtonProps) {
-  const exportAs = (format: "json" | "csv") => {
-    const data = buildChannelExport(channel, columns, screenshots);
-    if (format === "json") {
-      downloadFile(exportFilename(channel.title, "json"), toJSON(data), "application/json");
-    } else {
-      downloadFile(exportFilename(channel.title, "csv"), toCSV(data), "text/csv");
+export default function ExportChannelButton({ channel }: ExportChannelButtonProps) {
+  const supabase = createClient();
+  const [exporting, setExporting] = useState(false);
+
+  // Pull the whole channel at export time rather than relying on whatever the
+  // page currently has loaded — the channel page paginates, so its in-memory
+  // columns are only the visible slice. An export must always be complete.
+  const exportAs = async (format: "json" | "csv") => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const columns = await getChannelColumns(supabase, channel.id);
+      const urls = columns.filter((c) => c.type === "url" && c.url).map((c) => c.url!);
+      const screenshots = await getScreenshotsForUrls(supabase, urls);
+      const data = buildChannelExport(channel, columns, screenshots);
+      if (format === "json") {
+        downloadFile(exportFilename(channel.title, "json"), toJSON(data), "application/json");
+      } else {
+        downloadFile(exportFilename(channel.title, "csv"), toCSV(data), "text/csv");
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error("Couldn't export this channel. Please try again.");
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -54,7 +69,7 @@ export default function ExportChannelButton({
         <DropdownMenu>
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
-              <Button variant="secondary" size="icon" aria-label="Export">
+              <Button variant="secondary" size="icon" aria-label="Export" disabled={exporting}>
                 <DownloadIcon />
               </Button>
             </DropdownMenuTrigger>

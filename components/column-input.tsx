@@ -23,7 +23,8 @@ type ColumnInputProps = {
   columns: Column[];
   setColumns: Dispatch<SetStateAction<Column[]>>;
   channel: Channel | null;
-  handleMetaData: (channel: Channel, columns: Column[]) => void;
+  // Notify the parent that a block was added so it can update channel stats.
+  onBlockAdded: () => void;
 };
 
 export default function ColumnInput({
@@ -31,7 +32,7 @@ export default function ColumnInput({
   columns,
   setColumns,
   channel,
-  handleMetaData,
+  onBlockAdded,
 }: ColumnInputProps) {
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -95,9 +96,8 @@ export default function ColumnInput({
         image: publicUrl,
       });
 
-      const newColumns = [column, ...columns];
-      setColumns(newColumns);
-      handleMetaData(channel, newColumns);
+      setColumns([column, ...columns]);
+      onBlockAdded();
     } catch (e) {
       console.error(e);
       toast.error("Couldn't upload that image. Please try again.");
@@ -179,10 +179,9 @@ export default function ColumnInput({
     }
 
     // 3) Show the column regardless of the screenshot outcome.
-    const newColumns = [column, ...columns];
-    setColumns(newColumns);
+    setColumns([column, ...columns]);
     setText("");
-    handleMetaData(channel, newColumns);
+    onBlockAdded();
     if (screenshotFailed) {
       toast.warning("Block added, but the screenshot for that link couldn't be captured.");
     } else {

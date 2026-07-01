@@ -54,16 +54,6 @@ export type ColumnQuery = {
   offset?: number;
 };
 
-// Escape ilike wildcards so a literal `%`/`_` in the query isn't treated as one,
-// and drop the characters PostgREST uses to delimit an `.or(...)` filter so a
-// search term can't break out of it.
-function sanitizeSearch(term: string): string {
-  return term
-    .replace(/[%_]/g, (m) => `\\${m}`)
-    .replace(/[(),]/g, " ")
-    .trim();
-}
-
 export async function getChannelColumns(
   supabase: SupabaseClient,
   channel_id: number,

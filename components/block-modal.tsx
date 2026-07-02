@@ -59,7 +59,7 @@ export default function BlockModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="w-[97vw] !h-[97vh] !max-w-none p-4 outline-none"
+        className="w-[97vw] h-auto max-h-[95vh] md:!h-[97vh] !max-w-none p-4 outline-none"
         onKeyDown={(e) => {
           // Arrow keys step between blocks — but not while editing a field,
           // where the arrows should move the cursor.
@@ -119,6 +119,9 @@ function BlockModalBody({
   const [title, setTitle] = useState(column.title ?? "");
   const [description, setDescription] = useState(column.description ?? "");
   const [text, setText] = useState(column.text ?? "");
+  // A stored screenshot can 404; fall back to the placeholder. The body is keyed
+  // by block id in the parent, so this resets when navigating between blocks.
+  const [imageErrored, setImageErrored] = useState(false);
 
   const imageURL = screenshot?.image_url ?? null;
   const urlTitle = screenshot?.title ?? "";
@@ -132,6 +135,25 @@ function BlockModalBody({
   const titleInputRef = useRef<HTMLInputElement>(null);
   const descriptionInputRef = useRef<HTMLTextAreaElement>(null);
   const textInputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Horizontal-swipe navigation (mobile). Fire only when the gesture is clearly
+  // horizontal and past a threshold, so vertical scrolling still works.
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0];
+    touchStart.current = { x: t.clientX, y: t.clientY };
+  };
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const start = touchStart.current;
+    touchStart.current = null;
+    if (!start) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    if (Math.abs(dx) < 60 || Math.abs(dx) <= Math.abs(dy)) return;
+    if (dx < 0 && hasNext) onNext();
+    else if (dx > 0 && hasPrev) onPrev();
+  };
 
   const supabase = createClient();
 
@@ -188,48 +210,52 @@ function BlockModalBody({
   };
 
   return (
-    <div className="flex flex-col md:flex-row pt-4 px-4 gap-4 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      <div className="w-full md:w-3/4 flex justify-center">
-        <div className="flex w-full md:w-3/4 p-6 rounded-md">
-          {column.text ? (
-            <Textarea
-              ref={textInputRef}
-              value={text}
-              disabled={!isOwner}
-              onChange={(e) => setText(e.target.value)}
-            />
-          ) : column.type === "image" ? (
-            <img
-              src={column.image}
-              alt={column.title ?? "Image block"}
-              className="max-h-[85vh] w-auto object-contain rounded-md"
-            />
-          ) : (
-            <a href={column.url} target="_blank" className="size-11/12">
-              <div className="flex flex-row space-x-2 items-center border border-1 rounded-md px-2 py-1">
-                <GlobeIcon className="size-4" />
-                <h1 className="font-mono">{column.url!}</h1>
-              </div>
-              <div className="mt-2 w-full">
-                {imageURL ? (
-                  <img
-                    src={
-                      screenshotVersion
-                        ? `${imageURL}?v=${encodeURIComponent(screenshotVersion)}`
-                        : imageURL
-                    }
-                    alt={urlTitle || "Website screenshot"}
-                    className="w-full rounded-md"
-                  />
-                ) : (
-                  <div className="w-full rounded-md border p-4 text-center text-sm text-muted-foreground">
-                    No screenshot available
-                  </div>
-                )}
-              </div>
-            </a>
-          )}
-        </div>
+    <div
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      className="flex flex-col md:flex-row pt-4 px-4 gap-4 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
+      <div className="flex w-full items-start justify-center p-2 md:w-3/4 md:p-6">
+        {column.text ? (
+          <Textarea
+            ref={textInputRef}
+            value={text}
+            disabled={!isOwner}
+            className="min-h-[50vh]"
+            onChange={(e) => setText(e.target.value)}
+          />
+        ) : column.type === "image" ? (
+          <img
+            src={column.image}
+            alt={column.title ?? "Image block"}
+            className="max-h-[85vh] w-auto object-contain rounded-md"
+          />
+        ) : (
+          <a href={column.url} target="_blank" className="block w-full max-w-3xl">
+            <div className="flex flex-row items-center gap-2 border rounded-md px-2 py-1">
+              <GlobeIcon className="size-4 shrink-0" />
+              <span className="font-mono text-sm break-all">{column.url!}</span>
+            </div>
+            <div className="mt-2 w-full">
+              {imageURL && !imageErrored ? (
+                <img
+                  src={
+                    screenshotVersion
+                      ? `${imageURL}?v=${encodeURIComponent(screenshotVersion)}`
+                      : imageURL
+                  }
+                  alt={urlTitle || "Website screenshot"}
+                  onError={() => setImageErrored(true)}
+                  className="w-full rounded-md"
+                />
+              ) : (
+                <div className="w-full rounded-md border p-4 text-center text-sm text-muted-foreground">
+                  No screenshot available
+                </div>
+              )}
+            </div>
+          </a>
+        )}
       </div>
       <div className="w-full md:w-1/4 space-y-2">
         <div className="flex justify-end gap-1">

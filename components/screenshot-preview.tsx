@@ -1,3 +1,7 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
 export default function ScreenShotPreview({
   image_url,
   version,
@@ -13,12 +17,19 @@ export default function ScreenShotPreview({
       ? `${image_url}?v=${encodeURIComponent(String(version))}`
       : image_url;
 
+  // A stored screenshot can 404 (deleted object, failed capture). Fall back to
+  // the placeholder instead of a broken-image glyph. Reset when the src changes
+  // so a refresh — or a reused instance in the virtualized list — retries.
+  const [errored, setErrored] = useState(false);
+  useEffect(() => setErrored(false), [src]);
+
   return (
     <div className="w-full h-full flex items-center justify-center">
-      {src ? (
+      {src && !errored ? (
         <img
           src={src}
           alt={`Screenshot of website.`}
+          onError={() => setErrored(true)}
           className="w-full h-full object-top object-cover rounded-lg"
         />
       ) : (

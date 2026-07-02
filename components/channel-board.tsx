@@ -1,20 +1,21 @@
 "use client";
 
 import PageHeader from "@/components/page-header";
-import ColumnComponent from "@/components/column";
+import ColumnComponent, { LIST_GRID } from "@/components/column";
 import BlockModal from "@/components/block-modal";
 import ManageChannelButton from "@/components/manage-channel-button";
 import ExportChannelButton from "@/components/export-channel-button";
 import ColumnInput from "@/components/column-input";
 import ChannelControls from "@/components/channel-controls";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { Channel } from "@/lib/colosseum/channel";
 import { Column, ColumnFilter, ColumnSort, getChannelColumns } from "@/lib/colosseum/column";
 import { ColumnScreenshot, getScreenshotsForUrls } from "@/lib/colosseum/screenshot-data";
 import { createClient } from "@/lib/supabase/client";
 import { User } from "@supabase/supabase-js";
-import { LayoutGrid, List } from "lucide-react";
+import { LayoutGrid, List, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -29,12 +30,14 @@ const SKELETON_COUNT = 18;
 function BlockSkeleton({ view }: { view: "grid" | "list" }) {
   if (view === "list") {
     return (
-      <div className="flex w-full items-center gap-3 border rounded-lg p-2">
-        <div className="size-16 shrink-0 rounded-md bg-muted animate-pulse" />
-        <div className="min-w-0 flex-1 space-y-1">
-          <div className="h-4 w-1/2 rounded bg-muted animate-pulse" />
-          <div className="h-3 w-1/4 rounded bg-muted animate-pulse" />
+      <div className={`border-b px-2 py-2 ${LIST_GRID}`}>
+        <div className="flex items-center gap-2">
+          <div className="size-10 shrink-0 rounded-md bg-muted animate-pulse" />
+          <div className="h-4 w-2/3 rounded bg-muted animate-pulse" />
         </div>
+        <div className="h-4 w-1/2 rounded bg-muted animate-pulse" />
+        <div className="hidden h-4 w-2/3 rounded bg-muted animate-pulse sm:block" />
+        <div className="hidden h-3 w-1/2 rounded bg-muted animate-pulse sm:block" />
       </div>
     );
   }
@@ -90,12 +93,19 @@ export default function ChannelBoard({
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
 
-  // Grid (square cards) vs list (compact rows) layout for the block area.
+  // Grid (square cards) vs list (Are.na-style table) layout for the block area.
   const [view, setView] = useState<"grid" | "list">("grid");
+  // In table view the block input is collapsed behind an "Add block" button.
+  const [adding, setAdding] = useState(false);
 
   // Which block's modal is open, so it can step to a sibling block in place.
   const [openId, setOpenId] = useState<number | null>(null);
   const openBlock = useCallback((id: number) => setOpenId(id), []);
+
+  // URLs whose screenshot is being captured in the background. The hydrate
+  // effect skips these so the row keeps showing a spinner (instead of resolving
+  // to an empty preview) until the capture lands.
+  const [capturing, setCapturing] = useState<Set<string>>(new Set());
 
   const supabase = createClient();
 
@@ -210,7 +220,7 @@ export default function ChannelBoard({
   // append; only URLs not already resolved are fetched.
   useEffect(() => {
     const missing = columns
-      .filter((c) => c.type === "url" && c.url && !screenshots.has(c.url))
+      .filter((c) => c.type === "url" && c.url && !screenshots.has(c.url) && !capturing.has(c.url))
       .map((c) => c.url!);
 
     if (missing.length === 0) {
@@ -242,13 +252,34 @@ export default function ChannelBoard({
     return () => {
       cancelled = true;
     };
-  }, [columns, screenshots, supabase]);
+  }, [columns, screenshots, capturing, supabase]);
 
   // A new block is the newest and bumps the channel length; reflect that in the
   // stats without refetching the whole channel.
   const handleBlockAdded = useCallback(() => {
     setTotalCount((c) => c + 1);
     setNewestAt(new Date().toISOString());
+    // Close the table view's add-block modal.
+    setAdding(false);
+  }, []);
+
+  const beginCapture = useCallback((url: string) => {
+    setCapturing((prev) => new Set(prev).add(url));
+  }, []);
+
+  // The screenshot landed: stop treating the URL as capturing and drop it from
+  // the cache so the hydrate effect refetches the now-captured preview.
+  const refreshScreenshot = useCallback((url: string) => {
+    setCapturing((prev) => {
+      const next = new Set(prev);
+      next.delete(url);
+      return next;
+    });
+    setScreenshots((prev) => {
+      const next = new Map(prev);
+      next.delete(url);
+      return next;
+    });
   }, []);
 
   // Step the open modal to an adjacent block. Clamps at the ends.
@@ -330,38 +361,72 @@ export default function ChannelBoard({
         <p className="text-muted-foreground">No blocks yet.</p>
       ) : (
         <>
-          <div
-            className={
-              view === "grid"
-                ? "grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
-                : "flex flex-col gap-2"
-            }
-          >
-            {isOwner ? (
-              <div className={view === "list" ? "max-w-xs" : undefined}>
+          {view === "list" ? (
+            // Table view: the block input collapses behind an "Add block"
+            // button, then a plain header + full-width rows (see column.tsx).
+            <div className="flex flex-col gap-2">
+              {isOwner ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-fit"
+                  onClick={() => setAdding(true)}
+                >
+                  <Plus />
+                  Add block
+                </Button>
+              ) : null}
+              <div>
+                <div className={`border-b px-2 py-2 text-label ${LIST_GRID}`}>
+                  <span>Content</span>
+                  <span>Title</span>
+                  <span className="hidden sm:block">Author</span>
+                  <span className="hidden sm:block">Added at</span>
+                </div>
+                {loadingPage && columns.length === 0
+                  ? Array.from({ length: SKELETON_COUNT }).map((_, i) => (
+                      <BlockSkeleton view={view} key={i} />
+                    ))
+                  : columns.map((column) => (
+                      <ColumnComponent
+                        column={column}
+                        screenshot={column.url ? screenshots.get(column.url) : undefined}
+                        view={view}
+                        author={handle}
+                        onOpen={openBlock}
+                        key={column.id}
+                      />
+                    ))}
+              </div>
+            </div>
+          ) : (
+            <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+              {isOwner ? (
                 <ColumnInput
                   user={user}
                   columns={columns}
                   setColumns={setColumns}
                   channel={channel}
                   onBlockAdded={handleBlockAdded}
+                  onScreenshotStart={beginCapture}
+                  onScreenshotReady={refreshScreenshot}
                 />
-              </div>
-            ) : null}
-            {loadingPage && columns.length === 0
-              ? Array.from({ length: SKELETON_COUNT }).map((_, i) => (
-                  <BlockSkeleton view={view} key={i} />
-                ))
-              : columns.map((column) => (
-                  <ColumnComponent
-                    column={column}
-                    screenshot={column.url ? screenshots.get(column.url) : undefined}
-                    view={view}
-                    onOpen={openBlock}
-                    key={column.id}
-                  />
-                ))}
-          </div>
+              ) : null}
+              {loadingPage && columns.length === 0
+                ? Array.from({ length: SKELETON_COUNT }).map((_, i) => (
+                    <BlockSkeleton view={view} key={i} />
+                  ))
+                : columns.map((column) => (
+                    <ColumnComponent
+                      column={column}
+                      screenshot={column.url ? screenshots.get(column.url) : undefined}
+                      view={view}
+                      onOpen={openBlock}
+                      key={column.id}
+                    />
+                  ))}
+            </div>
+          )}
 
           {!loadingPage && columns.length === 0 ? (
             <p className="text-muted-foreground">
@@ -394,6 +459,24 @@ export default function ChannelBoard({
         hasPrev={hasPrev}
         hasNext={hasNext}
       />
+
+      {/* Add-block modal (table view). handleBlockAdded closes it on success. */}
+      <Dialog open={adding} onOpenChange={setAdding}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add block</DialogTitle>
+          </DialogHeader>
+          <ColumnInput
+            user={user}
+            columns={columns}
+            setColumns={setColumns}
+            channel={channel}
+            onBlockAdded={handleBlockAdded}
+            onScreenshotStart={beginCapture}
+            onScreenshotReady={refreshScreenshot}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

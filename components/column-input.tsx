@@ -26,6 +26,11 @@ type ColumnInputProps = {
   channel: Channel | null;
   // Notify the parent that a block was added so it can update channel stats.
   onBlockAdded: () => void;
+  // A URL block's screenshot is captured after the block already shows in the
+  // list. `onScreenshotStart` fires when the capture begins (so the row shows a
+  // spinner); `onScreenshotReady` fires when it lands (rehydrate the preview).
+  onScreenshotStart?: (url: string) => void;
+  onScreenshotReady?: (url: string) => void;
 };
 
 export default function ColumnInput({
@@ -34,6 +39,8 @@ export default function ColumnInput({
   setColumns,
   channel,
   onBlockAdded,
+  onScreenshotStart,
+  onScreenshotReady,
 }: ColumnInputProps) {
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -167,41 +174,47 @@ export default function ColumnInput({
       return;
     }
 
-    // 2) For URL columns, capture a screenshot. A failure here must NOT block
-    // the column from appearing — it's already inserted, and the preview falls
-    // back to "no screenshot". Always clear loading via finally so the spinner
-    // can never get stuck.
-    let screenshotFailed = false;
-    if (isUrlInput) {
-      setLoading(true);
-      try {
-        const meta = await screenshotURL(urlText);
-        // Pre-fill the block's title/description from the page metadata, but
-        // only fields the user left empty so a manual edit is never clobbered.
-        const patch: { title?: string; description?: string } = {};
-        if (meta?.title && !column.title) patch.title = meta.title;
-        if (meta?.description && !column.description) patch.description = meta.description;
-        if (Object.keys(patch).length > 0) {
-          await updateColumnMeta(supabase, column.id, patch);
-          column = { ...column, ...patch };
-        }
-      } catch (e) {
-        console.error(e);
-        screenshotFailed = true;
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    // 3) Show the column regardless of the screenshot outcome.
+    // 2) Show the block and hand control back to the parent right away (which
+    // closes the add-block modal) — the screenshot is captured afterwards.
     setColumns([column, ...columns]);
     setText("");
     onBlockAdded();
-    if (screenshotFailed) {
-      toast.warning("Block added, but the screenshot for that link couldn't be captured.");
-    } else {
+
+    if (!isUrlInput) {
       toast.success("Block added.");
+      return;
     }
+
+    // Mark the row as capturing so it shows a spinner until the shot lands. This
+    // batches with the add above, so the row never flashes an empty preview.
+    onScreenshotStart?.(urlText);
+
+    // 3) Capture the URL's screenshot in the background. The block is already in
+    // the list, so this runs detached — this component (inside the modal) may
+    // already be unmounted, so it only touches parent state. When the capture
+    // lands, patch the block's metadata and refresh its preview.
+    const newColumn = column;
+    void (async () => {
+      try {
+        const meta = await screenshotURL(urlText);
+        // Fill title/description from the page metadata, but only fields the
+        // user left empty so a manual edit is never clobbered.
+        const patch: { title?: string; description?: string } = {};
+        if (meta?.title && !newColumn.title) patch.title = meta.title;
+        if (meta?.description && !newColumn.description) patch.description = meta.description;
+        if (Object.keys(patch).length > 0) {
+          await updateColumnMeta(supabase, newColumn.id, patch);
+          setColumns((prev) => prev.map((c) => (c.id === newColumn.id ? { ...c, ...patch } : c)));
+        }
+      } catch (e) {
+        console.error(e);
+        toast.warning("Block added, but the screenshot for that link couldn't be captured.");
+      } finally {
+        // Always clear the capturing state — on failure this refetches to a
+        // null preview (so the spinner stops); on success, the real shot.
+        onScreenshotReady?.(urlText);
+      }
+    })();
   };
 
   return (

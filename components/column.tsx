@@ -4,7 +4,16 @@ import { memo } from "react";
 import { Column } from "@/lib/colosseum/column";
 import { timeAgo } from "@/lib/utils";
 import ScreenShotPreview from "./screenshot-preview";
+import { Spinner } from "./ui/spinner";
 import { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
+
+// Column template shared by the table header (rendered by the channel board)
+// and every row below, so the two line up. Each row is a full-width grid with
+// the same tracks, which is what keeps the cells aligned without a real <table>.
+// On narrow screens it collapses to Content + Title; the Author / Added-at cells
+// are `hidden sm:block`, so they drop out of the grid to match.
+export const LIST_GRID =
+  "grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-3 items-center sm:grid-cols-[minmax(0,2.5fr)_minmax(0,2.5fr)_minmax(0,1fr)_minmax(0,1fr)] sm:gap-4";
 
 type ColumnComponentProps = {
   column: Column;
@@ -12,6 +21,11 @@ type ColumnComponentProps = {
   // channel). `undefined` means "not loaded yet" for a URL column; a resolved
   // value may still have a null image_url when no screenshot exists.
   screenshot?: ColumnScreenshot;
+  // "grid" (square card, the default) or "list" (Are.na-style table row).
+  view?: "grid" | "list";
+  // Author handle shown in the list view's Author column. All blocks in a
+  // channel share the owner, so the board passes one value for every row.
+  author?: string;
   // Open this block in the shared channel modal. Takes the id so the parent can
   // pass one stable handler (keeps the memo'd cards from re-rendering when the
   // open block — and only the open block — changes).
@@ -24,6 +38,8 @@ type ColumnComponentProps = {
 const ColumnComponent = memo(function ColumnComponent({
   column,
   screenshot,
+  view = "grid",
+  author,
   onOpen,
 }: ColumnComponentProps) {
   const imageURL = screenshot?.image_url ?? null;
@@ -33,31 +49,63 @@ const ColumnComponent = memo(function ColumnComponent({
   // A URL column is still loading until the parent resolves its screenshot.
   const loading = column.type === "url" && screenshot === undefined;
 
+  const thumbnail =
+    column.type === "text" ? (
+      <p className="text-sm line-clamp-[10] p-2">{column.text}</p>
+    ) : column.type === "image" ? (
+      <img
+        src={column.image}
+        alt={column.title ?? "Image block"}
+        className="w-full h-full object-cover rounded-lg"
+      />
+    ) : loading ? (
+      <div className="w-full h-full flex items-center justify-center">
+        <Spinner variant="circle" className="size-6 text-muted-foreground" />
+      </div>
+    ) : (
+      <ScreenShotPreview image_url={imageURL} version={screenshotVersion} />
+    );
+
+  if (view === "list") {
+    // Content column: the domain/path for a link, the text itself for a text
+    // block, the title (or a fallback) for an image.
+    const content =
+      column.type === "url"
+        ? (column.url ?? "").replace(/^https?:\/\//, "")
+        : column.type === "text"
+          ? (column.text ?? "")
+          : column.title || "Image";
+    const title = column.title || urlTitle || "";
+
+    return (
+      <button
+        type="button"
+        aria-label="Open block"
+        onClick={() => onOpen(column.id)}
+        className={`w-full border-b px-2 py-2 text-left hover:bg-muted/50 ${LIST_GRID}`}
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="size-10 shrink-0 overflow-hidden rounded-md border">{thumbnail}</div>
+          <span className="truncate text-sm">{content}</span>
+        </div>
+        <span className="truncate text-sm">{title}</span>
+        <span className="hidden truncate text-sm text-muted-foreground sm:block">{author}</span>
+        <span className="hidden truncate text-caption sm:block">
+          {timeAgo(new Date(column.created_at))}
+        </span>
+      </button>
+    );
+  }
+
   return (
     <button type="button" onClick={() => onOpen(column.id)} className="cv-card w-full text-left">
       <div className="group relative w-full">
-        <div className="w-full aspect-square border rounded-lg text-left">
-          {column.type === "text" ? (
-            <p className="text-sm line-clamp-[10] p-2">{column.text}</p>
-          ) : column.type === "image" ? (
-            <img
-              src={column.image}
-              alt={column.title ?? "Image block"}
-              className="w-full h-full object-cover rounded-lg"
-            />
-          ) : loading ? (
-            <div className="w-full h-full flex items-center justify-center animate-pulse">
-              Loading...
-            </div>
-          ) : (
-            <ScreenShotPreview image_url={imageURL} version={screenshotVersion} />
-          )}
-        </div>
+        <div className="w-full aspect-square border rounded-lg text-left">{thumbnail}</div>
         {column.type === "url" ? (
           // Reserve one caption line even when the URL has no title — otherwise
           // an untitled block is a line shorter than its siblings (and its own
           // hover state, which shows the timestamp) and visibly shifts.
-          <p className="group-hover:hidden truncate pt-1 text-caption">{urlTitle || " "}</p>
+          <p className="group-hover:hidden truncate pt-1 text-caption">{urlTitle || " "}</p>
         ) : (
           <p className="pt-1 text-caption opacity-0 group-hover:hidden select-none">placeholder</p>
         )}

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import BrandLink from "@/components/brand-link";
+import PageHeader from "@/components/page-header";
 import InviteManager from "@/components/invite-manager";
 import { getMyInviteCodes } from "@/lib/colosseum/invite";
 import { getUserProfile } from "@/lib/colosseum/user";
@@ -27,10 +27,8 @@ export default async function InvitesPage() {
 
   return (
     <div className="w-full p-6 sm:p-12 space-y-8">
-      <h1 className="text-2xl sm:text-4xl">
-        <BrandLink /> <span className="font-extralight">/</span> invites
-      </h1>
-      <p className="text-sm font-light text-muted-foreground max-w-prose">
+      <PageHeader crumbs={[{ label: "invites" }]} />
+      <p className="text-sm text-muted-foreground max-w-prose">
         Colosseum is invite only. Share a code with someone you want to invite — each code is good
         for one sign-up.
       </p>

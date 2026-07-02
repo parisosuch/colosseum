@@ -22,6 +22,12 @@ export async function getColumn(
   supabase: SupabaseClient,
   column_id: number,
 ): Promise<Column | null> {
+  // A non-numeric route param (e.g. parseInt("foo") → NaN) is never a real id;
+  // treat it as not-found instead of letting Postgres reject NaN for a bigint.
+  if (!Number.isFinite(column_id)) {
+    return null;
+  }
+
   const { data, error } = await supabase
     .from("column")
     .select("*")
@@ -234,6 +240,20 @@ export async function updateColumnDescription(
     .from("column")
     .update({ description: description })
     .eq("id", column_id);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+// Set title and/or description in one update — used to pre-fill a URL block
+// from its page metadata after capture.
+export async function updateColumnMeta(
+  supabase: SupabaseClient,
+  column_id: number,
+  fields: { title?: string; description?: string },
+): Promise<void> {
+  const { error } = await supabase.from("column").update(fields).eq("id", column_id);
 
   if (error) {
     throw new Error(error.message);

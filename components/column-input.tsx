@@ -6,6 +6,7 @@ import {
   uploadURLColumn,
   uploadTextColumn,
   uploadImageColumn,
+  updateColumnMeta,
   Column,
 } from "@/lib/colosseum/column";
 import { isURL } from "@/lib/utils";
@@ -112,7 +113,7 @@ export default function ColumnInput({
 
     if (!data.session) {
       console.error("User is not auth.");
-      return;
+      return null;
     }
 
     const response = await fetch("/api/screenshot", {
@@ -129,6 +130,11 @@ export default function ColumnInput({
         typeof body?.error === "string" ? body.error : "Failed to capture screenshot.";
       throw new Error(message);
     }
+
+    // The route echoes the page's title/description (from the screenshot pass)
+    // so a new URL block can pre-fill them.
+    const body = await response.json().catch(() => null);
+    return body as { title?: string; description?: string } | null;
   };
 
   const handleTextAreaUpload = async () => {
@@ -169,7 +175,16 @@ export default function ColumnInput({
     if (isUrlInput) {
       setLoading(true);
       try {
-        await screenshotURL(urlText);
+        const meta = await screenshotURL(urlText);
+        // Pre-fill the block's title/description from the page metadata, but
+        // only fields the user left empty so a manual edit is never clobbered.
+        const patch: { title?: string; description?: string } = {};
+        if (meta?.title && !column.title) patch.title = meta.title;
+        if (meta?.description && !column.description) patch.description = meta.description;
+        if (Object.keys(patch).length > 0) {
+          await updateColumnMeta(supabase, column.id, patch);
+          column = { ...column, ...patch };
+        }
       } catch (e) {
         console.error(e);
         screenshotFailed = true;

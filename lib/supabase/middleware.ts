@@ -39,10 +39,10 @@ export async function updateSession(request: NextRequest) {
   const user = data?.claims;
 
   // Routes that require an authenticated user. Matched by exact path or as a
-  // path prefix (e.g. "/create-channel" also guards "/create-channel/..."").
-  // Everything else — the landing page, public profiles (/[handle]), public
-  // channels, and the /auth/* pages — stays open.
-  const protectedRoutes = ["/create-channel", "/invites", "/settings"];
+  // path prefix (e.g. "/settings" also guards "/settings/..."). Everything
+  // else — the landing page, public profiles (/[handle]), public channels, and
+  // the /auth/* pages — stays open.
+  const protectedRoutes = ["/invites", "/settings"];
   const { pathname } = request.nextUrl;
   const requiresAuth = protectedRoutes.some(
     (route) => pathname === route || pathname.startsWith(`${route}/`),

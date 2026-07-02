@@ -1,7 +1,8 @@
 "use client";
 
-import BrandLink from "@/components/brand-link";
+import PageHeader from "@/components/page-header";
 import ColumnComponent from "@/components/column";
+import BlockModal from "@/components/block-modal";
 import ManageChannelButton from "@/components/manage-channel-button";
 import ExportChannelButton from "@/components/export-channel-button";
 import ColumnInput from "@/components/column-input";
@@ -14,7 +15,6 @@ import { ColumnScreenshot, getScreenshotsForUrls } from "@/lib/colosseum/screens
 import { createClient } from "@/lib/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { LayoutGrid, List } from "lucide-react";
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -92,6 +92,10 @@ export default function ChannelBoard({
 
   // Grid (square cards) vs list (compact rows) layout for the block area.
   const [view, setView] = useState<"grid" | "list">("grid");
+
+  // Which block's modal is open, so it can step to a sibling block in place.
+  const [openId, setOpenId] = useState<number | null>(null);
+  const openBlock = useCallback((id: number) => setOpenId(id), []);
 
   const supabase = createClient();
 
@@ -247,18 +251,32 @@ export default function ChannelBoard({
     setNewestAt(new Date().toISOString());
   }, []);
 
+  // Step the open modal to an adjacent block. Clamps at the ends.
+  const navigate = useCallback(
+    (dir: -1 | 1) => {
+      setOpenId((cur) => {
+        if (cur == null) return cur;
+        const i = columns.findIndex((c) => c.id === cur);
+        return columns[i + dir]?.id ?? cur;
+      });
+    },
+    [columns],
+  );
+
+  const openIndex = openId == null ? -1 : columns.findIndex((c) => c.id === openId);
+  const openColumn = openIndex >= 0 ? columns[openIndex] : null;
+  const hasPrev = openIndex > 0;
+  const hasNext = openIndex >= 0 && openIndex < columns.length - 1;
+
+  // If the open block leaves the list (deleted, or filtered out by a control
+  // change), close the modal instead of stranding it on a gone block.
+  useEffect(() => {
+    if (openId != null && !columns.some((c) => c.id === openId)) setOpenId(null);
+  }, [columns, openId]);
+
   return (
     <div className="w-full p-6 sm:p-12 space-y-8">
-      <h1 className="text-2xl sm:text-4xl">
-        <BrandLink /> <span className="font-extralight">/</span>{" "}
-        <Link
-          href={`/${handle}`}
-          className="dark:text-white/75 text-black/75 hover:dark:text-white/100 hover:text-black/100"
-        >
-          {handle}
-        </Link>{" "}
-        <span className="font-extralight">/</span> {channel.title}
-      </h1>
+      <PageHeader crumbs={[{ label: handle, href: `/${handle}` }, { label: channel.title }]} />
       <div className="flex items-center gap-2">
         {isOwner ? (
           <ManageChannelButton channel={channel} handle={handle} onUpdated={setChannel} />
@@ -283,11 +301,11 @@ export default function ChannelBoard({
       </div>
       <div className="flex flex-col space-y-4">
         <div className="flex flex-col">
-          <h2 className="text-sm font-light">Description</h2>
+          <h2 className="text-label">Description</h2>
           {channel.description ? <p className="">{channel.description}</p> : null}
         </div>
         <div className="flex flex-col">
-          <h2 className="text-sm font-light">Meta</h2>
+          <h2 className="text-label">Meta</h2>
           {metaData.map((meta, index) => (
             <div key={index} className="flex w-full max-w-[350px] justify-between">
               <h3>{meta.title}</h3>
@@ -309,7 +327,7 @@ export default function ChannelBoard({
       ) : null}
 
       {!isOwner && totalCount === 0 ? (
-        <p className="text-black/50 dark:text-white/50">No blocks yet.</p>
+        <p className="text-muted-foreground">No blocks yet.</p>
       ) : (
         <>
           <div
@@ -337,18 +355,16 @@ export default function ChannelBoard({
               : columns.map((column) => (
                   <ColumnComponent
                     column={column}
-                    isOwner={isOwner}
-                    handle={handle}
-                    setColumns={setColumns}
                     screenshot={column.url ? screenshots.get(column.url) : undefined}
                     view={view}
+                    onOpen={openBlock}
                     key={column.id}
                   />
                 ))}
           </div>
 
           {!loadingPage && columns.length === 0 ? (
-            <p className="text-black/50 dark:text-white/50">
+            <p className="text-muted-foreground">
               {isFiltered ? "No blocks match your search." : "No blocks yet."}
             </p>
           ) : null}
@@ -357,11 +373,27 @@ export default function ChannelBoard({
           <div ref={sentinelRef} className="h-1" />
           {loadingMore ? (
             <div className="w-full flex justify-center py-4">
-              <Spinner variant="circle" className="size-6 text-black/30 dark:text-white/30" />
+              <Spinner variant="circle" className="size-6 text-muted-foreground" />
             </div>
           ) : null}
         </>
       )}
+
+      <BlockModal
+        column={openColumn}
+        open={openId != null}
+        onOpenChange={(o) => {
+          if (!o) setOpenId(null);
+        }}
+        isOwner={isOwner}
+        handle={handle}
+        setColumns={setColumns}
+        screenshot={openColumn?.url ? screenshots.get(openColumn.url) : undefined}
+        onPrev={() => navigate(-1)}
+        onNext={() => navigate(1)}
+        hasPrev={hasPrev}
+        hasNext={hasNext}
+      />
     </div>
   );
 }

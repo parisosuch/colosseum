@@ -30,7 +30,7 @@ import {
   uploadTextColumn,
   uploadURLColumn,
 } from "./column";
-import { putImageBlob } from "./blob";
+import { deleteMediaByUrl, putImageBlob } from "./blob";
 import { createInviteCode, InviteCode, revokeInviteCode } from "./invite";
 import { revokeApiToken } from "./api-token";
 import { getScreenshotsForUrls, ColumnScreenshot } from "./screenshot-data";
@@ -174,8 +174,10 @@ export async function uploadImageColumnAction(formData: FormData): Promise<Colum
   if (!Number.isInteger(channelId) || !(file instanceof File)) {
     throw new Error("Bad request.");
   }
-  await requireOwnedChannel(channelId, userId);
-  const image = await putImageBlob(file, userId);
+  const channel = await requireOwnedChannel(channelId, userId);
+  // The media reference inherits the channel's privacy; updateChannel keeps it
+  // in sync if the channel flips later.
+  const image = await putImageBlob(file, userId, channel.private ? "private" : "public");
   return uploadImageColumn({ created_by: userId, channel_id: channelId, image });
 }
 
@@ -309,7 +311,8 @@ export async function uploadAvatarAction(formData: FormData): Promise<{ url: str
   if (!(file instanceof File)) {
     throw new Error("Bad request.");
   }
-  return { url: await putImageBlob(file, userId) };
+  // Avatars show on public profile pages, so they're always public media.
+  return { url: await putImageBlob(file, userId, "public") };
 }
 
 export async function updateUserProfileAction(updates: {
@@ -324,8 +327,14 @@ export async function updateUserProfileAction(updates: {
       return { ok: false, message: validationError };
     }
   }
+  // A new avatar orphans the old one's media reference; capture it so it can
+  // be dropped (and its blob GC'd) after the update lands.
+  const previous = updates.avatar_url !== undefined ? await getUserProfile(userId) : null;
   try {
     const profile = await updateUserProfile(userId, updates);
+    if (previous?.avatar_url && previous.avatar_url !== updates.avatar_url) {
+      await deleteMediaByUrl(previous.avatar_url);
+    }
     return { ok: true, profile };
   } catch (e) {
     if (e instanceof HandleTakenError) {

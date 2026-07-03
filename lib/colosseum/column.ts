@@ -3,6 +3,7 @@ import { and, asc, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { column } from "@/lib/db/schema";
 import { sanitizeSearch } from "@/lib/utils";
+import { deleteMediaByUrl } from "./blob";
 
 export type Column = {
   id: number;
@@ -241,7 +242,15 @@ export async function updateColumn(
 }
 
 export async function deleteColumn(column_id: number): Promise<void> {
-  await db.delete(column).where(eq(column.id, column_id));
+  const [row] = await db
+    .delete(column)
+    .where(eq(column.id, column_id))
+    .returning({ image: column.image });
+  // Drop the deleted block's media reference (no-op for external image URLs);
+  // the blob is GC'd if this was its last reference.
+  if (row?.image) {
+    await deleteMediaByUrl(row.image);
+  }
 }
 
 export async function getChannelColumnCount(channel_id: number): Promise<number> {

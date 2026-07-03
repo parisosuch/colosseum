@@ -3,8 +3,8 @@
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Logo } from "@/components/logo";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -99,82 +99,79 @@ export function SignUpForm({
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-2xl">Sign up</CardTitle>
-          <CardDescription>
-            {inviteRequired
-              ? "Colosseum is invite only — you'll need a code."
-              : "Create the first account for this Colosseum."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSignUp}>
-            <div className="flex flex-col gap-6">
-              <div className="grid gap-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="m@example.com"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-2">
-                <div className="flex items-center">
-                  <Label htmlFor="password">Password</Label>
-                </div>
-                <Input
-                  id="password"
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-2">
-                <div className="flex items-center">
-                  <Label htmlFor="repeat-password">Repeat Password</Label>
-                </div>
-                <Input
-                  id="repeat-password"
-                  type="password"
-                  required
-                  value={repeatPassword}
-                  onChange={(e) => setRepeatPassword(e.target.value)}
-                />
-              </div>
-              {inviteRequired && (
-                <div className="grid gap-2">
-                  <Label htmlFor="invite-code">Invite code</Label>
-                  <Input
-                    id="invite-code"
-                    type="text"
-                    autoCapitalize="characters"
-                    autoComplete="off"
-                    placeholder="Required"
-                    required
-                    value={inviteCode}
-                    onChange={(e) => setInviteCode(e.target.value)}
-                  />
-                </div>
-              )}
-              {error && <p className="text-sm text-red-500">{error}</p>}
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? "Creating an account..." : "Sign up"}
-              </Button>
+      <div className="flex flex-col gap-2">
+        <Logo className="h-4 w-auto text-muted-foreground opacity-25" />
+        <h1 className="text-title">Sign up</h1>
+        <p className="text-muted-foreground">
+          {inviteRequired
+            ? "Colosseum is invite only — you'll need a code."
+            : "Create the first account for this Colosseum."}
+        </p>
+      </div>
+      <form onSubmit={handleSignUp}>
+        <div className="flex flex-col gap-6">
+          <div className="grid gap-2">
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              placeholder="m@example.com"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
+          <div className="grid gap-2">
+            <div className="flex items-center">
+              <Label htmlFor="password">Password</Label>
             </div>
-            <div className="mt-4 text-center text-sm">
-              Already have an account?{" "}
-              <Link href="/auth/login" className="underline underline-offset-4">
-                Login
-              </Link>
+            <Input
+              id="password"
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
+          <div className="grid gap-2">
+            <div className="flex items-center">
+              <Label htmlFor="repeat-password">Repeat Password</Label>
             </div>
-          </form>
-        </CardContent>
-      </Card>
+            <Input
+              id="repeat-password"
+              type="password"
+              required
+              value={repeatPassword}
+              onChange={(e) => setRepeatPassword(e.target.value)}
+            />
+          </div>
+          {inviteRequired && (
+            <div className="grid gap-2">
+              <Label htmlFor="invite-code">Invite code</Label>
+              <Input
+                id="invite-code"
+                type="text"
+                autoCapitalize="characters"
+                autoComplete="off"
+                placeholder="Required"
+                required
+                value={inviteCode}
+                onChange={(e) => setInviteCode(e.target.value)}
+              />
+            </div>
+          )}
+          {error && <p className="text-sm text-red-500">{error}</p>}
+          <Button type="submit" className="w-full" disabled={isLoading}>
+            {isLoading ? "Creating an account..." : "Sign up"}
+          </Button>
+        </div>
+        <div className="mt-4 text-center text-sm">
+          Already have an account?{" "}
+          <Link href="/auth/login" className="underline underline-offset-4">
+            Login
+          </Link>
+        </div>
+      </form>
     </div>
   );
 }

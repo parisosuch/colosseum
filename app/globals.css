@@ -73,15 +73,15 @@
 @layer components {
   /* Page title / breadcrumb header. */
   .text-display {
-    @apply text-2xl font-semibold tracking-tight sm:text-4xl;
+    @apply font-serif text-2xl font-semibold tracking-tight sm:text-4xl;
   }
   /* Section title within a page. */
   .text-title {
-    @apply text-2xl font-semibold tracking-tight;
+    @apply font-serif text-2xl font-semibold tracking-tight;
   }
   /* Sub-section / card heading. */
   .text-heading {
-    @apply text-lg font-medium;
+    @apply font-serif text-lg font-medium;
   }
   /* Eyebrow label above a value ("Description", "Meta", "Created"). */
   .text-label {

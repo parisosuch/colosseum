@@ -1,9 +1,9 @@
 import Link from "next/link";
 
+import { Logo } from "@/components/logo";
 import { SignUpForm } from "@/components/sign-up-form";
 import { signupsDisabled } from "@/lib/colosseum/config";
 import { createClient } from "@/lib/supabase/server";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default async function Page() {
   // The first account ever (the self-hoster) signs up without a code; after
@@ -12,23 +12,21 @@ export default async function Page() {
   const { data: inviteRequired } = await supabase.rpc("invite_required");
 
   return (
-    <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
+    <div className="flex flex-1 justify-center md:justify-start">
       <div className="w-full max-w-sm">
         {signupsDisabled() ? (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-2xl">Sign-ups are closed</CardTitle>
-              <CardDescription>
-                New account registration is currently disabled. If you already have an account, you
-                can{" "}
-                <Link href="/auth/login" className="underline underline-offset-4">
-                  log in
-                </Link>
-                .
-              </CardDescription>
-            </CardHeader>
-            <CardContent />
-          </Card>
+          <div className="flex flex-col gap-2">
+            <Logo className="h-4 w-auto text-muted-foreground opacity-25" />
+            <h1 className="text-title">Sign-ups are closed</h1>
+            <p className="text-muted-foreground">
+              New account registration is currently disabled. If you already have an account, you
+              can{" "}
+              <Link href="/auth/login" className="underline underline-offset-4">
+                log in
+              </Link>
+              .
+            </p>
+          </div>
         ) : (
           <SignUpForm inviteRequired={inviteRequired ?? true} />
         )}

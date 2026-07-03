@@ -40,7 +40,7 @@ export function UserMenu({ avatarUrl, handle }: { avatarUrl?: string; handle: st
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <Avatar>
+        <Avatar className="size-10">
           <AvatarImage src={avatarUrl} />
           <AvatarFallback>{handle.charAt(0).toUpperCase()}</AvatarFallback>
         </Avatar>

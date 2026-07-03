@@ -25,7 +25,7 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
           {channel.description ? <p className="text-center">{channel.description}</p> : null}
           <p className="text-caption">{columnCount} column(s)</p>
         </div>
-        <div className="hidden md:flex gap-8 overflow-x-auto">
+        <div className="hidden md:flex gap-8 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {columns.map((column, index) => (
             <div
               key={column.id}
@@ -107,7 +107,7 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
   }
 
   return (
-    <div className="w-full p-6 sm:p-12 space-y-8">
+    <div className="w-full flex-1 min-h-0 overflow-y-auto p-6 sm:p-12 space-y-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <PageHeader crumbs={[{ label: handle }]} />
       <div className="flex flex-col space-y-4">
         <div className="flex flex-col">

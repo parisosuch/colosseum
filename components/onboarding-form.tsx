@@ -62,7 +62,7 @@ export function OnboardingForm({ className, ...props }: React.ComponentPropsWith
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card>
         <CardHeader>
-          <CardTitle className="text-2xl">Choose your handle</CardTitle>
+          <CardTitle className="text-title">Choose your handle</CardTitle>
           <CardDescription>
             This is your unique username and the address of your profile.
           </CardDescription>

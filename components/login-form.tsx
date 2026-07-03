@@ -3,8 +3,8 @@
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Logo } from "@/components/logo";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { useState } from "react";
@@ -50,51 +50,55 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-2xl">Login</CardTitle>
-          <CardDescription>Enter your email below to login to your account</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleLogin}>
-            <div className="flex flex-col gap-6">
-              <div className="grid gap-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="m@example.com"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-2">
-                <div className="flex items-center">
-                  <Label htmlFor="password">Password</Label>
-                  <Link
-                    href="/auth/forgot-password"
-                    className="ml-auto inline-block text-sm underline-offset-4 hover:underline"
-                  >
-                    Forgot your password?
-                  </Link>
-                </div>
-                <Input
-                  id="password"
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-              {error && <p className="text-sm text-red-500">{error}</p>}
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? "Logging in..." : "Login"}
-              </Button>
+      <div className="flex flex-col gap-2">
+        <Logo className="h-4 w-auto text-muted-foreground opacity-25" />
+        <h1 className="text-title">Login</h1>
+        <p className="text-muted-foreground">Enter your email below to login to your account</p>
+      </div>
+      <form onSubmit={handleLogin}>
+        <div className="flex flex-col gap-6">
+          <div className="grid gap-2">
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              placeholder="m@example.com"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
+          <div className="grid gap-2">
+            <div className="flex items-center">
+              <Label htmlFor="password">Password</Label>
+              <Link
+                href="/auth/forgot-password"
+                tabIndex={-1}
+                className="ml-auto inline-block text-sm underline-offset-4 hover:underline"
+              >
+                Forgot your password?
+              </Link>
             </div>
-          </form>
-        </CardContent>
-      </Card>
+            <Input
+              id="password"
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
+          {error && <p className="text-sm text-red-500">{error}</p>}
+          <Button type="submit" className="w-full" disabled={isLoading}>
+            {isLoading ? "Logging in..." : "Login"}
+          </Button>
+          <p className="text-center text-sm text-muted-foreground">
+            Don&apos;t have an account?{" "}
+            <Link href="/auth/sign-up" className="underline underline-offset-4">
+              Create account
+            </Link>
+          </p>
+        </div>
+      </form>
     </div>
   );
 }

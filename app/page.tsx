@@ -1,6 +1,7 @@
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 
+import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/logo";
 
 import { createClient } from "@/lib/supabase/server";
@@ -23,33 +24,37 @@ export default async function Home() {
     // self-hoster can sign up freely. Default to invite-only if the check fails.
     const { data: inviteRequired } = await supabase.rpc("invite_required");
     return (
-      <main className="min-h-screen flex flex-col items-center justify-center">
-        <div className="flex flex-row items-center text-4xl font-semibold space-x-4">
-          {/* ponytail: bottom-heavy mark reads high against text; nudge down to
-              align optical centers. Tune the px if the type scale changes. */}
-          <Logo className="h-10 w-auto" />
-          <h1>Welcome to Colosseum.</h1>
+      <div className="flex flex-1 flex-col items-center md:items-start gap-8 text-center md:text-left">
+        <div className="flex flex-col items-center md:items-start gap-3">
+          <h1 className="font-serif text-5xl lg:text-6xl font-semibold">
+            Welcome to Colosseum
+            <Logo className="inline-block h-3 w-auto align-baseline ml-1" />
+          </h1>
+          <p className="text-lg text-muted-foreground">
+            {noSignups
+              ? "Account creation is currently closed."
+              : (inviteRequired ?? true)
+                ? "Account creation is invite only."
+                : "Create the first account to get started."}
+          </p>
         </div>
-        <p className="text-muted-foreground">
-          {noSignups
-            ? "Account creation is currently closed."
-            : (inviteRequired ?? true)
-              ? "Account creation is invite only."
-              : "Create the first account to get started."}
-        </p>
-        <div className="flex flex-row items-center mt-4 space-x-4">
-          <Link href="/auth/login" className="flex flex-row items-center space-x-1">
-            <p className="underline">Login</p>
-            <ArrowRight size={16} />
-          </Link>
+        <div className="flex flex-row items-center gap-5">
+          <Button asChild>
+            <Link href="/auth/login">
+              Login
+              <ArrowRight />
+            </Link>
+          </Button>
           {!noSignups && (
-            <Link href="/auth/sign-up" className="flex flex-row items-center space-x-1">
-              <p className="underline">Create account</p>
-              <ArrowRight size={16} />
+            <Link
+              href="/auth/sign-up"
+              className="text-sm text-muted-foreground underline-offset-4 hover:underline"
+            >
+              Create account
             </Link>
           )}
         </div>
-      </main>
+      </div>
     );
   }
 

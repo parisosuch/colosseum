@@ -102,13 +102,14 @@ export function EditProfileForm({ profile }: { profile: UserProfile }) {
           <AvatarImage src={avatarPreview ?? undefined} />
           <AvatarFallback>{handle.charAt(0).toUpperCase()}</AvatarFallback>
         </Avatar>
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           onClick={() => fileInputRef.current?.click()}
-          className="text-sm underline"
         >
           Change
-        </button>
+        </Button>
         <input
           ref={fileInputRef}
           type="file"

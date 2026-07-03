@@ -22,7 +22,7 @@ export const SCREENSHOT_SIZE = 1200;
  */
 export async function captureWebsiteScreenshot(
   url: string,
-): Promise<{ image: Buffer; title: string }> {
+): Promise<{ image: Buffer; title: string; description: string }> {
   const browser = await puppeteer.launch({
     headless: true,
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
@@ -33,7 +33,21 @@ export async function captureWebsiteScreenshot(
     await page.setViewport({ width: SCREENSHOT_SIZE, height: SCREENSHOT_SIZE });
     await page.goto(url, { waitUntil: "networkidle2" });
 
-    const title = await page.title();
+    // Pull the page's own metadata so a captured URL block can pre-fill its
+    // title and description. Prefer Open Graph, fall back to <title> / the
+    // standard meta description. Capped so an overlong tag can't bloat a block.
+    const meta = await page.evaluate(() => {
+      const content = (selector: string) =>
+        document.querySelector(selector)?.getAttribute("content")?.trim() ?? "";
+      return {
+        ogTitle: content('meta[property="og:title"]'),
+        ogDescription: content('meta[property="og:description"]'),
+        metaDescription: content('meta[name="description"]'),
+        docTitle: document.title.trim(),
+      };
+    });
+    const title = (meta.ogTitle || meta.docTitle).slice(0, 200);
+    const description = (meta.ogDescription || meta.metaDescription).slice(0, 500);
 
     // Full-page screenshot, then crop to the top square.
     const buffer = (await page.screenshot({ fullPage: true })) as Buffer;
@@ -48,7 +62,7 @@ export async function captureWebsiteScreenshot(
       .toFormat("png")
       .toBuffer();
 
-    return { image, title };
+    return { image, title, description };
   } finally {
     await browser.close();
   }

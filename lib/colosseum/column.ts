@@ -1,5 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 
+import { sanitizeSearch } from "@/lib/utils";
+
 export type Column = {
   id: number;
   created_at: string;
@@ -21,6 +23,12 @@ export async function getColumn(
   supabase: SupabaseClient,
   column_id: number,
 ): Promise<Column | null> {
+  // A non-numeric route param (e.g. parseInt("foo") → NaN) is never a real id;
+  // treat it as not-found instead of letting Postgres reject NaN for a bigint.
+  if (!Number.isFinite(column_id)) {
+    return null;
+  }
+
   const { data, error } = await supabase
     .from("column")
     .select("*")
@@ -52,16 +60,6 @@ export type ColumnQuery = {
   // Row offset for paged load-more; used together with `limit`.
   offset?: number;
 };
-
-// Escape ilike wildcards so a literal `%`/`_` in the query isn't treated as one,
-// and drop the characters PostgREST uses to delimit an `.or(...)` filter so a
-// search term can't break out of it.
-function sanitizeSearch(term: string): string {
-  return term
-    .replace(/[%_]/g, (m) => `\\${m}`)
-    .replace(/[(),]/g, " ")
-    .trim();
-}
 
 export async function getChannelColumns(
   supabase: SupabaseClient,
@@ -109,6 +107,33 @@ export async function getChannelColumns(
   }
 
   return data;
+}
+
+// Blocks the user created whose title/description/text/url match `query`.
+// Used by the nav search box, so capped to a handful of results. Returns []
+// for an empty/whitespace-only query rather than the user's whole block list.
+export async function searchUserColumns(
+  supabase: SupabaseClient,
+  user_id: string,
+  query: string,
+): Promise<Column[]> {
+  const term = sanitizeSearch(query);
+  if (!term) {
+    return [];
+  }
+
+  const pattern = `%${term}%`;
+  const { data, error } = await supabase
+    .from("column")
+    .select("*")
+    .eq("created_by", user_id)
+    .or(["title", "description", "text", "url"].map((col) => `${col}.ilike.${pattern}`).join(","))
+    .limit(10);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+  return data ?? [];
 }
 
 export async function uploadURLColumn(
@@ -228,6 +253,20 @@ export async function updateColumnTags(
   tags: string[],
 ): Promise<void> {
   const { error } = await supabase.from("column").update({ tags }).eq("id", column_id);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+// Set title and/or description in one update — used to pre-fill a URL block
+// from its page metadata after capture.
+export async function updateColumnMeta(
+  supabase: SupabaseClient,
+  column_id: number,
+  fields: { title?: string; description?: string },
+): Promise<void> {
+  const { error } = await supabase.from("column").update(fields).eq("id", column_id);
 
   if (error) {
     throw new Error(error.message);

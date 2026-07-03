@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
   // the image other blocks already display.
   const { data: existing, error: lookupError } = await supabase
     .from("screenshot")
-    .select("image_url, captured_at")
+    .select("image_url, captured_at, title, description")
     .eq("url", url)
     .maybeSingle();
 
@@ -61,11 +61,15 @@ export async function POST(req: NextRequest) {
     Date.now() - new Date(existing.captured_at).getTime() < SCREENSHOT_TTL_MS;
 
   if (existing?.image_url && isFresh) {
-    return NextResponse.json({ image_url: existing.image_url });
+    return NextResponse.json({
+      image_url: existing.image_url,
+      title: existing.title,
+      description: existing.description,
+    });
   }
 
   try {
-    const { image: squareBuffer, title } = await captureWebsiteScreenshot(url);
+    const { image: squareBuffer, title, description } = await captureWebsiteScreenshot(url);
 
     const fileName = `${encodeUrlToFilename(url)}.png`;
 
@@ -88,19 +92,23 @@ export async function POST(req: NextRequest) {
     // Upsert (not ignoreDuplicates) so a stale row is refreshed in place:
     // image_url/title get rewritten and captured_at is bumped, which also
     // serves as the client cache-busting version.
-    const { error: insertError } = await supabase
-      .from("screenshot")
-      .upsert(
-        { url: url, image_url: publicUrl, title: title, captured_at: new Date().toISOString() },
-        { onConflict: "url" },
-      );
+    const { error: insertError } = await supabase.from("screenshot").upsert(
+      {
+        url: url,
+        image_url: publicUrl,
+        title: title,
+        description: description,
+        captured_at: new Date().toISOString(),
+      },
+      { onConflict: "url" },
+    );
 
     if (insertError) {
       console.error(insertError);
       return NextResponse.json({ error: insertError }, { status: 500 });
     }
 
-    return NextResponse.json({ image_url: publicUrl });
+    return NextResponse.json({ image_url: publicUrl, title, description });
   } catch (error) {
     console.error(error);
 

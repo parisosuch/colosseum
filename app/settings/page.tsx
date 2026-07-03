@@ -1,4 +1,4 @@
-import BrandLink from "@/components/brand-link";
+import PageHeader from "@/components/page-header";
 import { EditProfileForm } from "@/components/edit-profile-form";
 import ApiTokenManager from "@/components/api-token-manager";
 import { getUserProfile } from "@/lib/colosseum/user";
@@ -27,9 +27,7 @@ export default async function SettingsPage() {
 
   return (
     <div className="w-full max-w-xl p-6 sm:p-12 space-y-8">
-      <h1 className="text-2xl sm:text-4xl">
-        <BrandLink /> <span className="font-extralight">/ settings</span>
-      </h1>
+      <PageHeader crumbs={[{ label: "settings" }]} />
       <EditProfileForm profile={profile} />
       <ApiTokenManager userId={user.id} initialTokens={apiTokens} />
     </div>

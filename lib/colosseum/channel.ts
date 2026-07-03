@@ -1,5 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 
+import { sanitizeSearch } from "@/lib/utils";
+
 export type Channel = {
   id: number;
   created_at: string;
@@ -45,6 +47,33 @@ export async function getUserChannels(
     return [];
   }
   return data;
+}
+
+// Channels the user owns whose title/description match `query`. Used by the
+// nav search box, so capped to a handful of results. Returns [] for an
+// empty/whitespace-only query rather than the user's whole channel list.
+export async function searchUserChannels(
+  supabase: SupabaseClient,
+  user_id: string,
+  query: string,
+): Promise<Channel[]> {
+  const term = sanitizeSearch(query);
+  if (!term) {
+    return [];
+  }
+
+  const pattern = `%${term}%`;
+  const { data, error } = await supabase
+    .from("channel")
+    .select("*")
+    .eq("owner_id", user_id)
+    .or(["title", "description"].map((col) => `${col}.ilike.${pattern}`).join(","))
+    .limit(10);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+  return data ?? [];
 }
 
 export async function createChannel(

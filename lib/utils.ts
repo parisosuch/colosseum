@@ -39,7 +39,7 @@ export function isURL(text: string): boolean {
   return true;
 }
 
-// Parses a comma-separated tags input into a deduped, trimmed list.
+// Parses a tags input into a deduped, trimmed list.
 export function parseTags(input: string): string[] {
   return [
     ...new Set(
@@ -49,6 +49,16 @@ export function parseTags(input: string): string[] {
         .filter(Boolean),
     ),
   ];
+}
+
+// Escapes ilike wildcards so a literal `%`/`_` in a search term isn't treated
+// as one, and strips the characters PostgREST uses to delimit an `.or(...)`
+// filter so a search term can't break out of it.
+export function sanitizeSearch(term: string): string {
+  return term
+    .replace(/[%_]/g, (m) => `\\${m}`)
+    .replace(/[(),]/g, " ")
+    .trim();
 }
 
 export function timeAgo(date: Date) {

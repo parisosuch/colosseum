@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
-import { Geist } from "next/font/google";
+import { Fraunces, Geist } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
 import NavBar from "@/components/nav-bar";
+import { NavBarGate } from "@/components/nav-bar-gate";
+import { HeroFrame } from "@/components/hero-frame";
 import { Toaster } from "@/components/ui/sonner";
 
 const defaultUrl = process.env.VERCEL_URL
@@ -21,6 +23,13 @@ const geistSans = Geist({
   subsets: ["latin"],
 });
 
+// Serif for the wordmark + headings; body stays sans (Geist).
+const fraunces = Fraunces({
+  variable: "--font-serif",
+  display: "swap",
+  subsets: ["latin"],
+});
+
 export default async function RootLayout({
   children,
 }: Readonly<{
@@ -28,15 +37,22 @@ export default async function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.className} antialiased`}>
+      <body className={`${geistSans.className} ${fraunces.variable} antialiased`}>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
           enableSystem
           disableTransitionOnChange
         >
-          <NavBar />
-          {children}
+          {/* App shell lives on a div, not <body>: Next doesn't reconcile
+              <body> attributes across client navigations, so hanging the
+              flex layout off <body> left pages uncentered until a reload. */}
+          <div className="h-screen flex flex-col">
+            <NavBarGate>
+              <NavBar />
+            </NavBarGate>
+            <HeroFrame>{children}</HeroFrame>
+          </div>
           <Toaster />
         </ThemeProvider>
       </body>

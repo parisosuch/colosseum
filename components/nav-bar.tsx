@@ -1,7 +1,8 @@
 import { getUserProfile } from "@/lib/colosseum/user";
 import { createClient } from "@/lib/supabase/server";
-import { LandmarkIcon, ArrowRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import Link from "next/link";
+import { Logo } from "./logo";
 import SearchBar from "./search-bar";
 import { ThemeSwitcher } from "./theme-switcher";
 import { UserMenu } from "./user-menu";
@@ -16,7 +17,7 @@ export default async function NavBar() {
     return (
       <nav className="w-full flex justify-between p-4">
         <Link href="/">
-          <LandmarkIcon />
+          <Logo className="h-6 w-auto" />
         </Link>
         <div className="flex flex-row space-x-2 items-center">
           <Link href="/auth/login" className="flex flex-row items-center justify-center space-x-1">
@@ -35,7 +36,7 @@ export default async function NavBar() {
   return (
     <nav className="w-full flex justify-between p-4">
       <Link href="/">
-        <LandmarkIcon />
+        <Logo className="h-6 w-auto" />
       </Link>
       {userProfile ? (
         <div className="hidden sm:block flex-1 max-w-xs">

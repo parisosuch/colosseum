@@ -1,12 +1,11 @@
 "use server";
 
 // Server actions the client components call instead of hitting the database
-// directly. Each one resolves the caller from their Supabase session and
+// directly. Each one resolves the caller from their Better Auth session and
 // enforces authorization in app code (the Drizzle connection behind these
-// bypasses row-level security). Identity still comes from Supabase Auth;
-// only the data access moved to Drizzle.
+// bypasses row-level security).
 
-import { createClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/auth";
 import {
   Channel,
   createChannel,
@@ -46,12 +45,9 @@ import {
 } from "./user";
 
 // The caller's user id, or null when there's no session. Reads the id from the
-// verified Supabase session cookie, never from client-supplied input.
+// verified Better Auth session cookie, never from client-supplied input.
 async function currentUserId(): Promise<string | null> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   return user?.id ?? null;
 }
 

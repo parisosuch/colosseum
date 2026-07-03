@@ -1,19 +1,14 @@
-import { createClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/auth";
 import { apiError, createApiToken, json } from "@/lib/colosseum/api-auth";
 
 // node runtime: createApiToken hashes with node:crypto.
 export const runtime = "nodejs";
 
-// Mint an API token for the logged-in user. Runs as the user's session (RLS
-// insert policy applies); the plaintext token is returned exactly once and is
-// not stored — only its hash is. The browser settings UI lists/revokes tokens
-// directly under RLS, so only creation needs this server route.
+// Mint an API token for the logged-in user (resolved from their session
+// cookie). The plaintext token is returned exactly once and is not stored —
+// only its hash is.
 export async function POST(req: Request) {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
 
   if (!user) {
     return apiError("Unauthorized.", 401);

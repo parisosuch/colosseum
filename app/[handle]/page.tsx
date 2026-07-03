@@ -4,13 +4,11 @@ import CreateChannelButton from "@/components/create-channel-button";
 import { Channel, getUserChannels, getUserPublicChannels } from "@/lib/colosseum/channel";
 import { getChannelColumnCount, getChannelColumns } from "@/lib/colosseum/column";
 import { getPublicUserProfile } from "@/lib/colosseum/user";
-import { createClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/auth";
 import Link from "next/link";
 
 export default async function UserPage({ params }: { params: Promise<{ handle: string }> }) {
   const { handle } = await params;
-
-  const supabase = await createClient();
 
   const ChannelColumnsView = async ({ channel }: { channel: Channel }) => {
     // Only the first 5 previews are shown, so don't fetch the whole channel.
@@ -76,9 +74,7 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
   };
 
   // determine if user is authenticated
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
 
   const userProfile = await getPublicUserProfile(handle);
 

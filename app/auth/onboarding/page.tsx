@@ -1,15 +1,11 @@
 import { redirect } from "next/navigation";
 
-import { createClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/auth";
 import { getUserProfile } from "@/lib/colosseum/user";
 import { OnboardingForm } from "@/components/onboarding-form";
 
 export default async function OnboardingPage() {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
 
   if (!user) {
     redirect("/auth/login");

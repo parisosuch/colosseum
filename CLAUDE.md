@@ -1,12 +1,15 @@
 # Colosseum
 
 An Are.na-style app: users collect **blocks** into **channels**, organized as
-columns. Next.js (App Router) + Supabase (Postgres, Auth, RLS).
+columns. Next.js (App Router) + Postgres via Drizzle + Better Auth.
 
 ## Stack
 
 - **Next.js 15** App Router, React, TypeScript
-- **Supabase** for DB / auth; access control enforced with Row-Level Security
+- **Postgres** via **Drizzle** (`lib/db/`); migrations in `drizzle/`;
+  authorization enforced in app code (the connection bypasses RLS)
+- **Better Auth** in-process (`lib/auth.ts`, client `lib/auth-client.ts`)
+- The Supabase CLI only runs the local Postgres in Docker
 - **Tailwind** + Radix UI primitives
 - **Bun** as package manager and script runner
 - **oxlint** / **oxfmt** for lint + format
@@ -17,8 +20,8 @@ Use `bun`, never `npm`. A `Makefile` wraps the common ones:
 
 - `make dev` — start the dev server (`bun run dev`)
 - `make check` — format + lint + typecheck (run before committing)
-- `make start-supabase` / `make stop-supabase` — local Supabase stack
-- `make db-reset` — recreate DB, apply migrations + seed
+- `make start-supabase` / `make stop-supabase` — local Postgres stack
+- `make db-reset` — recreate DB and apply all Drizzle migrations
 - `make help` — list everything
 
 ## Git
@@ -40,6 +43,6 @@ Use `bun`, never `npm`. A `Makefile` wraps the common ones:
 - Keep issue/PR numbers (`#nn`) out of source comments. They're fine in PR
   descriptions.
 - Data access lives in `lib/colosseum/` (e.g. `user.ts`, `channel.ts`,
-  `column.ts`). Use `.maybeSingle()` for lookups that may legitimately miss;
-  `.single()` only when a row must exist.
+  `column.ts`). Lookups that may legitimately miss return `null`; callers
+  treat that as not-found, not an error.
 - Pages render not-found states inline rather than throwing.

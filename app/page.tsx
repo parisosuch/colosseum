@@ -4,25 +4,22 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/logo";
 
-import { createClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import { inviteRequired } from "@/lib/colosseum/invite";
 import { getUserProfile } from "@/lib/colosseum/user";
 import { signupsDisabled } from "@/lib/colosseum/config";
 
 export default async function Home() {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
 
   // if there is no user, immediately show the sign-in view
 
   if (!user) {
     const noSignups = signupsDisabled();
     // Invites are required once the first account exists; before that the
-    // self-hoster can sign up freely. Default to invite-only if the check fails.
-    const { data: inviteRequired } = await supabase.rpc("invite_required");
+    // self-hoster can sign up freely.
+    const inviteOnly = await inviteRequired();
     return (
       <div className="flex flex-1 flex-col items-center md:items-start gap-8 text-center md:text-left">
         <div className="flex flex-col items-center md:items-start gap-3">
@@ -33,7 +30,7 @@ export default async function Home() {
           <p className="text-lg text-muted-foreground">
             {noSignups
               ? "Account creation is currently closed."
-              : (inviteRequired ?? true)
+              : inviteOnly
                 ? "Account creation is invite only."
                 : "Create the first account to get started."}
           </p>

@@ -1,6 +1,5 @@
 "use client";
 
-import { createClient } from "@/lib/supabase/client";
 import { Dispatch, SetStateAction, useState, useRef } from "react";
 import {
   uploadURLColumnAction,
@@ -10,7 +9,7 @@ import {
 } from "@/lib/colosseum/actions";
 import type { Column } from "@/lib/colosseum/column";
 import { isURL } from "@/lib/utils";
-import { User } from "@supabase/supabase-js";
+import type { SessionUser } from "@/components/channel-board";
 import type { Channel } from "@/lib/colosseum/channel";
 import { Spinner } from "./ui/spinner";
 import { toast } from "sonner";
@@ -20,7 +19,7 @@ const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10MB
 const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"];
 
 type ColumnInputProps = {
-  user: User | null;
+  user: SessionUser | null;
   columns: Column[];
   setColumns: Dispatch<SetStateAction<Column[]>>;
   channel: Channel | null;
@@ -48,8 +47,6 @@ export default function ColumnInput({
   const [loading, setLoading] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  const supabase = createClient();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
@@ -103,18 +100,9 @@ export default function ColumnInput({
   };
 
   const screenshotURL = async (url: string) => {
-    const { data } = await supabase.auth.getSession();
-
-    if (!data.session) {
-      console.error("User is not auth.");
-      return null;
-    }
-
+    // Same-origin request — the session cookie authenticates it server-side.
     const response = await fetch("/api/screenshot", {
       method: "POST",
-      headers: {
-        Authorization: "Bearer " + data.session.access_token,
-      },
       body: JSON.stringify({ url: url }),
     });
 

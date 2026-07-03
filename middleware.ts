@@ -1,20 +1,21 @@
-import { updateSession } from "@/lib/supabase/middleware";
-import { type NextRequest } from "next/server";
+import { getSessionCookie } from "better-auth/cookies";
+import { NextResponse, type NextRequest } from "next/server";
 
-export async function middleware(request: NextRequest) {
-  return await updateSession(request);
+// Optimistic auth gate for routes that require a signed-in user: only checks
+// that a session cookie exists (no DB lookup in middleware). The protected
+// pages verify the session for real and redirect themselves, so a forged
+// cookie gets no further than a login redirect one hop later.
+export function middleware(request: NextRequest) {
+  if (!getSessionCookie(request)) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/auth/login";
+    return NextResponse.redirect(url);
+  }
+  return NextResponse.next();
 }
 
 export const config = {
-  matcher: [
-    /*
-     * Match all request paths except:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - images - .svg, .png, .jpg, .jpeg, .gif, .webp
-     * Feel free to modify this pattern to include more paths.
-     */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
-  ],
+  // Everything else — the landing page, public profiles (/[handle]), public
+  // channels, and the /auth/* pages — stays open.
+  matcher: ["/invites/:path*", "/settings/:path*"],
 };

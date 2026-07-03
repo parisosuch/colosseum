@@ -15,7 +15,6 @@ import type { Channel } from "@/lib/colosseum/channel";
 import type { Column, ColumnFilter, ColumnSort } from "@/lib/colosseum/column";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import { getChannelColumnsAction, getScreenshotsForUrlsAction } from "@/lib/colosseum/actions";
-import { User } from "@supabase/supabase-js";
 import { LayoutGrid, List, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -52,11 +51,15 @@ function BlockSkeleton({ view }: { view: "grid" | "list" }) {
   );
 }
 
+// The slice of the session user the board (and ColumnInput) actually needs —
+// the channel page passes the Better Auth session user, which satisfies this.
+export type SessionUser = { id: string };
+
 type ChannelBoardProps = {
   channel: Channel;
   handle: string;
   isOwner: boolean;
-  user: User | null;
+  user: SessionUser | null;
   initialCount: number;
   newestAt: string | null;
   // Created-on formatted on the server, so the absolute date can't shift with

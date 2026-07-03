@@ -16,6 +16,8 @@ export type ExportedBlock = {
   // screenshot has been captured yet.
   image_url: string | null;
   created_at: string;
+  // Comma-joined, matching the CSV cell shape — arrays don't translate to CSV.
+  tags: string;
 };
 
 export type ChannelExport = {
@@ -38,6 +40,7 @@ const BLOCK_FIELDS: (keyof ExportedBlock)[] = [
   "image",
   "image_url",
   "created_at",
+  "tags",
 ];
 
 export function buildChannelExport(
@@ -60,6 +63,7 @@ export function buildChannelExport(
       image: column.image ?? null,
       image_url: column.url ? (screenshots.get(column.url)?.image_url ?? null) : null,
       created_at: column.created_at,
+      tags: column.tags.join(", "),
     })),
   };
 }

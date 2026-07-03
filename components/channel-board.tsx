@@ -7,6 +7,7 @@ import ManageChannelButton from "@/components/manage-channel-button";
 import ExportChannelButton from "@/components/export-channel-button";
 import ColumnInput from "@/components/column-input";
 import ChannelControls from "@/components/channel-controls";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
@@ -335,6 +336,15 @@ export default function ChannelBoard({
           <h2 className="text-label">Description</h2>
           {channel.description ? <p className="">{channel.description}</p> : null}
         </div>
+        {channel.tags.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {channel.tags.map((tag) => (
+              <Badge key={tag} variant="secondary">
+                #{tag}
+              </Badge>
+            ))}
+          </div>
+        ) : null}
         <div className="flex flex-col">
           <h2 className="text-label">Meta</h2>
           {metaData.map((meta, index) => (

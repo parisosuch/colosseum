@@ -49,6 +49,16 @@ export function sanitizeSearch(term: string): string {
     .trim();
 }
 
+// A PostgREST `.or(...)` fragment matching rows whose `tags` array contains the
+// search term exactly. Drops `"`/`\` so the term can't break out of the
+// {"..."} array literal; the sanitizeSearch `%`-escaping round-trips back to a
+// literal `%`. Exact-match only — a search for "des" won't hit tag "design".
+// ponytail: exact tag match; add a trigram index if partial matching is needed.
+export function tagContainsFilter(sanitizedTerm: string): string {
+  const t = sanitizedTerm.replace(/["\\]/g, "").trim();
+  return t ? `tags.cs.{"${t}"}` : "";
+}
+
 export function timeAgo(date: Date) {
   const now = new Date();
   const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);

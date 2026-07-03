@@ -1,6 +1,6 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 
-import { sanitizeSearch } from "@/lib/utils";
+import { sanitizeSearch, tagContainsFilter } from "@/lib/utils";
 
 export type Channel = {
   id: number;
@@ -10,6 +10,7 @@ export type Channel = {
   private: boolean;
   owner_id: string;
   updated_at?: string;
+  tags: string[];
 };
 
 export async function getUserPublicChannels(
@@ -48,7 +49,7 @@ export async function getUserChannels(
   return data;
 }
 
-// Channels the user owns whose title/description match `query`. Used by the
+// Channels the user owns whose title/description or a tag match `query`. Used by the
 // nav search box, so capped to a handful of results. Returns [] for an
 // empty/whitespace-only query rather than the user's whole channel list.
 export async function searchUserChannels(
@@ -62,11 +63,14 @@ export async function searchUserChannels(
   }
 
   const pattern = `%${term}%`;
+  const filters = ["title", "description"].map((col) => `${col}.ilike.${pattern}`);
+  const tagFilter = tagContainsFilter(term);
+  if (tagFilter) filters.push(tagFilter);
   const { data, error } = await supabase
     .from("channel")
     .select("*")
     .eq("owner_id", user_id)
-    .or(["title", "description"].map((col) => `${col}.ilike.${pattern}`).join(","))
+    .or(filters.join(","))
     .limit(10);
 
   if (error) {
@@ -108,7 +112,7 @@ export async function deleteChannel(supabase: SupabaseClient, channel_id: number
 export async function updateChannel(
   supabase: SupabaseClient,
   channel_id: number,
-  updates: { title: string; description?: string; private: boolean },
+  updates: { title: string; description?: string; private: boolean; tags?: string[] },
 ): Promise<Channel> {
   const { data, error } = await supabase
     .from("channel")

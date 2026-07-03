@@ -10,6 +10,7 @@ import {
   Column,
   deleteColumn,
   updateColumnDescription,
+  updateColumnTags,
   updateColumnText,
   updateColumnTitle,
 } from "@/lib/colosseum/column";
@@ -19,6 +20,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import TagInput from "@/components/tag-input";
 
 type BlockModalProps = {
   // The block to show, or null when nothing is open. The channel board owns this.
@@ -185,6 +187,17 @@ function BlockModalBody({
     setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, text } : c)));
   };
 
+  // Tags persist eagerly on each add/remove, so they stay out of the Save flow.
+  const handleTagsChange = async (next: string[]) => {
+    try {
+      await updateColumnTags(supabase, column.id, next);
+      setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, tags: next } : c)));
+    } catch (e) {
+      console.error(e);
+      toast.error("Couldn't save tags. Please try again.");
+    }
+  };
+
   const handleDelete = async () => {
     try {
       await deleteColumn(supabase, column.id);
@@ -314,6 +327,11 @@ function BlockModalBody({
               }}
             />
           </DialogDescription>
+          {isOwner || column.tags.length > 0 ? (
+            <div className="p-3">
+              <TagInput tags={column.tags} onChange={handleTagsChange} disabled={!isOwner} />
+            </div>
+          ) : null}
           <div className="flex w-full justify-between text-xs p-3">
             <h3>Created on</h3>
             <p className="font-mono">{new Date(column.created_at).toDateString()}</p>

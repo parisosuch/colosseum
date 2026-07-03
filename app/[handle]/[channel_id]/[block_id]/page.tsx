@@ -2,6 +2,7 @@ import { GlobeIcon } from "lucide-react";
 import { Metadata } from "next";
 
 import PageHeader from "@/components/page-header";
+import { Badge } from "@/components/ui/badge";
 import { getChannel } from "@/lib/colosseum/channel";
 import { Column, getColumn } from "@/lib/colosseum/column";
 import { createClient } from "@/lib/supabase/server";
@@ -123,6 +124,18 @@ export default async function BlockPage({ params }: BlockPageParams) {
               {column.description || <span className="text-muted-foreground">No description</span>}
             </p>
           </div>
+          {column.tags.length > 0 ? (
+            <div className="flex flex-col">
+              <h2 className="text-label">Tags</h2>
+              <div className="flex flex-wrap gap-1 pt-1">
+                {column.tags.map((tag) => (
+                  <Badge key={tag} variant="secondary">
+                    #{tag}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <div className="flex flex-col">
             <h2 className="text-label">Created</h2>
             <p className="font-mono">{new Date(column.created_at).toDateString()}</p>

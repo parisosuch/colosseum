@@ -15,7 +15,7 @@ import type { Channel } from "@/lib/colosseum/channel";
 import { Spinner } from "./ui/spinner";
 import { toast } from "sonner";
 
-// Kept in sync with the `blocks` bucket constraints in supabase/config.toml.
+// Kept in sync with the server-side limits in lib/colosseum/blob.ts.
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10MB
 const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"];
 
@@ -67,9 +67,10 @@ export default function ColumnInput({
     if (droppedFile) handleFileUpload(droppedFile);
   };
 
-  // Upload an image file to the `blocks` bucket and create an image column.
-  // Validates type/size client-side (the bucket enforces the same limits as a
-  // backstop). On any failure nothing is created and the error is surfaced.
+  // Upload an image file and create an image column. The bytes go through a
+  // server action to local-disk blob storage; type/size are validated here for
+  // fast feedback and re-checked server-side. On any failure nothing is
+  // created and the error is surfaced.
   const handleFileUpload = async (selected: File) => {
     if (!user?.id || !channel) return;
 
@@ -85,23 +86,10 @@ export default function ColumnInput({
     setFile(selected);
     setLoading(true);
     try {
-      const ext = selected.name.split(".").pop()?.toLowerCase() || "bin";
-      // Per-user prefix so storage RLS can gate writes to the owner's folder.
-      const path = `${user.id}/${channel.id}/${crypto.randomUUID()}.${ext}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("blocks")
-        .upload(path, selected, { contentType: selected.type, upsert: false });
-      if (uploadError) throw uploadError;
-
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from("blocks").getPublicUrl(path);
-
-      const column = await uploadImageColumnAction({
-        channelId: channel.id,
-        image: publicUrl,
-      });
+      const formData = new FormData();
+      formData.set("channelId", String(channel.id));
+      formData.set("file", selected);
+      const column = await uploadImageColumnAction(formData);
 
       setColumns([column, ...columns]);
       onBlockAdded();

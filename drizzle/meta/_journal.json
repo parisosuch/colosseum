@@ -8,6 +8,13 @@
       "when": 1783115421441,
       "tag": "0000_redundant_eternals",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1783118209751,
+      "tag": "0001_cloudy_kronos",
+      "breakpoints": true
     }
   ]
 }

@@ -31,6 +31,7 @@ import {
   uploadTextColumn,
   uploadURLColumn,
 } from "./column";
+import { putImageBlob } from "./blob";
 import { createInviteCode, InviteCode, revokeInviteCode } from "./invite";
 import { revokeApiToken } from "./api-token";
 import { getScreenshotsForUrls, ColumnScreenshot } from "./screenshot-data";
@@ -168,13 +169,18 @@ export async function uploadTextColumnAction(input: {
   return uploadTextColumn({ created_by: userId, channel_id: input.channelId, text: input.text });
 }
 
-export async function uploadImageColumnAction(input: {
-  channelId: number;
-  image: string;
-}): Promise<Column> {
+// Takes FormData (channelId + file) because the image bytes are stored
+// server-side on local disk — the browser can't write to storage directly.
+export async function uploadImageColumnAction(formData: FormData): Promise<Column> {
   const userId = await requireUserId();
-  await requireOwnedChannel(input.channelId, userId);
-  return uploadImageColumn({ created_by: userId, channel_id: input.channelId, image: input.image });
+  const channelId = Number(formData.get("channelId"));
+  const file = formData.get("file");
+  if (!Number.isInteger(channelId) || !(file instanceof File)) {
+    throw new Error("Bad request.");
+  }
+  await requireOwnedChannel(channelId, userId);
+  const image = await putImageBlob(file, userId);
+  return uploadImageColumn({ created_by: userId, channel_id: channelId, image });
 }
 
 export async function updateColumnMetaAction(
@@ -296,6 +302,18 @@ export async function createUserProfileAction(rawHandle: string): Promise<Profil
     }
     throw e;
   }
+}
+
+// Store a new avatar image and return its URL; the caller saves it on the
+// profile via updateUserProfileAction. Content-addressed, so a changed avatar
+// gets a new URL — no CDN cache-busting query needed.
+export async function uploadAvatarAction(formData: FormData): Promise<{ url: string }> {
+  const userId = await requireUserId();
+  const file = formData.get("file");
+  if (!(file instanceof File)) {
+    throw new Error("Bad request.");
+  }
+  return { url: await putImageBlob(file, userId) };
 }
 
 export async function updateUserProfileAction(updates: {

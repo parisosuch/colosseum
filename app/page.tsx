@@ -1,5 +1,7 @@
-import { ArrowRight, LandmarkIcon } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import Link from "next/link";
+
+import { Logo } from "@/components/logo";
 
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
@@ -22,8 +24,10 @@ export default async function Home() {
     const { data: inviteRequired } = await supabase.rpc("invite_required");
     return (
       <main className="min-h-screen flex flex-col items-center justify-center">
-        <div className="flex flex-row items-center text-4xl font-semibold space-x-2">
-          <LandmarkIcon size={48} />
+        <div className="flex flex-row items-center text-4xl font-semibold space-x-4">
+          {/* ponytail: bottom-heavy mark reads high against text; nudge down to
+              align optical centers. Tune the px if the type scale changes. */}
+          <Logo className="h-10 w-auto" />
           <h1>Welcome to Colosseum.</h1>
         </div>
         <p className="text-muted-foreground">

@@ -5,6 +5,10 @@ import { SignUpForm } from "@/components/sign-up-form";
 import { signupsDisabled } from "@/lib/colosseum/config";
 import { inviteRequired } from "@/lib/colosseum/invite";
 
+// Per-request, never prerendered: whether an invite is needed flips at runtime
+// (the moment the first account exists), and the build machine has no database.
+export const dynamic = "force-dynamic";
+
 export default async function Page() {
   // The first account ever (the self-hoster) signs up without a code; after
   // that, invites are required.

@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Channel, getChannel } from "@/lib/colosseum/channel";
 import { Column, getColumn } from "@/lib/colosseum/column";
 import { getScreenshot } from "@/lib/colosseum/screenshot-data";
-import { createClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/auth";
 
 type BlockPageParams = {
   params: Promise<{ handle: string; channel_id: string; block_id: string }>;
@@ -37,10 +37,7 @@ async function loadVisibleBlock(
     return null;
   }
   if (channel.private) {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const user = await getSessionUser();
     if (!user || user.id !== channel.owner_id) {
       return null;
     }

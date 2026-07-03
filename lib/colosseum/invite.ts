@@ -1,7 +1,7 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, lt, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { inviteCode } from "@/lib/db/schema";
+import { inviteCode, inviteRedemption, user } from "@/lib/db/schema";
 
 export type InviteCode = {
   code: string;
@@ -36,6 +36,31 @@ function toInviteCode(row: InviteCodeRow): InviteCode {
     uses: row.uses,
     note: row.note,
   };
+}
+
+// True once any account exists — sign-ups then require an invite code. The
+// very first account (the self-hoster) is exempt: no one could have issued
+// them a code yet. Replaces the old invite_required() Postgres RPC.
+export async function inviteRequired(): Promise<boolean> {
+  const [row] = await db.select({ id: user.id }).from(user).limit(1);
+  return !!row;
+}
+
+// Atomically claim one use of a code. The `uses < max_uses` guard in the
+// UPDATE row-locks the code and serialises concurrent redemptions, so `uses`
+// can never exceed `max_uses`. Returns false for an unknown or spent code.
+export async function claimInviteCode(code: string): Promise<boolean> {
+  const rows = await db
+    .update(inviteCode)
+    .set({ uses: sql`${inviteCode.uses} + 1` })
+    .where(and(eq(inviteCode.code, code), lt(inviteCode.uses, inviteCode.max_uses)))
+    .returning({ code: inviteCode.code });
+  return rows.length > 0;
+}
+
+// Audit row: which code a user redeemed at sign-up.
+export async function recordInviteRedemption(code: string, userId: string): Promise<void> {
+  await db.insert(inviteRedemption).values({ code, user_id: userId });
 }
 
 // Codes the member has minted, newest first. Scoped to the caller by the

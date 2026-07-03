@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import ChannelBoard from "@/components/channel-board";
 import { getChannel } from "@/lib/colosseum/channel";
 import { getChannelColumnCount, getChannelColumns } from "@/lib/colosseum/column";
-import { createClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/auth";
 
 type ChannelPageParams = {
   params: Promise<{ handle: string; channel_id: string }>;
@@ -14,16 +14,12 @@ export default async function ChannelPage({ params }: ChannelPageParams) {
   const id = parseInt(channel_id, 10);
   if (Number.isNaN(id)) redirect("/");
 
-  const supabase = await createClient();
-
   // null = the channel doesn't exist; the visibility check below hides a private
   // channel from anyone but its owner. Don't leak which; redirect.
   const channel = await getChannel(id);
   if (!channel) redirect("/");
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
 
   if (channel.private && (!user || user.id !== channel.owner_id)) redirect("/");
 

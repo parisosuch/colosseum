@@ -1,4 +1,4 @@
-.PHONY: help install dev build start format lint typecheck check start-supabase stop-supabase restart-supabase status migrate-create migrate-up db-reset db-seed setup clean
+.PHONY: help install dev build start format lint typecheck check start-supabase stop-supabase restart-supabase status migrate-create migrate-up db-reset setup clean
 
 help:
 	@echo "Colosseum - Development Commands"
@@ -21,10 +21,9 @@ help:
 	@echo "  make check               format + lint + typecheck"
 	@echo ""
 	@echo "Database Commands:"
-	@echo "  make migrate-create      Create a new database migration"
-	@echo "  make migrate-up          Apply pending migrations"
-	@echo "  make db-reset            Recreate DB, apply all migrations + seed"
-	@echo "  make db-seed             Generate seed screenshots"
+	@echo "  make migrate-create      Generate a Drizzle migration from lib/db/schema.ts"
+	@echo "  make migrate-up          Apply pending Drizzle migrations"
+	@echo "  make db-reset            Recreate DB and apply all Drizzle migrations"
 	@echo ""
 	@echo "Utility Commands:"
 	@echo "  make install             Install dependencies only"
@@ -92,22 +91,18 @@ status:
 
 migrate-create:
 	@read -p "Enter migration name: " name; \
-	bun run db:migration $$name
+	bun run db:generate --name $$name
 
 migrate-up:
 	@echo "Applying migrations..."
-	bun run db:migrate
+	bun run db:migrate:drizzle
 	@echo "✓ Migrations applied"
 
 db-reset:
-	@echo "Resetting database (migrations + seed)..."
+	@echo "Resetting database (Drizzle owns the schema)..."
 	bun run db:reset
+	bun run db:migrate:drizzle
 	@echo "✓ Database reset"
-
-db-seed:
-	@echo "Generating seed screenshots..."
-	bun run db:seed:screenshots
-	@echo "✓ Seed screenshots generated"
 
 setup: install start-supabase
 	@echo ""

@@ -2,7 +2,6 @@
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { updateUserProfileAction, uploadAvatarAction } from "@/lib/colosseum/actions";
 import { normalizeHandle, validateHandle } from "@/lib/colosseum/handle";
 import type { UserProfile } from "@/lib/colosseum/user";
@@ -33,17 +32,9 @@ export function EditProfileForm({ profile }: { profile: UserProfile }) {
     e.preventDefault();
     setIsLoading(true);
 
-    const supabase = createClient();
-
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        router.push("/auth/login");
-        return;
-      }
-
+      // The server actions below resolve the caller from their session; no
+      // client-side auth check is needed here.
       const normalized = normalizeHandle(handle);
       const validationError = validateHandle(normalized);
       if (validationError) {

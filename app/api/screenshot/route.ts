@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { createClient } from "@supabase/supabase-js";
+import { getSessionUser } from "@/lib/auth";
 import { blobUrl, putBlob } from "@/lib/colosseum/blob";
 import { captureWebsiteScreenshot } from "@/lib/colosseum/screenshot";
 import { getScreenshot, upsertScreenshot } from "@/lib/colosseum/screenshot-data";
@@ -19,25 +19,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing url parameter" }, { status: 401 });
   }
 
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
-    return NextResponse.json({ error: "Missing auth token." }, { status: 400 });
-  }
+  // Ensure the caller is authenticated (session cookie — this endpoint is
+  // only called same-origin from the app's own UI).
+  const user = await getSessionUser();
 
-  const token = authHeader.replace("Bearer ", "");
-
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
-
-  // ensure user is authenticated first
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser(token);
-
-  if (error || !user) {
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

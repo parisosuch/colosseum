@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { createClient } from "@/lib/supabase/client";
+import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,13 +17,15 @@ export function UpdatePasswordForm({ className, ...props }: React.ComponentProps
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    const supabase = createClient();
     setIsLoading(true);
     setError(null);
 
     try {
-      const { error } = await supabase.auth.updateUser({ password });
-      if (error) throw error;
+      // The reset email's link carries a one-time token as ?token=...; Better
+      // Auth verifies it and sets the new password.
+      const token = new URLSearchParams(window.location.search).get("token") ?? undefined;
+      const { error } = await authClient.resetPassword({ newPassword: password, token });
+      if (error) throw new Error(error.message ?? "Could not update the password.");
       // send the user to the app root, which routes them to their profile
       router.push("/");
     } catch (error: unknown) {

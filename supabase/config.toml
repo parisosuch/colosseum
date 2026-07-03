@@ -68,7 +68,7 @@ schema_paths = []
 enabled = true
 # Specifies an ordered list of seed files to load during db reset.
 # Supports glob patterns relative to supabase directory: "./seeds/*.sql"
-sql_paths = ["./seed.sql"]
+sql_paths = []
 
 [db.network_restrictions]
 # Enable management of network restrictions.
@@ -112,31 +112,12 @@ port = 54324
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
 
+# Unused by the app (images live in content-addressed local-disk blob storage,
+# lib/colosseum/blob.ts). The service still boots as part of the stack.
 [storage]
 enabled = true
 # The maximum file size allowed (e.g. "5MB", "500KB").
 file_size_limit = "50MiB"
-
-# Storage buckets used by the app. `screenshots` is written by
-# app/api/screenshot/route.ts; `avatars` backs user_profile.avatar_url.
-# Both are public so getPublicUrl() links resolve without signed URLs.
-[storage.buckets.screenshots]
-public = true
-# Seed images uploaded into the bucket on `db:start` / `db:reset`. Filenames use
-# the same base64url(url).png scheme as app/api/screenshot/route.ts, so the rows
-# in seed.sql resolve to real objects.
-objects_path = "./seed-screenshots"
-
-[storage.buckets.avatars]
-public = true
-
-# `blocks` backs image blocks (column.image). Public so getPublicUrl() links
-# resolve without signing; type/size are constrained here as a server-side
-# backstop to the client validation in components/column-input.tsx.
-[storage.buckets.blocks]
-public = true
-file_size_limit = "10MiB"
-allowed_mime_types = ["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"]
 
 # Allow connections via S3 compatible clients
 [storage.s3_protocol]

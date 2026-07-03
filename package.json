@@ -13,11 +13,8 @@
     "db:stop": "supabase stop",
     "db:status": "supabase status",
     "db:reset": "supabase db reset",
-    "db:migrate": "supabase migration up",
     "db:generate": "drizzle-kit generate",
-    "db:migrate:drizzle": "drizzle-kit migrate",
-    "db:migration": "supabase migration new",
-    "db:seed:screenshots": "bun scripts/generate-seed-screenshots.ts"
+    "db:migrate:drizzle": "drizzle-kit migrate"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",
@@ -30,8 +27,7 @@
     "@radix-ui/react-popover": "^1.1.15",
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-tooltip": "^1.2.10",
-    "@supabase/ssr": "latest",
-    "@supabase/supabase-js": "latest",
+    "better-auth": "^1.6.23",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",

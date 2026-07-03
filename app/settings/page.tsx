@@ -3,15 +3,11 @@ import { EditProfileForm } from "@/components/edit-profile-form";
 import ApiTokenManager from "@/components/api-token-manager";
 import { getUserProfile } from "@/lib/colosseum/user";
 import { getMyApiTokens } from "@/lib/colosseum/api-token";
-import { createClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/auth";
 import { redirect } from "next/navigation";
 
 export default async function SettingsPage() {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
 
   if (!user) {
     redirect("/auth/login");

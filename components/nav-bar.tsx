@@ -1,5 +1,5 @@
 import { getUserProfile } from "@/lib/colosseum/user";
-import { createClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/auth";
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { Logo } from "./logo";
@@ -8,11 +8,7 @@ import { ThemeSwitcher } from "./theme-switcher";
 import { UserMenu } from "./user-menu";
 
 export default async function NavBar() {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) {
     return (
       <nav className="w-full flex justify-between p-4">

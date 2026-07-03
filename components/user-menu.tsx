@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { Laptop, LogOutIcon, MailIcon, Moon, SettingsIcon, Sun } from "lucide-react";
 
-import { createClient } from "@/lib/supabase/client";
+import { authClient } from "@/lib/auth-client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -28,8 +28,7 @@ export function UserMenu({ avatarUrl, handle }: { avatarUrl?: string; handle: st
   const { theme, setTheme } = useTheme();
 
   const logout = async () => {
-    const supabase = createClient();
-    await supabase.auth.signOut();
+    await authClient.signOut();
     // Full-document navigation so the server-rendered nav reflects the signed-out
     // session instead of the cached authenticated render.
     window.location.assign("/auth/login");

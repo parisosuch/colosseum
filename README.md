@@ -6,12 +6,12 @@
 - [MCP server](docs/mcp.md) — connect Claude Desktop, Claude Code, or any
   other MCP client to manage your channels and blocks.
 
-## Local development (Supabase in Docker)
+## Local development
 
-This project runs against a full Supabase stack in Docker, managed by the
-[Supabase CLI](https://supabase.com/docs/guides/local-development) (already a
-dev dependency). Everything lives under [`supabase/`](./supabase): the stack
-config (`config.toml`), the schema (`migrations/`), and seed data (`seed.sql`).
+Auth runs in-process (Better Auth) and the schema is owned by Drizzle
+migrations in [`drizzle/`](./drizzle). The Supabase CLI (already a dev
+dependency) is used purely to run a local Postgres in Docker; its stack config
+lives under [`supabase/`](./supabase).
 
 ### Prerequisites
 
@@ -22,44 +22,38 @@ config (`config.toml`), the schema (`migrations/`), and seed data (`seed.sql`).
 
 ```bash
 bun install
-cp .env.example .env.local      # local Supabase keys (safe defaults)
+cp .env.example .env.local      # safe local defaults
 
-bun run db:start                # boots the Docker stack + applies migrations + seed
+bun run db:start                # boots the local Postgres (Docker)
+bun run db:migrate:drizzle      # creates the schema
 bun run dev                     # http://localhost:3000
 ```
 
-`db:start` prints the local URLs and keys. They match `.env.example`'s defaults,
-but if your CLI emits different keys, copy them into `.env.local` (run
-`bun run db:status` to see them again).
+| Service         | URL                                                     |
+| --------------- | ------------------------------------------------------- |
+| Postgres        | postgresql://postgres:postgres@127.0.0.1:54322/postgres |
+| Studio (web UI) | http://127.0.0.1:54323                                  |
 
-| Service          | URL                                                     |
-| ---------------- | ------------------------------------------------------- |
-| API              | http://127.0.0.1:54321                                  |
-| Studio (web UI)  | http://127.0.0.1:54323                                  |
-| Postgres         | postgresql://postgres:postgres@127.0.0.1:54322/postgres |
-| Inbucket (email) | http://127.0.0.1:54324                                  |
-
-The seed creates a confirmed test login (email confirmations are off locally):
-
-- **email:** `test@example.com`
-- **password:** `password123`
+There is no seeded login — sign up in the app. The first account needs no
+invite code; every account after that does (mint codes on `/invites`).
 
 ### Everyday commands
 
 ```bash
 bun run db:start                # start the stack
 bun run db:stop                 # stop it (data persists)
-bun run db:status               # show URLs + keys
-bun run db:reset                # wipe + re-run all migrations + seed
-bun run db:migration <name>     # scaffold a new migration in supabase/migrations
+bun run db:reset                # wipe the DB (run db:migrate:drizzle after)
+bun run db:generate             # generate a migration from lib/db/schema.ts
+bun run db:migrate:drizzle      # apply pending Drizzle migrations
 ```
+
+`make db-reset` chains the wipe + migrate for you.
 
 ### Changing the schema
 
-Add SQL to a new migration (`bun run db:migration <name>`), then `bun run db:reset`
-to apply it from scratch. The current schema in `migrations/` was reconstructed
-from the data-access layer (`lib/colosseum/*`) — see the header comment in the
-init migration for the assumptions made about RLS and constraints.
+Edit [`lib/db/schema.ts`](./lib/db/schema.ts), run
+`bun run db:generate --name <name>` to emit SQL into `drizzle/`, then
+`bun run db:migrate:drizzle` to apply it.
 
 ### How `db:start` works (under the hood)
 
@@ -81,8 +75,8 @@ init migration for the assumptions made about RLS and constraints.
   minutes; later starts return in seconds.
 - **Lifecycle / data.** `db:stop` stops and removes the containers but backs up
   the database by default, so data survives across stop/start (use
-  `supabase stop --no-backup` to discard it). `db:reset` drops the database and
-  re-runs every migration + the seed.
+  `supabase stop --no-backup` to discard it). `db:reset` drops the database
+  (re-apply the Drizzle migrations afterwards).
 
 Inspect the running stack with plain Docker:
 
@@ -112,21 +106,10 @@ docker ps --filter label=com.supabase.cli.project=colosseum
   (then `wsl --shutdown` and reopen). With systemd on, `docker.service` starts
   automatically.
 
-### Seed screenshots (puppeteer / Chromium)
+### Screenshots (puppeteer / Chromium)
 
-The seeded URL columns render real screenshots of the linked sites. Those
-images live in `supabase/seed-screenshots/` and are uploaded into the local
-`screenshots` bucket on `db:reset` (via `objects_path` in `config.toml`).
-
-Regenerate them with:
-
-```bash
-bun run db:seed:screenshots   # captures the URLs in scripts/generate-seed-screenshots.ts
-bun run db:reset              # loads the new images into local storage
-```
-
-This uses the **same** capture code as the runtime screenshot route
-(`captureWebsiteScreenshot` in `lib/colosseum/screenshot.ts`), which drives
+URL blocks render screenshots captured at runtime by
+`captureWebsiteScreenshot` (`lib/colosseum/screenshot.ts`), which drives
 **puppeteer + Chromium**. Chromium needs system libraries that aren't installed
 by default on minimal Linux / WSL. If you see:
 

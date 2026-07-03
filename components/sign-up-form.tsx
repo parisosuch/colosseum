@@ -1,13 +1,12 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { createClient } from "@/lib/supabase/client";
+import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Logo } from "@/components/logo";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 export function SignUpForm({
@@ -21,11 +20,9 @@ export function SignUpForm({
   const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const router = useRouter();
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    const supabase = createClient();
     setIsLoading(true);
     setError(null);
 
@@ -43,55 +40,23 @@ export function SignUpForm({
     }
 
     try {
-      if (inviteRequired) {
-        // Pre-flight check so a bad code fails fast with a clear message. The
-        // auth.users trigger is the authoritative gate; this is only UX, and a
-        // code consumed between here and signUp still surfaces via the catch.
-        const { data: codeOk, error: checkError } = await supabase.rpc("invite_code_available", {
-          p_code: code,
-        });
-        if (checkError) throw checkError;
-        if (!codeOk) {
-          setError("That invite code is invalid or has already been used.");
-          setIsLoading(false);
-          return;
-        }
-      }
-
-      const { data, error } = await supabase.auth.signUp({
+      // The server's user-create hook is the authoritative invite gate; a bad
+      // or spent code comes back as this call's error message. The name field
+      // is required by Better Auth but unused by the app (identity is the
+      // handle picked at onboarding), so default it to the email's local part.
+      const { error } = await authClient.signUp.email({
         email,
         password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/onboarding`,
-          // GoTrue stores this on the user's raw_user_meta_data, where the
-          // invite-enforcement trigger reads and redeems it. Omitted for the
-          // first account, which the trigger exempts.
-          data: inviteRequired ? { invite_code: code } : {},
-        },
+        name: email.split("@")[0],
+        ...(inviteRequired ? { inviteCode: code } : {}),
       });
-      if (error) throw error;
-      // When email confirmation is disabled, sign-up returns an active session,
-      // so go straight to onboarding to pick a handle. Otherwise prompt the
-      // user to confirm their email first (they land on onboarding via the
-      // confirmation link / root redirect once their profile is still missing).
-      if (data.session) {
-        // Signed in immediately (email confirmation disabled). Full-document
-        // navigation so the server-rendered nav reflects the new session.
-        window.location.assign("/auth/onboarding");
-      } else {
-        router.push("/auth/sign-up-success");
-      }
+      if (error) throw new Error(error.message ?? "Could not sign up.");
+      // Sign-up starts a session immediately (no email confirmation step), so
+      // go straight to onboarding to pick a handle. Full-document navigation
+      // so the server-rendered nav reflects the new session.
+      window.location.assign("/auth/onboarding");
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "An error occurred";
-      // A trigger exception during sign-up surfaces from GoTrue as a generic
-      // "Database error saving new user" rather than our raised text, so a
-      // race where the code is exhausted between the pre-check and signUp would
-      // otherwise show an opaque message. Map it back to the likely cause.
-      setError(
-        /database error/i.test(message)
-          ? "That invite code is invalid or has already been used."
-          : message,
-      );
+      setError(error instanceof Error ? error.message : "An error occurred");
     } finally {
       setIsLoading(false);
     }

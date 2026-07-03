@@ -60,7 +60,7 @@ export default async function Home() {
 
   // get the user handle and redirect to the user's profile
 
-  const userProfile = await getUserProfile(supabase, user.id);
+  const userProfile = await getUserProfile(user.id);
 
   // a freshly signed-up user has no profile yet — send them to onboarding
   if (!userProfile) {

@@ -18,12 +18,12 @@ export default async function InvitesPage() {
   }
 
   // No profile yet — finish onboarding before handing out invites.
-  const userProfile = await getUserProfile(supabase, user.id);
+  const userProfile = await getUserProfile(user.id);
   if (!userProfile) {
     redirect("/auth/onboarding");
   }
 
-  const codes = await getMyInviteCodes(supabase, user.id);
+  const codes = await getMyInviteCodes(user.id);
 
   return (
     <div className="w-full p-6 sm:p-12 space-y-8">

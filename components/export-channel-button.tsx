@@ -4,11 +4,9 @@ import { useState } from "react";
 import { DownloadIcon } from "lucide-react";
 import { toast } from "sonner";
 
-import { Channel } from "@/lib/colosseum/channel";
-import { getChannelColumns } from "@/lib/colosseum/column";
-import { getScreenshotsForUrls } from "@/lib/colosseum/screenshot-data";
+import type { Channel } from "@/lib/colosseum/channel";
+import { getChannelColumnsAction, getScreenshotsForUrlsAction } from "@/lib/colosseum/actions";
 import { buildChannelExport, exportFilename, toCSV, toJSON } from "@/lib/colosseum/export";
-import { createClient } from "@/lib/supabase/client";
 import { Button } from "./ui/button";
 import {
   DropdownMenu,
@@ -36,7 +34,6 @@ function downloadFile(filename: string, contents: string, mimeType: string) {
 }
 
 export default function ExportChannelButton({ channel }: ExportChannelButtonProps) {
-  const supabase = createClient();
   const [exporting, setExporting] = useState(false);
 
   // Pull the whole channel at export time rather than relying on whatever the
@@ -46,9 +43,9 @@ export default function ExportChannelButton({ channel }: ExportChannelButtonProp
     if (exporting) return;
     setExporting(true);
     try {
-      const columns = await getChannelColumns(supabase, channel.id);
+      const columns = await getChannelColumnsAction(channel.id);
       const urls = columns.filter((c) => c.type === "url" && c.url).map((c) => c.url!);
-      const screenshots = await getScreenshotsForUrls(supabase, urls);
+      const screenshots = new Map(await getScreenshotsForUrlsAction(urls));
       const data = buildChannelExport(channel, columns, screenshots);
       if (format === "json") {
         downloadFile(exportFilename(channel.title, "json"), toJSON(data), "application/json");

@@ -16,7 +16,7 @@ export default async function OnboardingPage() {
   }
 
   // Already onboarded — send them to their profile.
-  const userProfile = await getUserProfile(supabase, user.id);
+  const userProfile = await getUserProfile(user.id);
   if (userProfile) {
     redirect(`/${userProfile.handle}`);
   }

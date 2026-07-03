@@ -3,8 +3,9 @@ import { Metadata } from "next";
 
 import PageHeader from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
-import { getChannel } from "@/lib/colosseum/channel";
+import { Channel, getChannel } from "@/lib/colosseum/channel";
 import { Column, getColumn } from "@/lib/colosseum/column";
+import { getScreenshot } from "@/lib/colosseum/screenshot-data";
 import { createClient } from "@/lib/supabase/server";
 
 type BlockPageParams = {
@@ -18,29 +19,51 @@ function blockLabel(column: Column): string {
   return "Block";
 }
 
+// Resolve the block and its channel, enforcing visibility in app code (this
+// connection bypasses RLS): a block is visible only when it belongs to the
+// channel in the URL and that channel is public or owned by the viewer. Returns
+// null for any not-found/hidden case so a private block is never leaked (not
+// even its title, via metadata).
+async function loadVisibleBlock(
+  channelId: number,
+  blockId: number,
+): Promise<{ column: Column; channel: Channel } | null> {
+  const column = await getColumn(blockId);
+  if (!column || column.channel_id !== channelId) {
+    return null;
+  }
+  const channel = await getChannel(channelId);
+  if (!channel) {
+    return null;
+  }
+  if (channel.private) {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user || user.id !== channel.owner_id) {
+      return null;
+    }
+  }
+  return { column, channel };
+}
+
 export async function generateMetadata({ params }: BlockPageParams): Promise<Metadata> {
-  const { block_id } = await params;
-  const supabase = await createClient();
-  const column = await getColumn(supabase, parseInt(block_id, 10));
-  if (!column) {
+  const { channel_id, block_id } = await params;
+  const found = await loadVisibleBlock(parseInt(channel_id, 10), parseInt(block_id, 10));
+  if (!found) {
     return { title: "Block not found · Colosseum" };
   }
-  return { title: `${blockLabel(column)} · Colosseum` };
+  return { title: `${blockLabel(found.column)} · Colosseum` };
 }
 
 export default async function BlockPage({ params }: BlockPageParams) {
   const { handle, channel_id, block_id } = await params;
   const channelId = parseInt(channel_id, 10);
 
-  const supabase = await createClient();
+  const found = await loadVisibleBlock(channelId, parseInt(block_id, 10));
 
-  // RLS hides blocks in private channels from non-owners, so a null result (or
-  // a block that belongs to a different channel than the URL claims) is treated
-  // as not found rather than leaking its existence.
-  const column = await getColumn(supabase, parseInt(block_id, 10));
-  const notFound = !column || column.channel_id !== channelId;
-
-  if (notFound) {
+  if (!found) {
     return (
       <div className="w-full p-6 sm:p-12 space-y-8">
         <PageHeader crumbs={[{ label: "block" }]} />
@@ -49,18 +72,10 @@ export default async function BlockPage({ params }: BlockPageParams) {
     );
   }
 
-  const channel = await getChannel(supabase, channelId);
+  const { column, channel } = found;
 
   // URL blocks render their cached screenshot full-size when one exists.
-  let screenshot: { image_url: string | null; captured_at: string | null } | null = null;
-  if (column.type === "url" && column.url) {
-    const { data } = await supabase
-      .from("screenshot")
-      .select("image_url, captured_at")
-      .eq("url", column.url)
-      .maybeSingle();
-    screenshot = data;
-  }
+  const screenshot = column.type === "url" && column.url ? await getScreenshot(column.url) : null;
 
   const screenshotSrc =
     screenshot?.image_url && screenshot.captured_at

@@ -27,6 +27,7 @@ import {
   deleteColumn,
   getChannelColumns,
   getColumn,
+  updateColumn,
   uploadImageColumn,
   uploadTextColumn,
   uploadURLColumn,
@@ -44,12 +45,11 @@ async function denialToError(denial: NextResponse): Promise<Error> {
 }
 
 async function requireChannel(
-  supabase: ApiAuth["supabase"],
   userId: string,
   channelId: number,
   access: "read" | "write",
 ): Promise<Channel> {
-  const channel = await getChannel(supabase, channelId);
+  const channel = await getChannel(channelId);
   const denial =
     access === "read"
       ? authorizeChannelRead(channel, userId)
@@ -59,14 +59,13 @@ async function requireChannel(
 }
 
 async function requireBlock(
-  supabase: ApiAuth["supabase"],
   userId: string,
   blockId: number,
   access: "read" | "write",
 ): Promise<Column> {
-  const block = await getColumn(supabase, blockId);
+  const block = await getColumn(blockId);
   if (!block) throw new Error("Not found.");
-  await requireChannel(supabase, userId, block.channel_id, access);
+  await requireChannel(userId, block.channel_id, access);
   return block;
 }
 
@@ -108,8 +107,8 @@ const handler = createMcpHandler(
     server.registerTool(
       "list_channels",
       { description: "List your Colosseum channels.", inputSchema: {} },
-      asTool(async (_args: Record<string, never>, { supabase, userId }) => ({
-        channels: await getUserChannels(supabase, userId),
+      asTool(async (_args: Record<string, never>, { userId }) => ({
+        channels: await getUserChannels(userId),
       })),
     );
 
@@ -124,14 +123,11 @@ const handler = createMcpHandler(
         },
       },
       asTool(
-        async (
-          args: { title: string; description?: string; private?: boolean },
-          { supabase, userId },
-        ) => {
+        async (args: { title: string; description?: string; private?: boolean }, { userId }) => {
           const title = args.title.trim();
           if (!title) throw new Error("`title` is required.");
           return {
-            channel: await createChannel(supabase, {
+            channel: await createChannel({
               title,
               description: args.description,
               private: args.private ?? false,
@@ -148,8 +144,8 @@ const handler = createMcpHandler(
         description: "Fetch a channel by id (public or owned).",
         inputSchema: { id: z.number().int() },
       },
-      asTool(async ({ id }: { id: number }, { supabase, userId }) => ({
-        channel: await requireChannel(supabase, userId, id, "read"),
+      asTool(async ({ id }: { id: number }, { userId }) => ({
+        channel: await requireChannel(userId, id, "read"),
       })),
     );
 
@@ -167,13 +163,13 @@ const handler = createMcpHandler(
       asTool(
         async (
           args: { id: number; title?: string; description?: string; private?: boolean },
-          { supabase, userId },
+          { userId },
         ) => {
-          const channel = await requireChannel(supabase, userId, args.id, "write");
+          const channel = await requireChannel(userId, args.id, "write");
           const title = args.title !== undefined ? args.title.trim() : channel.title;
           if (!title) throw new Error("`title` cannot be empty.");
           return {
-            channel: await updateChannel(supabase, args.id, {
+            channel: await updateChannel(args.id, {
               title,
               description: args.description ?? channel.description,
               private: args.private ?? channel.private,
@@ -189,9 +185,9 @@ const handler = createMcpHandler(
         description: "Delete a channel you own (its blocks cascade).",
         inputSchema: { id: z.number().int() },
       },
-      asTool(async ({ id }: { id: number }, { supabase, userId }) => {
-        await requireChannel(supabase, userId, id, "write");
-        await deleteChannel(supabase, id);
+      asTool(async ({ id }: { id: number }, { userId }) => {
+        await requireChannel(userId, id, "write");
+        await deleteChannel(id);
         return { success: true };
       }),
     );
@@ -202,15 +198,10 @@ const handler = createMcpHandler(
         description: "List a channel's blocks (public or owned).",
         inputSchema: { channelId: z.number().int(), limit: z.number().int().positive().optional() },
       },
-      asTool(
-        async (
-          { channelId, limit }: { channelId: number; limit?: number },
-          { supabase, userId },
-        ) => {
-          await requireChannel(supabase, userId, channelId, "read");
-          return { blocks: await getChannelColumns(supabase, channelId, { limit }) };
-        },
-      ),
+      asTool(async ({ channelId, limit }: { channelId: number; limit?: number }, { userId }) => {
+        await requireChannel(userId, channelId, "read");
+        return { blocks: await getChannelColumns(channelId, { limit }) };
+      }),
     );
 
     server.registerTool(
@@ -236,23 +227,23 @@ const handler = createMcpHandler(
             url?: string;
             image?: string;
           },
-          { supabase, userId },
+          { userId },
         ) => {
-          await requireChannel(supabase, userId, args.channelId, "write");
+          await requireChannel(userId, args.channelId, "write");
           const base = { created_by: userId, channel_id: args.channelId };
 
           if (args.type === "text") {
             if (!args.text?.trim()) throw new Error("`text` is required for a text block.");
-            return { block: await uploadTextColumn(supabase, { ...base, text: args.text }) };
+            return { block: await uploadTextColumn({ ...base, text: args.text }) };
           }
           if (args.type === "url") {
             if (!args.url?.trim()) throw new Error("`url` is required for a url block.");
-            return { block: await uploadURLColumn(supabase, { ...base, text: args.url.trim() }) };
+            return { block: await uploadURLColumn({ ...base, text: args.url.trim() }) };
           }
           if (!args.image?.trim())
             throw new Error("`image` (a public URL) is required for an image block.");
           return {
-            block: await uploadImageColumn(supabase, { ...base, image: args.image.trim() }),
+            block: await uploadImageColumn({ ...base, image: args.image.trim() }),
           };
         },
       ),
@@ -264,8 +255,8 @@ const handler = createMcpHandler(
         description: "Fetch a block (visible if its channel is public or owned).",
         inputSchema: { id: z.number().int() },
       },
-      asTool(async ({ id }: { id: number }, { supabase, userId }) => ({
-        block: await requireBlock(supabase, userId, id, "read"),
+      asTool(async ({ id }: { id: number }, { userId }) => ({
+        block: await requireBlock(userId, id, "read"),
       })),
     );
 
@@ -292,9 +283,9 @@ const handler = createMcpHandler(
             url?: string;
             image?: string;
           },
-          { supabase, userId },
+          { userId },
         ) => {
-          const block = await requireBlock(supabase, userId, args.id, "write");
+          const block = await requireBlock(userId, args.id, "write");
           const allowed = EDITABLE_BY_TYPE[block.type] ?? ["title", "description"];
           const updates: Record<string, string> = {};
           for (const key of allowed) {
@@ -305,14 +296,7 @@ const handler = createMcpHandler(
             throw new Error(`No editable fields provided. Allowed: ${allowed.join(", ")}.`);
           }
 
-          const { data, error } = await supabase
-            .from("column")
-            .update(updates)
-            .eq("id", args.id)
-            .select()
-            .single();
-          if (error) throw new Error(error.message);
-          return { block: data };
+          return { block: await updateColumn(args.id, updates) };
         },
       ),
     );
@@ -323,9 +307,9 @@ const handler = createMcpHandler(
         description: "Delete a block in a channel you own.",
         inputSchema: { id: z.number().int() },
       },
-      asTool(async ({ id }: { id: number }, { supabase, userId }) => {
-        await requireBlock(supabase, userId, id, "write");
-        await deleteColumn(supabase, id);
+      asTool(async ({ id }: { id: number }, { userId }) => {
+        await requireBlock(userId, id, "write");
+        await deleteColumn(id);
         return { success: true };
       }),
     );

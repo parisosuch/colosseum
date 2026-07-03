@@ -33,7 +33,7 @@ export async function GET(req: Request, { params }: Ctx) {
   const channelId = parseId((await params).id);
   if (channelId === null) return apiError("Invalid channel id.", 400);
 
-  const channel = await getChannel(auth.supabase, channelId);
+  const channel = await getChannel(channelId);
   const denied = authorizeChannelRead(channel, auth.userId);
   if (denied) return denied;
 
@@ -44,7 +44,7 @@ export async function GET(req: Request, { params }: Ctx) {
   }
 
   try {
-    const blocks = await getChannelColumns(auth.supabase, channelId, { limit });
+    const blocks = await getChannelColumns(channelId, { limit });
     return json({ blocks });
   } catch (e) {
     console.error(e);
@@ -64,7 +64,7 @@ export async function POST(req: Request, { params }: Ctx) {
   const channelId = parseId((await params).id);
   if (channelId === null) return apiError("Invalid channel id.", 400);
 
-  const channel = await getChannel(auth.supabase, channelId);
+  const channel = await getChannel(channelId);
   const denied = authorizeChannelWrite(channel, auth.userId);
   if (denied) return denied;
 
@@ -84,18 +84,18 @@ export async function POST(req: Request, { params }: Ctx) {
       if (typeof body.text !== "string" || !body.text.trim()) {
         return apiError("`text` is required for a text block.", 400);
       }
-      block = await uploadTextColumn(auth.supabase, { ...base, text: body.text });
+      block = await uploadTextColumn({ ...base, text: body.text });
     } else if (type === "url") {
       if (typeof body.url !== "string" || !body.url.trim()) {
         return apiError("`url` is required for a url block.", 400);
       }
       // uploadURLColumn stores its `text` arg as the block's url.
-      block = await uploadURLColumn(auth.supabase, { ...base, text: body.url.trim() });
+      block = await uploadURLColumn({ ...base, text: body.url.trim() });
     } else if (type === "image") {
       if (typeof body.image !== "string" || !body.image.trim()) {
         return apiError("`image` (a public URL) is required for an image block.", 400);
       }
-      block = await uploadImageColumn(auth.supabase, { ...base, image: body.image.trim() });
+      block = await uploadImageColumn({ ...base, image: body.image.trim() });
     } else {
       return apiError("`type` must be one of: text, url, image.", 400);
     }

@@ -11,7 +11,7 @@ export async function GET(req: Request) {
   if (auth instanceof NextResponse) return auth;
 
   try {
-    const channels = await getUserChannels(auth.supabase, auth.userId);
+    const channels = await getUserChannels(auth.userId);
     return json({ channels });
   } catch (e) {
     console.error(e);
@@ -39,7 +39,7 @@ export async function POST(req: Request) {
   const isPrivate = body.private === true;
 
   try {
-    const channel = await createChannel(auth.supabase, {
+    const channel = await createChannel({
       title,
       description,
       private: isPrivate,

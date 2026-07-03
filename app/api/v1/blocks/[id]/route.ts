@@ -8,7 +8,7 @@ import {
   json,
 } from "@/lib/colosseum/api-auth";
 import { getChannel } from "@/lib/colosseum/channel";
-import { deleteColumn, getColumn } from "@/lib/colosseum/column";
+import { deleteColumn, getColumn, updateColumn } from "@/lib/colosseum/column";
 
 export const runtime = "nodejs";
 
@@ -27,10 +27,10 @@ export async function GET(req: Request, { params }: Ctx) {
   const blockId = parseId((await params).id);
   if (blockId === null) return apiError("Invalid block id.", 400);
 
-  const block = await getColumn(auth.supabase, blockId);
+  const block = await getColumn(blockId);
   if (!block) return apiError("Not found.", 404);
 
-  const channel = await getChannel(auth.supabase, block.channel_id);
+  const channel = await getChannel(block.channel_id);
   const denied = authorizeChannelRead(channel, auth.userId);
   if (denied) return denied;
 
@@ -53,10 +53,10 @@ export async function PATCH(req: Request, { params }: Ctx) {
   const blockId = parseId((await params).id);
   if (blockId === null) return apiError("Invalid block id.", 400);
 
-  const block = await getColumn(auth.supabase, blockId);
+  const block = await getColumn(blockId);
   if (!block) return apiError("Not found.", 404);
 
-  const channel = await getChannel(auth.supabase, block.channel_id);
+  const channel = await getChannel(block.channel_id);
   const denied = authorizeChannelWrite(channel, auth.userId);
   if (denied) return denied;
 
@@ -76,19 +76,13 @@ export async function PATCH(req: Request, { params }: Ctx) {
     return apiError(`No editable fields provided. Allowed: ${allowed.join(", ")}.`, 400);
   }
 
-  const { data, error } = await auth.supabase
-    .from("column")
-    .update(updates)
-    .eq("id", blockId)
-    .select()
-    .single();
-
-  if (error) {
-    console.error(error);
+  try {
+    const updated = await updateColumn(blockId, updates);
+    return json({ block: updated });
+  } catch (e) {
+    console.error(e);
     return apiError("Failed to update block.", 500);
   }
-
-  return json({ block: data });
 }
 
 // DELETE /api/v1/blocks/:id — owner-only.
@@ -99,15 +93,15 @@ export async function DELETE(req: Request, { params }: Ctx) {
   const blockId = parseId((await params).id);
   if (blockId === null) return apiError("Invalid block id.", 400);
 
-  const block = await getColumn(auth.supabase, blockId);
+  const block = await getColumn(blockId);
   if (!block) return apiError("Not found.", 404);
 
-  const channel = await getChannel(auth.supabase, block.channel_id);
+  const channel = await getChannel(block.channel_id);
   const denied = authorizeChannelWrite(channel, auth.userId);
   if (denied) return denied;
 
   try {
-    await deleteColumn(auth.supabase, blockId);
+    await deleteColumn(blockId);
     return json({ success: true });
   } catch (e) {
     console.error(e);

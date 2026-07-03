@@ -26,7 +26,7 @@ export async function GET(req: Request, { params }: Ctx) {
   const channelId = parseId((await params).id);
   if (channelId === null) return apiError("Invalid channel id.", 400);
 
-  const channel = await getChannel(auth.supabase, channelId);
+  const channel = await getChannel(channelId);
   const denied = authorizeChannelRead(channel, auth.userId);
   if (denied) return denied;
 
@@ -42,7 +42,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
   const channelId = parseId((await params).id);
   if (channelId === null) return apiError("Invalid channel id.", 400);
 
-  const channel = await getChannel(auth.supabase, channelId);
+  const channel = await getChannel(channelId);
   const denied = authorizeChannelWrite(channel, auth.userId);
   if (denied) return denied;
 
@@ -60,7 +60,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
   const isPrivate = typeof body.private === "boolean" ? body.private : channel!.private;
 
   try {
-    const updated = await updateChannel(auth.supabase, channelId, {
+    const updated = await updateChannel(channelId, {
       title,
       description,
       private: isPrivate,
@@ -80,12 +80,12 @@ export async function DELETE(req: Request, { params }: Ctx) {
   const channelId = parseId((await params).id);
   if (channelId === null) return apiError("Invalid channel id.", 400);
 
-  const channel = await getChannel(auth.supabase, channelId);
+  const channel = await getChannel(channelId);
   const denied = authorizeChannelWrite(channel, auth.userId);
   if (denied) return denied;
 
   try {
-    await deleteChannel(auth.supabase, channelId);
+    await deleteChannel(channelId);
     return json({ success: true });
   } catch (e) {
     console.error(e);

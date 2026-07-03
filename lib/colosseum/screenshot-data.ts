@@ -1,4 +1,7 @@
-import { SupabaseClient } from "@supabase/supabase-js";
+import { eq, inArray, sql } from "drizzle-orm";
+
+import { db } from "@/lib/db";
+import { screenshot } from "@/lib/db/schema";
 
 // Lightweight view of a cached screenshot row, safe to use on the client.
 // (lib/colosseum/screenshot.ts pulls in puppeteer/sharp and must not be
@@ -12,17 +15,10 @@ export type ColumnScreenshot = {
   captured_at: string | null;
 };
 
-// Max URLs per `.in("url", …)` query. The lookup is a GET, so the URL list
-// rides in the request URL; chunking keeps it under the length cap PostgREST
-// and proxies enforce when a channel has hundreds of URL blocks.
-const SCREENSHOT_CHUNK_SIZE = 100;
-
 // Batch-fetch cached screenshot rows for many URLs, instead of one request per
-// column. Splits the URLs into bounded chunks (run in parallel) so the request
-// URL can't overflow, then merges them. Returns a map keyed by url; URLs
-// without a cached screenshot are simply absent from the map.
+// column. Returns a map keyed by url; URLs without a cached screenshot are
+// simply absent from the map.
 export async function getScreenshotsForUrls(
-  supabase: SupabaseClient,
   urls: string[],
 ): Promise<Map<string, ColumnScreenshot>> {
   const screenshots = new Map<string, ColumnScreenshot>();
@@ -30,30 +26,73 @@ export async function getScreenshotsForUrls(
     return screenshots;
   }
 
-  const chunks: string[][] = [];
-  for (let i = 0; i < urls.length; i += SCREENSHOT_CHUNK_SIZE) {
-    chunks.push(urls.slice(i, i + SCREENSHOT_CHUNK_SIZE));
-  }
+  const rows = await db
+    .select({
+      url: screenshot.url,
+      image_url: screenshot.image_url,
+      title: screenshot.title,
+      captured_at: screenshot.captured_at,
+    })
+    .from(screenshot)
+    .where(inArray(screenshot.url, urls));
 
-  const results = await Promise.all(
-    chunks.map(async (chunk) => {
-      const { data, error } = await supabase
-        .from("screenshot")
-        .select("url, image_url, title, captured_at")
-        .in("url", chunk);
-
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      return data ?? [];
-    }),
-  );
-
-  for (const rows of results) {
-    for (const row of rows) {
-      screenshots.set(row.url, row as ColumnScreenshot);
-    }
+  for (const row of rows) {
+    screenshots.set(row.url, {
+      url: row.url,
+      image_url: row.image_url,
+      title: row.title,
+      captured_at: row.captured_at?.toISOString() ?? null,
+    });
   }
   return screenshots;
+}
+
+// A single cached screenshot row, or null when none has been captured for the
+// URL yet. The description is included for the screenshot route's freshness
+// check; the client-facing map above omits it.
+export type ScreenshotRow = {
+  image_url: string | null;
+  title: string | null;
+  description: string | null;
+  captured_at: string | null;
+};
+
+export async function getScreenshot(url: string): Promise<ScreenshotRow | null> {
+  const [row] = await db
+    .select({
+      image_url: screenshot.image_url,
+      title: screenshot.title,
+      description: screenshot.description,
+      captured_at: screenshot.captured_at,
+    })
+    .from(screenshot)
+    .where(eq(screenshot.url, url))
+    .limit(1);
+  if (!row) {
+    return null;
+  }
+  return { ...row, captured_at: row.captured_at?.toISOString() ?? null };
+}
+
+// Upsert a freshly captured screenshot, refreshing a stale row in place so
+// image_url/title/description are rewritten and captured_at is bumped (which
+// also serves as the client cache-busting version).
+export async function upsertScreenshot(input: {
+  url: string;
+  image_url: string;
+  title: string;
+  description: string;
+}): Promise<void> {
+  await db
+    .insert(screenshot)
+    .values({ ...input, captured_at: new Date() })
+    .onConflictDoUpdate({
+      target: screenshot.url,
+      set: {
+        image_url: input.image_url,
+        title: input.title,
+        description: input.description,
+        captured_at: sql`now()`,
+      },
+    });
 }

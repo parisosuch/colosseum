@@ -3,13 +3,9 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import {
-  updateUserProfile,
-  HandleTakenError,
-  normalizeHandle,
-  validateHandle,
-  UserProfile,
-} from "@/lib/colosseum/user";
+import { updateUserProfileAction } from "@/lib/colosseum/actions";
+import { normalizeHandle, validateHandle } from "@/lib/colosseum/handle";
+import type { UserProfile } from "@/lib/colosseum/user";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -55,7 +51,7 @@ export function EditProfileForm({ profile }: { profile: UserProfile }) {
         return;
       }
 
-      let avatar_url = profile.avatar_url;
+      let avatar_url: string | undefined = profile.avatar_url;
 
       if (avatarFile) {
         const { error: uploadError } = await supabase.storage
@@ -73,7 +69,11 @@ export function EditProfileForm({ profile }: { profile: UserProfile }) {
       if (avatar_url !== profile.avatar_url) updates.avatar_url = avatar_url;
 
       if (Object.keys(updates).length > 0) {
-        await updateUserProfile(supabase, user.id, updates);
+        const result = await updateUserProfileAction(updates);
+        if (!result.ok) {
+          toast.error(result.handleTaken ? "That handle is already taken." : result.message);
+          return;
+        }
       }
 
       toast.success("Profile saved.");
@@ -85,11 +85,7 @@ export function EditProfileForm({ profile }: { profile: UserProfile }) {
         router.refresh();
       }
     } catch (err) {
-      if (err instanceof HandleTakenError) {
-        toast.error("That handle is already taken.");
-      } else {
-        toast.error(err instanceof Error ? err.message : "Something went wrong.");
-      }
+      toast.error(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
       setIsLoading(false);
     }

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { encodeUrlToFilename } from "@/lib/url-encoding";
 import { captureWebsiteScreenshot } from "@/lib/colosseum/screenshot";
+import { getScreenshot, upsertScreenshot } from "@/lib/colosseum/screenshot-data";
 
 export const runtime = "nodejs"; // puppeteer is going to require nodejs runtime for browsing
 
@@ -45,13 +46,10 @@ export async function POST(req: NextRequest) {
   // (deterministic filename) and shared by every block/channel using that URL,
   // so recapturing a still-fresh one would waste a puppeteer run and overwrite
   // the image other blocks already display.
-  const { data: existing, error: lookupError } = await supabase
-    .from("screenshot")
-    .select("image_url, captured_at, title, description")
-    .eq("url", url)
-    .maybeSingle();
-
-  if (lookupError) {
+  let existing: Awaited<ReturnType<typeof getScreenshot>>;
+  try {
+    existing = await getScreenshot(url);
+  } catch (lookupError) {
     console.error(lookupError);
     return NextResponse.json({ error: "Failed to look up screenshot" }, { status: 500 });
   }
@@ -89,23 +87,14 @@ export async function POST(req: NextRequest) {
       data: { publicUrl },
     } = supabase.storage.from("screenshots").getPublicUrl(fileName);
 
-    // Upsert (not ignoreDuplicates) so a stale row is refreshed in place:
-    // image_url/title get rewritten and captured_at is bumped, which also
-    // serves as the client cache-busting version.
-    const { error: insertError } = await supabase.from("screenshot").upsert(
-      {
-        url: url,
-        image_url: publicUrl,
-        title: title,
-        description: description,
-        captured_at: new Date().toISOString(),
-      },
-      { onConflict: "url" },
-    );
-
-    if (insertError) {
+    // Upsert so a stale row is refreshed in place: image_url/title/description
+    // get rewritten and captured_at is bumped, which also serves as the client
+    // cache-busting version.
+    try {
+      await upsertScreenshot({ url, image_url: publicUrl, title, description });
+    } catch (insertError) {
       console.error(insertError);
-      return NextResponse.json({ error: insertError }, { status: 500 });
+      return NextResponse.json({ error: "Failed to save screenshot" }, { status: 500 });
     }
 
     return NextResponse.json({ image_url: publicUrl, title, description });
@@ -125,19 +114,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Missing url parameter." }, { status: 401 });
   }
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
-
   // look up if image exists in database
-  const { data, error: selectError } = await supabase
-    .from("screenshot")
-    .select("*")
-    .eq("url", targetURL)
-    .maybeSingle();
-
-  if (selectError) {
+  let data: Awaited<ReturnType<typeof getScreenshot>>;
+  try {
+    data = await getScreenshot(targetURL);
+  } catch (selectError) {
     return NextResponse.json({ error: selectError }, { status: 500 });
   }
 
@@ -146,5 +127,5 @@ export async function GET(req: NextRequest) {
   }
 
   // return screenshot data
-  return NextResponse.json(data);
+  return NextResponse.json({ url: targetURL, ...data });
 }

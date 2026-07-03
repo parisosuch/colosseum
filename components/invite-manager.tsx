@@ -3,12 +3,12 @@
 import { useState } from "react";
 import { PlusIcon, CheckIcon, CopyIcon, Trash2Icon } from "lucide-react";
 
-import { createClient } from "@/lib/supabase/client";
-import { createInviteCode, revokeInviteCode, InviteCode } from "@/lib/colosseum/invite";
+import { createInviteCodeAction, revokeInviteCodeAction } from "@/lib/colosseum/actions";
+import type { InviteCode } from "@/lib/colosseum/invite";
 import { Button } from "@/components/ui/button";
 
 export default function InviteManager({
-  userId,
+  userId: _userId,
   initialCodes,
 }: {
   userId: string;
@@ -19,13 +19,11 @@ export default function InviteManager({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
 
-  const supabase = createClient();
-
   const handleCreate = async () => {
     setCreating(true);
     setError(null);
     try {
-      const invite = await createInviteCode(supabase, { created_by: userId, max_uses: 1 });
+      const invite = await createInviteCodeAction({ max_uses: 1 });
       setCodes((prev) => [invite, ...prev]);
     } catch (e) {
       console.error(e);
@@ -40,7 +38,7 @@ export default function InviteManager({
     const prev = codes;
     setCodes((cs) => cs.filter((c) => c.code !== code));
     try {
-      await revokeInviteCode(supabase, code);
+      await revokeInviteCodeAction(code);
     } catch (e) {
       console.error(e);
       setCodes(prev);

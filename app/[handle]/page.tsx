@@ -14,9 +14,9 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
 
   const ChannelColumnsView = async ({ channel }: { channel: Channel }) => {
     // Only the first 5 previews are shown, so don't fetch the whole channel.
-    const columns = await getChannelColumns(supabase, channel.id, { limit: 5 });
+    const columns = await getChannelColumns(channel.id, { limit: 5 });
 
-    const columnCount = await getChannelColumnCount(supabase, channel.id);
+    const columnCount = await getChannelColumnCount(channel.id);
 
     return (
       <div className="flex flex-col md:flex-row gap-8 p-2">
@@ -80,7 +80,7 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
     data: { user },
   } = await supabase.auth.getUser();
 
-  const userProfile = await getPublicUserProfile(supabase, handle);
+  const userProfile = await getPublicUserProfile(handle);
 
   if (!userProfile) {
     return (
@@ -101,9 +101,9 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
   let channels: Channel[];
 
   if (!match) {
-    channels = await getUserPublicChannels(supabase, userProfile.user_id);
+    channels = await getUserPublicChannels(userProfile.user_id);
   } else {
-    channels = await getUserChannels(supabase, user!.id);
+    channels = await getUserChannels(user!.id);
   }
 
   return (

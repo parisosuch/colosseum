@@ -6,16 +6,15 @@ import Link from "next/link";
 import { ChevronLeft, ChevronRight, GlobeIcon, LinkIcon } from "lucide-react";
 import { toast } from "sonner";
 
+import type { Column } from "@/lib/colosseum/column";
+import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import {
-  Column,
-  deleteColumn,
-  updateColumnDescription,
-  updateColumnTags,
-  updateColumnText,
-  updateColumnTitle,
-} from "@/lib/colosseum/column";
-import { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
-import { createClient } from "@/lib/supabase/client";
+  deleteColumnAction,
+  updateColumnDescriptionAction,
+  updateColumnTagsAction,
+  updateColumnTextAction,
+  updateColumnTitleAction,
+} from "@/lib/colosseum/actions";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -157,12 +156,10 @@ function BlockModalBody({
     else if (dx > 0 && hasPrev) onPrev();
   };
 
-  const supabase = createClient();
-
   const handleTitleChange = async () => {
     if ((column.title ?? "") === title) return;
     try {
-      await updateColumnTitle(supabase, column.id, title);
+      await updateColumnTitleAction(column.id, title);
       setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, title } : c)));
       titleInputRef.current?.blur();
     } catch (e) {
@@ -173,7 +170,7 @@ function BlockModalBody({
   const handleDescriptionChange = async () => {
     if ((column.description ?? "") === description) return;
     try {
-      await updateColumnDescription(supabase, column.id, description);
+      await updateColumnDescriptionAction(column.id, description);
       setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, description } : c)));
       descriptionInputRef.current?.blur();
     } catch (e) {
@@ -182,7 +179,7 @@ function BlockModalBody({
   };
 
   const handleTextChange = async () => {
-    await updateColumnText(supabase, column.id, text);
+    await updateColumnTextAction(column.id, text);
     textInputRef.current?.blur();
     setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, text } : c)));
   };
@@ -190,7 +187,7 @@ function BlockModalBody({
   // Tags persist eagerly on each add/remove, so they stay out of the Save flow.
   const handleTagsChange = async (next: string[]) => {
     try {
-      await updateColumnTags(supabase, column.id, next);
+      await updateColumnTagsAction(column.id, next);
       setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, tags: next } : c)));
     } catch (e) {
       console.error(e);
@@ -200,7 +197,7 @@ function BlockModalBody({
 
   const handleDelete = async () => {
     try {
-      await deleteColumn(supabase, column.id);
+      await deleteColumnAction(column.id);
       // Dropping the block clears the open id in the parent, which closes here.
       setColumns((cols) => cols.filter((c) => c.id !== column.id));
     } catch (e) {

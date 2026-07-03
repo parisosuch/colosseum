@@ -1,5 +1,5 @@
-import { Column } from "./column";
-import { ColumnScreenshot } from "./screenshot-data";
+import type { Column } from "./column";
+import type { ColumnScreenshot } from "./screenshot-data";
 
 // One block as it appears in an export. Mirrors the per-block fields a viewer
 // can already see on the channel page, plus the cached screenshot URL for

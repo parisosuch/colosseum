@@ -8,7 +8,7 @@ import { Logo } from "@/components/logo";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { useState } from "react";
-import { getUserProfile } from "@/lib/colosseum/user";
+import { getMyProfileAction } from "@/lib/colosseum/actions";
 
 export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRef<"div">) {
   const [email, setEmail] = useState("");
@@ -23,14 +23,14 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
     setError(null);
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
       if (error) throw error;
       // Update this route to redirect to an authenticated route. The user already has an active session.
-      // Get user profile and redirect to profile
-      const userProfile = await getUserProfile(supabase, data.user.id);
+      // Get user profile and redirect to profile (the action reads the session).
+      const userProfile = await getMyProfileAction();
       // Full-document navigation (not router.push): the nav lives in the root
       // layout as a server component that reads auth, and a client push won't
       // re-render it. A real navigation makes the server render it with the new

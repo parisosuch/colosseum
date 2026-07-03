@@ -11,10 +11,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
-import { Channel } from "@/lib/colosseum/channel";
-import { Column, ColumnFilter, ColumnSort, getChannelColumns } from "@/lib/colosseum/column";
-import { ColumnScreenshot, getScreenshotsForUrls } from "@/lib/colosseum/screenshot-data";
-import { createClient } from "@/lib/supabase/client";
+import type { Channel } from "@/lib/colosseum/channel";
+import type { Column, ColumnFilter, ColumnSort } from "@/lib/colosseum/column";
+import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
+import { getChannelColumnsAction, getScreenshotsForUrlsAction } from "@/lib/colosseum/actions";
 import { User } from "@supabase/supabase-js";
 import { LayoutGrid, List, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -108,8 +108,6 @@ export default function ChannelBoard({
   // to an empty preview) until the capture lands.
   const [capturing, setCapturing] = useState<Set<string>>(new Set());
 
-  const supabase = createClient();
-
   const isFiltered = debouncedSearch.trim() !== "" || typeFilter !== "all";
 
   const metaData = useMemo(() => {
@@ -140,7 +138,7 @@ export default function ChannelBoard({
     setLoadingPage(true);
     (async () => {
       try {
-        const first = await getChannelColumns(supabase, channel.id, {
+        const first = await getChannelColumnsAction(channel.id, {
           search: debouncedSearch,
           type: typeFilter,
           sort,
@@ -161,7 +159,7 @@ export default function ChannelBoard({
     return () => {
       cancelled = true;
     };
-  }, [channel.id, debouncedSearch, typeFilter, sort, supabase]);
+  }, [channel.id, debouncedSearch, typeFilter, sort]);
 
   // Append the next page. Offset is the count already loaded.
   const loadMore = useCallback(async () => {
@@ -169,7 +167,7 @@ export default function ChannelBoard({
 
     setLoadingMore(true);
     try {
-      const next = await getChannelColumns(supabase, channel.id, {
+      const next = await getChannelColumnsAction(channel.id, {
         search: debouncedSearch,
         type: typeFilter,
         sort,
@@ -188,7 +186,6 @@ export default function ChannelBoard({
     loadingMore,
     loadingPage,
     hasMore,
-    supabase,
     debouncedSearch,
     typeFilter,
     sort,
@@ -231,7 +228,7 @@ export default function ChannelBoard({
     let cancelled = false;
     (async () => {
       try {
-        const fetched = await getScreenshotsForUrls(supabase, missing);
+        const fetched = new Map(await getScreenshotsForUrlsAction(missing));
         if (cancelled) return;
         setScreenshots((prev) => {
           const next = new Map(prev);
@@ -253,7 +250,7 @@ export default function ChannelBoard({
     return () => {
       cancelled = true;
     };
-  }, [columns, screenshots, capturing, supabase]);
+  }, [columns, screenshots, capturing]);
 
   // A new block is the newest and bumps the channel length; reflect that in the
   // stats without refetching the whole channel.

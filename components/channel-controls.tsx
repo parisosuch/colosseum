@@ -2,7 +2,7 @@
 
 import { ListFilterIcon, ArrowDownUpIcon, SearchIcon } from "lucide-react";
 
-import { ColumnFilter, ColumnSort } from "@/lib/colosseum/column";
+import type { ColumnFilter, ColumnSort } from "@/lib/colosseum/column";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import {

@@ -1,8 +1,9 @@
 import { and, eq, ilike, or, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { channel } from "@/lib/db/schema";
+import { channel, column } from "@/lib/db/schema";
 import { sanitizeSearch } from "@/lib/utils";
+import { deleteMediaByUrl, setMediaVisibilityByUrls } from "./blob";
 
 export type Channel = {
   id: number;
@@ -87,7 +88,21 @@ export async function createChannel(input: {
 // bypasses RLS). The channel's columns are removed by the ON DELETE CASCADE
 // foreign key. Screenshots are a shared per-URL cache and are left untouched.
 export async function deleteChannel(channel_id: number): Promise<void> {
+  // Collect image URLs before the cascade removes the columns, then drop their
+  // media references (blobs GC when the last reference goes).
+  const images = await channelImageUrls(channel_id);
   await db.delete(channel).where(eq(channel.id, channel_id));
+  for (const url of images) {
+    await deleteMediaByUrl(url);
+  }
+}
+
+async function channelImageUrls(channel_id: number): Promise<string[]> {
+  const rows = await db
+    .select({ image: column.image })
+    .from(column)
+    .where(and(eq(column.channel_id, channel_id), eq(column.type, "image")));
+  return rows.map((r) => r.image).filter((image): image is string => image !== null);
 }
 
 // Updates an existing channel's editable fields. Callers must authorize
@@ -104,6 +119,12 @@ export async function updateChannel(
   if (!row) {
     throw new Error("Channel not found.");
   }
+  // Keep image-block media in sync with the channel's privacy so a flipped
+  // channel's images follow it (idempotent, so no need to diff the old value).
+  await setMediaVisibilityByUrls(
+    await channelImageUrls(channel_id),
+    row.private ? "private" : "public",
+  );
   return toChannel(row);
 }
 

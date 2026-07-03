@@ -142,6 +142,23 @@ export const blobs = pgTable("blobs", {
     .references(() => user.id, { onDelete: "cascade" }),
 });
 
+// One reference to a blob. Visibility lives here, never on the blob:
+// content-addressing dedupes identical bytes into one blob, so the same bytes
+// can back a public and a private image at once. URLs carry media.id — no
+// endpoint serves bytes by hash. Deleting a blobs row is FK-restricted while
+// any media row still references it (the reference count).
+export const media = pgTable("media", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  owner_id: uuid("owner_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  blob_sha256: text("blob_sha256")
+    .notNull()
+    .references(() => blobs.sha256),
+  visibility: text("visibility", { enum: ["public", "private"] }).notNull(),
+});
+
 export const apiToken = pgTable("api_token", {
   id: uuid("id").primaryKey().defaultRandom(),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
-import { blobUrl, putBlob } from "@/lib/colosseum/blob";
+import { createMedia, deleteMediaByUrl, putBlob } from "@/lib/colosseum/blob";
 import { captureWebsiteScreenshot } from "@/lib/colosseum/screenshot";
 import { getScreenshot, upsertScreenshot } from "@/lib/colosseum/screenshot-data";
 
@@ -55,12 +55,14 @@ export async function POST(req: NextRequest) {
   try {
     const { image: squareBuffer, title, description } = await captureWebsiteScreenshot(url);
 
-    // Store the bytes in content-addressed local-disk blob storage. A
-    // recapture with identical pixels dedupes to the same blob; a changed page
-    // yields a new sha and therefore a new URL.
+    // Store the bytes in content-addressed local-disk blob storage behind a
+    // public media reference (screenshots are a shared per-URL cache). A
+    // recapture with identical pixels dedupes to the same blob but still gets
+    // its own reference.
     let publicUrl: string;
     try {
-      publicUrl = blobUrl(await putBlob(squareBuffer, "image/png", user.id));
+      const sha256 = await putBlob(squareBuffer, "image/png", user.id);
+      publicUrl = await createMedia(sha256, user.id, "public");
     } catch (uploadError) {
       console.error(uploadError);
       return NextResponse.json({ error: "Failed to upload image" }, { status: 500 });
@@ -74,6 +76,12 @@ export async function POST(req: NextRequest) {
     } catch (insertError) {
       console.error(insertError);
       return NextResponse.json({ error: "Failed to save screenshot" }, { status: 500 });
+    }
+
+    // The refresh replaced the row's media reference; drop the old one so its
+    // blob can GC once nothing else points at it.
+    if (existing?.image_url && existing.image_url !== publicUrl) {
+      await deleteMediaByUrl(existing.image_url);
     }
 
     return NextResponse.json({ image_url: publicUrl, title, description });

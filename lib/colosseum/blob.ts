@@ -1,23 +1,26 @@
 // Content-addressed blob storage on local disk. Bytes live at
 // <STORAGE_DIR>/<sha[0:2]>/<sha>; metadata lives in the `blobs` table.
 // Identical uploads hash to the same path and row, so they dedupe for free.
-// Served by app/api/blob/[sha]/route.ts.
 //
-// ponytail: one concrete local-disk store, no driver abstraction. Add an S3
-// driver behind these same functions if the app ever outgrows one disk.
+// Blobs are never served by hash. Every stored file is reached through a
+// `media` row (one row per reference) whose id is the URL and whose
+// `visibility` gates access — served by app/api/media/[id]/route.ts. A blob is
+// GC'd only when its last media reference goes away.
 
 import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, notExists } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { blobs } from "@/lib/db/schema";
+import { blobs, media } from "@/lib/db/schema";
 
 const STORAGE_DIR = process.env.STORAGE_DIR ?? "./data/storage";
+
+export type MediaVisibility = "public" | "private";
 
 // Server-side backstop for user uploads (the Supabase bucket used to enforce
 // this). Client-side copies of these limits live next to the upload UIs.
@@ -34,8 +37,16 @@ export function blobDiskPath(sha256: string): string {
   return path.join(STORAGE_DIR, sha256.slice(0, 2), sha256);
 }
 
-export function blobUrl(sha256: string): string {
-  return `/api/blob/${sha256}`;
+export function mediaUrl(id: string): string {
+  return `/api/media/${id}`;
+}
+
+// The media id inside a `/api/media/<id>` URL, or null for any other URL
+// (block image fields can also hold external URLs).
+export function mediaIdFromUrl(url: string): string | null {
+  const match =
+    /^\/api\/media\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.exec(url);
+  return match?.[1] ?? null;
 }
 
 // Store bytes + metadata, return the sha256. Safe to call with bytes that are
@@ -57,8 +68,27 @@ export async function putBlob(data: Buffer, mime: string, createdBy: string): Pr
   return sha256;
 }
 
-// Validate + store a user-uploaded image, returning the URL to persist.
-export async function putImageBlob(file: File, createdBy: string): Promise<string> {
+// Create a new reference to stored bytes and return its URL. Visibility lives
+// on the reference, never on the blob, so dedup can't leak a private image
+// through a public URL for the same bytes.
+export async function createMedia(
+  sha256: string,
+  ownerId: string,
+  visibility: MediaVisibility,
+): Promise<string> {
+  const [row] = await db
+    .insert(media)
+    .values({ owner_id: ownerId, blob_sha256: sha256, visibility })
+    .returning({ id: media.id });
+  return mediaUrl(row.id);
+}
+
+// Validate + store a user-uploaded image, returning the media URL to persist.
+export async function putImageBlob(
+  file: File,
+  createdBy: string,
+  visibility: MediaVisibility,
+): Promise<string> {
   if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
     throw new Error("Only image files (PNG, JPEG, GIF, WebP, AVIF) are supported.");
   }
@@ -66,14 +96,67 @@ export async function putImageBlob(file: File, createdBy: string): Promise<strin
     throw new Error("That image is too large (max 10MB).");
   }
   const sha256 = await putBlob(Buffer.from(await file.arrayBuffer()), file.type, createdBy);
-  return blobUrl(sha256);
+  return createMedia(sha256, createdBy, visibility);
 }
 
-export async function getBlobMeta(sha256: string): Promise<{ mime: string; size: number } | null> {
+// Everything the serving route needs to authorize and stream one media id.
+export async function getMedia(
+  id: string,
+): Promise<{ owner_id: string; visibility: MediaVisibility; sha256: string; mime: string } | null> {
   const rows = await db
-    .select({ mime: blobs.mime, size: blobs.size })
-    .from(blobs)
-    .where(eq(blobs.sha256, sha256))
+    .select({
+      owner_id: media.owner_id,
+      visibility: media.visibility,
+      sha256: blobs.sha256,
+      mime: blobs.mime,
+    })
+    .from(media)
+    .innerJoin(blobs, eq(media.blob_sha256, blobs.sha256))
+    .where(eq(media.id, id))
     .limit(1);
   return rows[0] ?? null;
+}
+
+// Delete the media reference behind `url` (no-op for non-media URLs), then GC
+// the blob if that was its last reference.
+export async function deleteMediaByUrl(url: string): Promise<void> {
+  const id = mediaIdFromUrl(url);
+  if (!id) {
+    return;
+  }
+  const [deleted] = await db
+    .delete(media)
+    .where(eq(media.id, id))
+    .returning({ sha256: media.blob_sha256 });
+  if (!deleted) {
+    return;
+  }
+  // Single conditional statement so a still-referenced blob survives. A
+  // reference created between the NOT EXISTS check and the delete makes the
+  // delete fail on the media FK — also "still referenced", so swallow it.
+  const gone = await db
+    .delete(blobs)
+    .where(
+      and(
+        eq(blobs.sha256, deleted.sha256),
+        notExists(db.select().from(media).where(eq(media.blob_sha256, deleted.sha256))),
+      ),
+    )
+    .returning({ sha256: blobs.sha256 })
+    .catch(() => []);
+  if (gone.length > 0) {
+    await unlink(blobDiskPath(deleted.sha256)).catch(() => {});
+  }
+}
+
+// Retarget the visibility of every media URL in `urls`; non-media URLs are
+// ignored. Used when a channel flips public/private.
+export async function setMediaVisibilityByUrls(
+  urls: string[],
+  visibility: MediaVisibility,
+): Promise<void> {
+  const ids = urls.map(mediaIdFromUrl).filter((id): id is string => id !== null);
+  if (ids.length > 0) {
+    await db.update(media).set({ visibility }).where(inArray(media.id, ids));
+  }
 }

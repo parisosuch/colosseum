@@ -6,6 +6,58 @@
 - [MCP server](docs/mcp.md) — connect Claude Desktop, Claude Code, or any
   other MCP client to manage your channels and blocks.
 
+## Self-hosting (Docker Compose)
+
+The whole app ships as one [`compose.yaml`](./compose.yaml): an `app` service
+(Next.js), a `db` service (Postgres 17), and a `storage` volume for uploaded
+file bytes. Migrations run on boot — the entrypoint applies pending Drizzle
+migrations (idempotently) before the server accepts traffic, so there is never
+a manual migration step.
+
+### First run
+
+```bash
+echo "AUTH_SECRET=$(openssl rand -base64 32)" > .env
+docker compose up -d --build
+```
+
+Then open http://localhost:3000 and sign up — the first account needs no
+invite code.
+
+Optionally set `POSTGRES_PASSWORD` in the same `.env` (defaults to `postgres`;
+the database is only reachable from the compose network either way).
+
+### Upgrading
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+That's the whole procedure. The new image migrates the database on boot,
+before serving. File bytes never migrate — blobs are immutable and
+content-addressed, so the storage volume carries across any upgrade untouched.
+
+### Backup and restore
+
+Back up the database and the storage volume:
+
+```bash
+docker compose exec db pg_dump -Fc -U postgres postgres > colosseum.dump
+docker run --rm -v colosseum_storage:/data -v "$PWD":/backup alpine \
+  tar czf /backup/storage.tar.gz -C /data .
+```
+
+Restore into a fresh stack:
+
+```bash
+docker compose up -d db
+docker compose exec -T db pg_restore -U postgres -d postgres --clean --if-exists < colosseum.dump
+docker run --rm -v colosseum_storage:/data -v "$PWD":/backup alpine \
+  tar xzf /backup/storage.tar.gz -C /data
+docker compose up -d
+```
+
 ## Local development
 
 Auth runs in-process (Better Auth) and the schema is owned by Drizzle

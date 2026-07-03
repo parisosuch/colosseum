@@ -1,35 +1,31 @@
-# Use a lightweight base
-FROM ubuntu:22.04
+# Single-stage image: the runtime needs drizzle-kit (migrate-on-boot) and the
+# full install already contains it, so a multi-stage prune buys little here.
+# ponytail: single stage, ~larger image; split build/runtime stages if pull
+# size ever matters.
+FROM oven/bun:1.3
 
-# Install dependencies
+# Debian's Chromium for the screenshot capture (puppeteer drives it via
+# PUPPETEER_EXECUTABLE_PATH and skips downloading its own copy below).
 RUN apt-get update && \
-    apt-get install -y curl git build-essential python3 unzip && \
+    apt-get install -y --no-install-recommends chromium fonts-liberation ca-certificates && \
     rm -rf /var/lib/apt/lists/*
+ENV PUPPETEER_SKIP_DOWNLOAD=1 \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
-# Install Bun
-RUN curl -fsSL https://bun.sh/install | bash
-
-# Add Bun to PATH
-ENV BUN_INSTALL="/root/.bun"
-ENV PATH="$BUN_INSTALL/bin:$PATH"
-
-# Set working directory
 WORKDIR /app
 
-# Copy package files
 COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
 
-# Install dependencies with Bun
-RUN bun install
-
-# Copy the rest of the app
 COPY . .
 
-# Build the Next.js app
-RUN bun run build
+# `next build` imports server modules whose top level requires DATABASE_URL to
+# be set; no connection is made until a query runs, so a placeholder is enough.
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN DATABASE_URL=postgres://build:build@localhost:5432/build bun run build
 
-# Expose the port your Next.js app runs on
+ENV NODE_ENV=production
 EXPOSE 3000
 
-# Start the app
-CMD ["bun", "run", "start"]
+# Migrates, then serves — the server never starts on an unmigrated database.
+ENTRYPOINT ["./entrypoint.sh"]

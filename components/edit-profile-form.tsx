@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { updateUserProfileAction } from "@/lib/colosseum/actions";
+import { updateUserProfileAction, uploadAvatarAction } from "@/lib/colosseum/actions";
 import { normalizeHandle, validateHandle } from "@/lib/colosseum/handle";
 import type { UserProfile } from "@/lib/colosseum/user";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -54,13 +54,12 @@ export function EditProfileForm({ profile }: { profile: UserProfile }) {
       let avatar_url: string | undefined = profile.avatar_url;
 
       if (avatarFile) {
-        const { error: uploadError } = await supabase.storage
-          .from("avatars")
-          .upload(user.id, avatarFile, { upsert: true });
-        if (uploadError) throw uploadError;
-        const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(user.id);
-        // Bust the CDN cache so the nav bar picks up the new image immediately.
-        avatar_url = `${urlData.publicUrl}?v=${Date.now()}`;
+        // Content-addressed blob storage: a changed image gets a new URL, so
+        // the nav bar picks it up without any cache-busting query.
+        const formData = new FormData();
+        formData.set("file", avatarFile);
+        const { url } = await uploadAvatarAction(formData);
+        avatar_url = url;
       }
 
       const updates: { handle?: string; about?: string; avatar_url?: string } = {};

@@ -63,6 +63,17 @@ export const screenshot = pgTable("screenshot", {
   description: text("description"),
 });
 
+// Content-addressed file metadata. The bytes live on local disk at
+// <sha[0:2]>/<sha> under STORAGE_DIR (see lib/colosseum/blob.ts); identical
+// uploads share one row and one file.
+export const blobs = pgTable("blobs", {
+  sha256: text("sha256").primaryKey(),
+  mime: text("mime").notNull(),
+  size: bigint("size", { mode: "number" }).notNull(),
+  created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  created_by: uuid("created_by").notNull(),
+});
+
 export const apiToken = pgTable("api_token", {
   id: uuid("id").primaryKey().defaultRandom(),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

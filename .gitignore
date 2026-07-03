@@ -41,6 +41,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# local blob storage (see STORAGE_DIR in .env.example)
+/data
+
 # generated seed screenshots (run `make db-seed` to (re)create)
 supabase/seed-screenshots/*
 !supabase/seed-screenshots/.gitkeep

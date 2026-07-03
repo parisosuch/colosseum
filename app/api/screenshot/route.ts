@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { createClient } from "@supabase/supabase-js";
-import { encodeUrlToFilename } from "@/lib/url-encoding";
+import { blobUrl, putBlob } from "@/lib/colosseum/blob";
 import { captureWebsiteScreenshot } from "@/lib/colosseum/screenshot";
 import { getScreenshot, upsertScreenshot } from "@/lib/colosseum/screenshot-data";
 
@@ -69,23 +69,16 @@ export async function POST(req: NextRequest) {
   try {
     const { image: squareBuffer, title, description } = await captureWebsiteScreenshot(url);
 
-    const fileName = `${encodeUrlToFilename(url)}.png`;
-
-    // upload to supabase storage
-    const { error } = await supabase.storage.from("screenshots").upload(fileName, squareBuffer, {
-      contentType: "image/png",
-      upsert: true,
-    });
-
-    if (error) {
-      console.error(error);
+    // Store the bytes in content-addressed local-disk blob storage. A
+    // recapture with identical pixels dedupes to the same blob; a changed page
+    // yields a new sha and therefore a new URL.
+    let publicUrl: string;
+    try {
+      publicUrl = blobUrl(await putBlob(squareBuffer, "image/png", user.id));
+    } catch (uploadError) {
+      console.error(uploadError);
       return NextResponse.json({ error: "Failed to upload image" }, { status: 500 });
     }
-
-    // Get public URL
-    const {
-      data: { publicUrl },
-    } = supabase.storage.from("screenshots").getPublicUrl(fileName);
 
     // Upsert so a stale row is refreshed in place: image_url/title/description
     // get rewritten and captured_at is bumped, which also serves as the client

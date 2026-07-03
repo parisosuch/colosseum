@@ -1,11 +1,11 @@
 "use client";
 
 import { memo } from "react";
-import { Column } from "@/lib/colosseum/column";
+import type { Column } from "@/lib/colosseum/column";
 import { timeAgo } from "@/lib/utils";
 import ScreenShotPreview from "./screenshot-preview";
 import { Spinner } from "./ui/spinner";
-import { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
+import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 
 // Column template shared by the table header (rendered by the channel board)
 // and every row below, so the two line up. Each row is a full-width grid with

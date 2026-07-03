@@ -31,7 +31,7 @@ export default async function NavBar() {
   }
   // get the user profile to get the avatar. A user who hasn't completed
   // onboarding has no profile yet, so render the nav without the avatar.
-  const userProfile = await getUserProfile(supabase, user.id);
+  const userProfile = await getUserProfile(user.id);
 
   return (
     <nav className="w-full flex justify-between p-4">

@@ -1,11 +1,13 @@
 // Server-only helpers for the REST API (app/api/v1/*) and the token-create
-// route. Imports node:crypto and the service-role key, so it must never be
-// pulled into a client bundle — only route handlers (nodejs runtime) import it.
+// route. Imports node:crypto, so it must never be pulled into a client bundle —
+// only route handlers (nodejs runtime) import it.
 
 import { createHash, randomBytes } from "node:crypto";
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
+import { db } from "@/lib/db";
+import { apiToken } from "@/lib/db/schema";
 import { Channel } from "./channel";
 import { ApiToken } from "./api-token";
 
@@ -27,17 +29,6 @@ export function generateApiToken(): { token: string; prefix: string; hash: strin
   return { token, prefix: token.slice(0, PREFIX_DISPLAY_LEN), hash: hashToken(token) };
 }
 
-// Service-role client — bypasses RLS. Used to resolve a bearer token to a user
-// (the caller has no Supabase session) and for the explicit authorization the
-// API layer performs itself. Mirrors the construction in
-// app/api/screenshot/route.ts. Never back a request as this without an auth gate.
-export function serviceClient(): SupabaseClient {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
-}
-
 export function json(data: unknown, status = 200): NextResponse {
   return NextResponse.json(data, { status });
 }
@@ -46,43 +37,41 @@ export function apiError(message: string, status: number): NextResponse {
   return NextResponse.json({ error: message }, { status });
 }
 
-export type ApiAuth = { userId: string; supabase: SupabaseClient };
+// A bearer token has no user session, so API handlers resolve it to a user id
+// and then authorize every request explicitly (the Drizzle connection bypasses
+// row-level security).
+export type ApiAuth = { userId: string };
 
 // Resolve a raw bearer token to its owning user. Shared by the REST API
-// (authenticateApiToken, below, after parsing the Authorization header) and
-// the MCP endpoint (app/api/[transport]/route.ts), whose framework parses the
-// header for us. Returns null for an unknown token; throws on a DB error so
-// callers can distinguish "invalid token" from "auth backend unavailable".
+// (authenticateApiToken, below) and the MCP endpoint (app/api/[transport]).
+// Returns null for an unknown token; throws on a DB error so callers can
+// distinguish "invalid token" from "auth backend unavailable".
 export async function resolveApiToken(token: string): Promise<ApiAuth | null> {
   const hash = hashToken(token);
-  const supabase = serviceClient();
 
-  const { data, error } = await supabase
-    .from("api_token")
-    .select("user_id")
-    .eq("token_hash", hash)
-    .maybeSingle();
+  const [row] = await db
+    .select({ user_id: apiToken.user_id })
+    .from(apiToken)
+    .where(eq(apiToken.token_hash, hash))
+    .limit(1);
 
-  if (error) {
-    throw new Error(error.message);
-  }
-  if (!data) {
+  if (!row) {
     return null;
   }
 
   // Best-effort usage timestamp; never fail the request over it.
-  void supabase
-    .from("api_token")
-    .update({ last_used_at: new Date().toISOString() })
-    .eq("token_hash", hash);
+  void db
+    .update(apiToken)
+    .set({ last_used_at: new Date() })
+    .where(eq(apiToken.token_hash, hash))
+    .catch(() => {});
 
-  return { userId: data.user_id, supabase };
+  return { userId: row.user_id };
 }
 
 // Resolve the `Authorization: Bearer <token>` header to the owning user. On
-// success returns the user id plus a service-role client for the handler to use
-// (RLS can't apply — there's no session — so handlers authorize explicitly).
-// On failure returns a NextResponse the handler should return as-is.
+// success returns the user id; on failure returns a NextResponse the handler
+// should return as-is.
 export async function authenticateApiToken(req: Request): Promise<ApiAuth | NextResponse> {
   const header = req.headers.get("Authorization");
   if (!header?.startsWith("Bearer ")) {
@@ -108,30 +97,39 @@ export async function authenticateApiToken(req: Request): Promise<ApiAuth | Next
 
 // Persist a freshly generated token. The hash + non-secret prefix are stored;
 // the plaintext is returned once for the caller to display and is unrecoverable
-// afterwards. Run with the user's session client so the RLS insert policy
-// (auth.uid() = user_id) applies.
-export async function createApiToken(
-  supabase: SupabaseClient,
-  params: { userId: string; name: string | null },
-): Promise<{ token: string; row: ApiToken }> {
+// afterwards.
+export async function createApiToken(params: {
+  userId: string;
+  name: string | null;
+}): Promise<{ token: string; row: ApiToken }> {
   const { token, prefix, hash } = generateApiToken();
 
-  const { data, error } = await supabase
-    .from("api_token")
-    .insert({
+  const [row] = await db
+    .insert(apiToken)
+    .values({
       user_id: params.userId,
       name: params.name,
       token_prefix: prefix,
       token_hash: hash,
     })
-    .select("id, created_at, name, token_prefix, last_used_at")
-    .single();
+    .returning({
+      id: apiToken.id,
+      created_at: apiToken.created_at,
+      name: apiToken.name,
+      token_prefix: apiToken.token_prefix,
+      last_used_at: apiToken.last_used_at,
+    });
 
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return { token, row: data as ApiToken };
+  return {
+    token,
+    row: {
+      id: row.id,
+      created_at: row.created_at.toISOString(),
+      name: row.name,
+      token_prefix: row.token_prefix,
+      last_used_at: row.last_used_at?.toISOString() ?? null,
+    },
+  };
 }
 
 // Read authorization: a channel is visible when it's public or owned by the

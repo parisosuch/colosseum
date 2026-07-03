@@ -17,13 +17,13 @@ export default async function SettingsPage() {
     redirect("/auth/login");
   }
 
-  const profile = await getUserProfile(supabase, user.id);
+  const profile = await getUserProfile(user.id);
 
   if (!profile) {
     redirect("/auth/onboarding");
   }
 
-  const apiTokens = await getMyApiTokens(supabase, user.id);
+  const apiTokens = await getMyApiTokens(user.id);
 
   return (
     <div className="w-full max-w-xl p-6 sm:p-12 space-y-8">

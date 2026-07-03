@@ -16,9 +16,9 @@ export default async function ChannelPage({ params }: ChannelPageParams) {
 
   const supabase = await createClient();
 
-  // null = the channel doesn't exist or RLS hides it from this user (e.g. a
-  // private channel they don't own). Don't leak which; redirect.
-  const channel = await getChannel(supabase, id);
+  // null = the channel doesn't exist; the visibility check below hides a private
+  // channel from anyone but its owner. Don't leak which; redirect.
+  const channel = await getChannel(id);
   if (!channel) redirect("/");
 
   const {
@@ -32,8 +32,8 @@ export default async function ChannelPage({ params }: ChannelPageParams) {
   // Cheap channel-wide stats so the shell (breadcrumb + meta) is accurate at
   // first paint. The block grid is fetched client-side with skeletons.
   const [totalCount, newest] = await Promise.all([
-    getChannelColumnCount(supabase, id),
-    getChannelColumns(supabase, id, { sort: "newest", limit: 1 }),
+    getChannelColumnCount(id),
+    getChannelColumns(id, { sort: "newest", limit: 1 }),
   ]);
 
   const createdOnLabel = new Date(channel.created_at).toLocaleString("default", {

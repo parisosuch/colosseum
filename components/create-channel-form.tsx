@@ -6,10 +6,8 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { PlusIcon } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
-import { createChannel } from "@/lib/colosseum/channel";
+import { createChannelAction, getMyProfileAction } from "@/lib/colosseum/actions";
 import { Checkbox } from "./ui/checkbox";
-import { getUserProfile } from "@/lib/colosseum/user";
 
 export default function CreateChannelForm() {
   const [title, setTitle] = useState("");
@@ -21,28 +19,18 @@ export default function CreateChannelForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const supabase = createClient();
     setIsLoading(true);
     setError(null);
 
     try {
-      // get the user
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        throw new Error("User not logged in.");
-      }
-
-      // create the channel
-      const channel = await createChannel(supabase, {
+      // create the channel (the action resolves the owner from the session)
+      const channel = await createChannelAction({
         title: title,
         description: description,
         private: isPrivate,
-        owner_id: user.id,
       });
       // reroute to channel that was just created
-      const userProfile = await getUserProfile(supabase, user.id);
+      const userProfile = await getMyProfileAction();
       if (!userProfile) {
         router.push("/auth/onboarding");
         return;

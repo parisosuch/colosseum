@@ -1,4 +1,11 @@
-import { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
+import { eq } from "drizzle-orm";
+
+import { db } from "@/lib/db";
+import { userProfile } from "@/lib/db/schema";
+
+// Re-exported for server-side callers; client components import these directly
+// from ./handle to avoid pulling the server-only db client into their bundle.
+export { HANDLE_MIN_LENGTH, HANDLE_MAX_LENGTH, normalizeHandle, validateHandle } from "./handle";
 
 export type UserProfile = {
   user_id: string;
@@ -8,12 +15,6 @@ export type UserProfile = {
   about?: string;
 };
 
-// Handles appear in URLs (/{handle}) and must be unique, so keep them to a
-// predictable shape: lowercase letters, numbers, underscores and hyphens.
-export const HANDLE_MIN_LENGTH = 3;
-export const HANDLE_MAX_LENGTH = 30;
-const HANDLE_PATTERN = /^[a-z0-9_-]+$/;
-
 export class HandleTakenError extends Error {
   constructor(handle: string) {
     super(`The handle "${handle}" is already taken.`);
@@ -21,104 +22,76 @@ export class HandleTakenError extends Error {
   }
 }
 
-// Normalize user input into a candidate handle (does not guarantee validity).
-export function normalizeHandle(input: string): string {
-  return input.trim().toLowerCase();
+// Postgres unique_violation (code 23505). Drizzle wraps the driver error in a
+// DrizzleQueryError, so the code can sit on the error itself or on its `cause`.
+function isUniqueViolation(error: unknown): boolean {
+  const code = (e: unknown) =>
+    typeof e === "object" && e !== null && "code" in e ? (e as { code?: unknown }).code : undefined;
+  const cause =
+    typeof error === "object" && error !== null ? (error as { cause?: unknown }).cause : undefined;
+  return code(error) === "23505" || code(cause) === "23505";
 }
 
-// Returns null when the handle is valid, otherwise a human-readable reason.
-export function validateHandle(handle: string): string | null {
-  if (handle.length < HANDLE_MIN_LENGTH) {
-    return `Handle must be at least ${HANDLE_MIN_LENGTH} characters.`;
-  }
-  if (handle.length > HANDLE_MAX_LENGTH) {
-    return `Handle must be at most ${HANDLE_MAX_LENGTH} characters.`;
-  }
-  if (!HANDLE_PATTERN.test(handle)) {
-    return "Handle can only contain lowercase letters, numbers, hyphens, and underscores.";
-  }
-  return null;
+type UserProfileRow = typeof userProfile.$inferSelect;
+function toProfile(row: UserProfileRow): UserProfile {
+  return {
+    user_id: row.user_id,
+    created_at: row.created_at.toISOString(),
+    handle: row.handle,
+    avatar_url: row.avatar_url ?? undefined,
+    about: row.about ?? undefined,
+  };
 }
 
-export async function getPublicUserProfile(
-  client: SupabaseClient,
-  handle: string,
-): Promise<UserProfile | null> {
-  const { data, error } = await client
-    .from("user_profile")
-    .select("*")
-    .eq("handle", handle)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return data;
+export async function getPublicUserProfile(handle: string): Promise<UserProfile | null> {
+  const [row] = await db.select().from(userProfile).where(eq(userProfile.handle, handle)).limit(1);
+  return row ? toProfile(row) : null;
 }
 
 // Returns the profile for a user, or null when they haven't created one yet
 // (e.g. immediately after sign-up, before onboarding). Callers should treat a
 // null result as "send the user to onboarding" rather than an error.
-export async function getUserProfile(
-  client: SupabaseClient,
-  user_id: string,
-): Promise<UserProfile | null> {
-  const { data, error } = await client
-    .from("user_profile")
-    .select("*")
-    .eq("user_id", user_id)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return data;
+export async function getUserProfile(user_id: string): Promise<UserProfile | null> {
+  const [row] = await db
+    .select()
+    .from(userProfile)
+    .where(eq(userProfile.user_id, user_id))
+    .limit(1);
+  return row ? toProfile(row) : null;
 }
 
 export async function updateUserProfile(
-  client: SupabaseClient,
   user_id: string,
   updates: { handle?: string; about?: string; avatar_url?: string },
 ): Promise<UserProfile> {
-  const { data, error } = await client
-    .from("user_profile")
-    .update(updates)
-    .eq("user_id", user_id)
-    .select("*")
-    .single();
-
-  if (error) {
-    if ((error as PostgrestError).code === "23505") {
+  try {
+    const [row] = await db
+      .update(userProfile)
+      .set(updates)
+      .where(eq(userProfile.user_id, user_id))
+      .returning();
+    if (!row) {
+      throw new Error("Profile not found.");
+    }
+    return toProfile(row);
+  } catch (error) {
+    if (isUniqueViolation(error)) {
       throw new HandleTakenError(updates.handle ?? "");
     }
-    throw new Error(error.message);
+    throw error;
   }
-
-  return data;
 }
 
 // Creates the user_profile row for a freshly signed-up user. Throws
 // HandleTakenError when the chosen handle is already in use.
-export async function createUserProfile(
-  client: SupabaseClient,
-  user_id: string,
-  handle: string,
-): Promise<UserProfile> {
-  const { data, error } = await client
-    .from("user_profile")
-    .insert({ user_id, handle })
-    .select("*")
-    .single();
-
-  if (error) {
-    // 23505 = unique_violation (handle already taken).
-    if ((error as PostgrestError).code === "23505") {
+export async function createUserProfile(user_id: string, handle: string): Promise<UserProfile> {
+  try {
+    const [row] = await db.insert(userProfile).values({ user_id, handle }).returning();
+    return toProfile(row);
+  } catch (error) {
+    if (isUniqueViolation(error)) {
       throw new HandleTakenError(handle);
     }
-    throw new Error(error.message);
+    throw error;
   }
-
-  return data;
 }

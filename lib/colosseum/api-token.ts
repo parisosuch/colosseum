@@ -1,4 +1,7 @@
-import { SupabaseClient } from "@supabase/supabase-js";
+import { and, desc, eq } from "drizzle-orm";
+
+import { db } from "@/lib/db";
+import { apiToken } from "@/lib/db/schema";
 
 // UI-facing view of an API token row. Deliberately omits `token_hash` — the
 // secret is never needed (or wanted) in the browser. The plaintext token is
@@ -11,35 +14,45 @@ export type ApiToken = {
   last_used_at: string | null;
 };
 
-// Non-secret columns only — see the note on the RLS policies in the api_token
-// migration (the owner *can* read token_hash, so we must not select it here).
-const TOKEN_COLUMNS = "id, created_at, name, token_prefix, last_used_at";
+// Non-secret columns only — the token hash is never exposed to the UI.
+const tokenColumns = {
+  id: apiToken.id,
+  created_at: apiToken.created_at,
+  name: apiToken.name,
+  token_prefix: apiToken.token_prefix,
+  last_used_at: apiToken.last_used_at,
+};
 
-// The caller's tokens, newest first. RLS restricts this to the caller's own
-// rows; the explicit user filter mirrors the rest of the data-access layer
-// (cf. getMyInviteCodes in lib/colosseum/invite.ts).
-export async function getMyApiTokens(
-  supabase: SupabaseClient,
-  userId: string,
-): Promise<ApiToken[]> {
-  const { data, error } = await supabase
-    .from("api_token")
-    .select(TOKEN_COLUMNS)
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return (data ?? []) as ApiToken[];
+type TokenRow = {
+  id: string;
+  created_at: Date;
+  name: string | null;
+  token_prefix: string;
+  last_used_at: Date | null;
+};
+function toToken(row: TokenRow): ApiToken {
+  return {
+    id: row.id,
+    created_at: row.created_at.toISOString(),
+    name: row.name,
+    token_prefix: row.token_prefix,
+    last_used_at: row.last_used_at?.toISOString() ?? null,
+  };
 }
 
-// Revoke (delete) a token by id. RLS only permits deleting the caller's own
-// tokens, so a token belonging to someone else simply matches no rows.
-export async function revokeApiToken(supabase: SupabaseClient, id: string): Promise<void> {
-  const { error } = await supabase.from("api_token").delete().eq("id", id);
-  if (error) {
-    throw new Error(error.message);
-  }
+// The caller's tokens, newest first. Scoped to the caller by the explicit
+// user filter (this connection bypasses RLS).
+export async function getMyApiTokens(userId: string): Promise<ApiToken[]> {
+  const rows = await db
+    .select(tokenColumns)
+    .from(apiToken)
+    .where(eq(apiToken.user_id, userId))
+    .orderBy(desc(apiToken.created_at));
+  return rows.map(toToken);
+}
+
+// Revoke (delete) one of the caller's own tokens by id. A token belonging to
+// someone else matches no rows.
+export async function revokeApiToken(id: string, userId: string): Promise<void> {
+  await db.delete(apiToken).where(and(eq(apiToken.id, id), eq(apiToken.user_id, userId)));
 }

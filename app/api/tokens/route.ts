@@ -30,7 +30,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { token, row } = await createApiToken(supabase, { userId: user.id, name });
+    const { token, row } = await createApiToken({ userId: user.id, name });
     return json({ token, ...row }, 201);
   } catch (e) {
     console.error(e);

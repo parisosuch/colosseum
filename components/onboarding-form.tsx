@@ -1,59 +1,42 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
-import {
-  createUserProfile,
-  HandleTakenError,
-  normalizeHandle,
-  validateHandle,
-} from "@/lib/colosseum/user";
+import { createUserProfileAction } from "@/lib/colosseum/actions";
+import { normalizeHandle } from "@/lib/colosseum/handle";
 
 export function OnboardingForm({ className, ...props }: React.ComponentPropsWithoutRef<"div">) {
   const [handle, setHandle] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const supabase = createClient();
     setIsLoading(true);
     setError(null);
 
     const normalized = normalizeHandle(handle);
-    const validationError = validateHandle(normalized);
-    if (validationError) {
-      setError(validationError);
-      setIsLoading(false);
-      return;
-    }
 
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        router.push("/auth/login");
+      // The action validates the handle, resolves the user from their session,
+      // and creates the profile — returning a message on any user-facing error.
+      const result = await createUserProfileAction(normalized);
+      if (!result.ok) {
+        setError(
+          result.handleTaken ? "That handle is already taken. Try another." : result.message,
+        );
+        setIsLoading(false);
         return;
       }
-
-      await createUserProfile(supabase, user.id, normalized);
       // Full-document navigation so the server-rendered nav (root layout) picks
       // up the new profile (avatar) instead of the cached pre-profile render.
       window.location.assign(`/${normalized}`);
     } catch (err: unknown) {
-      if (err instanceof HandleTakenError) {
-        setError("That handle is already taken. Try another.");
-      } else {
-        setError(err instanceof Error ? err.message : "An error occurred");
-      }
+      setError(err instanceof Error ? err.message : "An error occurred");
       setIsLoading(false);
     }
   };

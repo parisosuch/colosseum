@@ -5,9 +5,9 @@ import Link from "next/link";
 import { SearchIcon } from "lucide-react";
 
 import { Input } from "./ui/input";
-import { Channel, searchUserChannels } from "@/lib/colosseum/channel";
-import { Column, searchUserColumns } from "@/lib/colosseum/column";
-import { createClient } from "@/lib/supabase/client";
+import type { Channel } from "@/lib/colosseum/channel";
+import type { Column } from "@/lib/colosseum/column";
+import { searchAction } from "@/lib/colosseum/actions";
 
 function blockLabel(column: Column): string {
   return column.title || column.url || column.text || "Untitled";
@@ -37,12 +37,9 @@ export default function SearchBar({ userId, handle }: { userId: string; handle: 
     }
 
     let cancelled = false;
-    const supabase = createClient();
     (async () => {
-      const [channelResults, columnResults] = await Promise.all([
-        searchUserChannels(supabase, userId, debouncedQuery),
-        searchUserColumns(supabase, userId, debouncedQuery),
-      ]);
+      const { channels: channelResults, columns: columnResults } =
+        await searchAction(debouncedQuery);
       if (cancelled) return;
       setChannels(channelResults);
       setColumns(columnResults);

@@ -14,8 +14,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/t
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Checkbox } from "./ui/checkbox";
-import { createClient } from "@/lib/supabase/client";
-import { Channel, deleteChannel, updateChannel } from "@/lib/colosseum/channel";
+import { deleteChannelAction, updateChannelAction } from "@/lib/colosseum/actions";
+import type { Channel } from "@/lib/colosseum/channel";
 import TagInput from "./tag-input";
 import { Settings, Trash2 } from "lucide-react";
 
@@ -59,8 +59,7 @@ export default function ManageChannelButton({
     setIsLoading(true);
     setError(null);
     try {
-      const supabase = createClient();
-      const updated = await updateChannel(supabase, channel.id, {
+      const updated = await updateChannelAction(channel.id, {
         title,
         description,
         private: isPrivate,
@@ -79,8 +78,7 @@ export default function ManageChannelButton({
     setIsDeleting(true);
     setError(null);
     try {
-      const supabase = createClient();
-      await deleteChannel(supabase, channel.id);
+      await deleteChannelAction(channel.id);
       // The channel page is gone; send the owner back to their profile.
       router.push(`/${handle}`);
     } catch (err) {

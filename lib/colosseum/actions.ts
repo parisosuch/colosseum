@@ -1,0 +1,322 @@
+"use server";
+
+// Server actions the client components call instead of hitting the database
+// directly. Each one resolves the caller from their Supabase session and
+// enforces authorization in app code (the Drizzle connection behind these
+// bypasses row-level security). Identity still comes from Supabase Auth;
+// only the data access moved to Drizzle.
+
+import { createClient } from "@/lib/supabase/server";
+import {
+  Channel,
+  createChannel,
+  deleteChannel,
+  getChannel,
+  searchUserChannels,
+  updateChannel,
+} from "./channel";
+import {
+  Column,
+  ColumnQuery,
+  deleteColumn,
+  getChannelColumns,
+  getColumn,
+  searchUserColumns,
+  updateColumnDescription,
+  updateColumnMeta,
+  updateColumnTags,
+  updateColumnText,
+  updateColumnTitle,
+  uploadImageColumn,
+  uploadTextColumn,
+  uploadURLColumn,
+} from "./column";
+import { createInviteCode, InviteCode, revokeInviteCode } from "./invite";
+import { revokeApiToken } from "./api-token";
+import { getScreenshotsForUrls, ColumnScreenshot } from "./screenshot-data";
+import {
+  createUserProfile,
+  getUserProfile,
+  HandleTakenError,
+  normalizeHandle,
+  updateUserProfile,
+  UserProfile,
+  validateHandle,
+} from "./user";
+
+// The caller's user id, or null when there's no session. Reads the id from the
+// verified Supabase session cookie, never from client-supplied input.
+async function currentUserId(): Promise<string | null> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return user?.id ?? null;
+}
+
+async function requireUserId(): Promise<string> {
+  const userId = await currentUserId();
+  if (!userId) {
+    throw new Error("Not authenticated.");
+  }
+  return userId;
+}
+
+// A channel the caller may write to: it must exist and be owned by them.
+// Throws "Not found." otherwise so a private channel's existence never leaks.
+async function requireOwnedChannel(channelId: number, userId: string): Promise<Channel> {
+  const channel = await getChannel(channelId);
+  if (!channel || channel.owner_id !== userId) {
+    throw new Error("Not found.");
+  }
+  return channel;
+}
+
+// A block the caller may write to: it must exist and live in a channel they own.
+async function requireOwnedBlock(columnId: number, userId: string): Promise<Column> {
+  const column = await getColumn(columnId);
+  if (!column) {
+    throw new Error("Not found.");
+  }
+  await requireOwnedChannel(column.channel_id, userId);
+  return column;
+}
+
+// A channel the caller may read: public channels are visible to anyone; private
+// channels only to their owner.
+async function requireReadableChannel(channelId: number): Promise<Channel> {
+  const channel = await getChannel(channelId);
+  if (!channel) {
+    throw new Error("Not found.");
+  }
+  if (channel.private && channel.owner_id !== (await currentUserId())) {
+    throw new Error("Not found.");
+  }
+  return channel;
+}
+
+// ---------------------------------------------------------------------------
+// Search (nav box) — scoped to the caller's own channels and blocks.
+// ---------------------------------------------------------------------------
+export async function searchAction(
+  query: string,
+): Promise<{ channels: Channel[]; columns: Column[] }> {
+  const userId = await currentUserId();
+  if (!userId) {
+    return { channels: [], columns: [] };
+  }
+  const [channels, columns] = await Promise.all([
+    searchUserChannels(userId, query),
+    searchUserColumns(userId, query),
+  ]);
+  return { channels, columns };
+}
+
+// ---------------------------------------------------------------------------
+// Channels
+// ---------------------------------------------------------------------------
+export async function createChannelAction(input: {
+  title: string;
+  description?: string;
+  private: boolean;
+}): Promise<Channel> {
+  const userId = await requireUserId();
+  return createChannel({ ...input, owner_id: userId });
+}
+
+export async function updateChannelAction(
+  channelId: number,
+  updates: { title: string; description?: string; private: boolean; tags?: string[] },
+): Promise<Channel> {
+  const userId = await requireUserId();
+  await requireOwnedChannel(channelId, userId);
+  return updateChannel(channelId, updates);
+}
+
+export async function deleteChannelAction(channelId: number): Promise<void> {
+  const userId = await requireUserId();
+  await requireOwnedChannel(channelId, userId);
+  await deleteChannel(channelId);
+}
+
+// ---------------------------------------------------------------------------
+// Blocks
+// ---------------------------------------------------------------------------
+export async function getChannelColumnsAction(
+  channelId: number,
+  query: ColumnQuery = {},
+): Promise<Column[]> {
+  await requireReadableChannel(channelId);
+  return getChannelColumns(channelId, query);
+}
+
+export async function uploadURLColumnAction(input: {
+  channelId: number;
+  text: string;
+}): Promise<Column> {
+  const userId = await requireUserId();
+  await requireOwnedChannel(input.channelId, userId);
+  return uploadURLColumn({ created_by: userId, channel_id: input.channelId, text: input.text });
+}
+
+export async function uploadTextColumnAction(input: {
+  channelId: number;
+  text: string;
+}): Promise<Column> {
+  const userId = await requireUserId();
+  await requireOwnedChannel(input.channelId, userId);
+  return uploadTextColumn({ created_by: userId, channel_id: input.channelId, text: input.text });
+}
+
+export async function uploadImageColumnAction(input: {
+  channelId: number;
+  image: string;
+}): Promise<Column> {
+  const userId = await requireUserId();
+  await requireOwnedChannel(input.channelId, userId);
+  return uploadImageColumn({ created_by: userId, channel_id: input.channelId, image: input.image });
+}
+
+export async function updateColumnMetaAction(
+  columnId: number,
+  fields: { title?: string; description?: string },
+): Promise<void> {
+  const userId = await requireUserId();
+  await requireOwnedBlock(columnId, userId);
+  await updateColumnMeta(columnId, fields);
+}
+
+export async function updateColumnTitleAction(columnId: number, title: string): Promise<void> {
+  const userId = await requireUserId();
+  await requireOwnedBlock(columnId, userId);
+  await updateColumnTitle(columnId, title);
+}
+
+export async function updateColumnDescriptionAction(
+  columnId: number,
+  description: string,
+): Promise<void> {
+  const userId = await requireUserId();
+  await requireOwnedBlock(columnId, userId);
+  await updateColumnDescription(columnId, description);
+}
+
+export async function updateColumnTextAction(columnId: number, text: string): Promise<void> {
+  const userId = await requireUserId();
+  await requireOwnedBlock(columnId, userId);
+  await updateColumnText(columnId, text);
+}
+
+export async function updateColumnTagsAction(columnId: number, tags: string[]): Promise<void> {
+  const userId = await requireUserId();
+  await requireOwnedBlock(columnId, userId);
+  await updateColumnTags(columnId, tags);
+}
+
+export async function deleteColumnAction(columnId: number): Promise<void> {
+  const userId = await requireUserId();
+  await requireOwnedBlock(columnId, userId);
+  await deleteColumn(columnId);
+}
+
+// ---------------------------------------------------------------------------
+// Screenshots — a public per-URL cache; safe to read for any URL.
+// Returned as entries (a Map isn't needed on the wire); callers rebuild a Map.
+// ---------------------------------------------------------------------------
+export async function getScreenshotsForUrlsAction(
+  urls: string[],
+): Promise<[string, ColumnScreenshot][]> {
+  const map = await getScreenshotsForUrls(urls);
+  return [...map.entries()];
+}
+
+// ---------------------------------------------------------------------------
+// Invites
+// ---------------------------------------------------------------------------
+export async function createInviteCodeAction(input?: {
+  max_uses?: number;
+  note?: string | null;
+}): Promise<InviteCode> {
+  const userId = await requireUserId();
+  return createInviteCode({
+    created_by: userId,
+    max_uses: input?.max_uses ?? 1,
+    note: input?.note ?? null,
+  });
+}
+
+export async function revokeInviteCodeAction(code: string): Promise<void> {
+  const userId = await requireUserId();
+  await revokeInviteCode(code, userId);
+}
+
+// ---------------------------------------------------------------------------
+// API tokens (creation stays in app/api/tokens; only revoke needs an action)
+// ---------------------------------------------------------------------------
+export async function revokeApiTokenAction(id: string): Promise<void> {
+  const userId = await requireUserId();
+  await revokeApiToken(id, userId);
+}
+
+// ---------------------------------------------------------------------------
+// Profiles
+// ---------------------------------------------------------------------------
+
+// Result shape for the profile forms, which show specific messages for an
+// invalid or already-taken handle. Thrown server-action errors are sanitized in
+// production, so user-facing outcomes ride back as data instead.
+export type ProfileResult =
+  | { ok: true; profile: UserProfile }
+  | { ok: false; handleTaken?: boolean; message: string };
+
+export async function getMyProfileAction(): Promise<UserProfile | null> {
+  const userId = await currentUserId();
+  if (!userId) {
+    return null;
+  }
+  return getUserProfile(userId);
+}
+
+export async function createUserProfileAction(rawHandle: string): Promise<ProfileResult> {
+  const userId = await currentUserId();
+  if (!userId) {
+    return { ok: false, message: "Not authenticated." };
+  }
+  const handle = normalizeHandle(rawHandle);
+  const validationError = validateHandle(handle);
+  if (validationError) {
+    return { ok: false, message: validationError };
+  }
+  try {
+    const profile = await createUserProfile(userId, handle);
+    return { ok: true, profile };
+  } catch (e) {
+    if (e instanceof HandleTakenError) {
+      return { ok: false, handleTaken: true, message: "That handle is already taken." };
+    }
+    throw e;
+  }
+}
+
+export async function updateUserProfileAction(updates: {
+  handle?: string;
+  about?: string;
+  avatar_url?: string;
+}): Promise<ProfileResult> {
+  const userId = await requireUserId();
+  if (updates.handle !== undefined) {
+    const validationError = validateHandle(updates.handle);
+    if (validationError) {
+      return { ok: false, message: validationError };
+    }
+  }
+  try {
+    const profile = await updateUserProfile(userId, updates);
+    return { ok: true, profile };
+  } catch (e) {
+    if (e instanceof HandleTakenError) {
+      return { ok: false, handleTaken: true, message: "That handle is already taken." };
+    }
+    throw e;
+  }
+}

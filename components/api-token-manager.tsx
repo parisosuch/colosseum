@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { PlusIcon, CheckIcon, CopyIcon, Trash2Icon } from "lucide-react";
 
-import { createClient } from "@/lib/supabase/client";
-import { ApiToken, revokeApiToken } from "@/lib/colosseum/api-token";
+import { revokeApiTokenAction } from "@/lib/colosseum/actions";
+import type { ApiToken } from "@/lib/colosseum/api-token";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -22,8 +22,6 @@ export default function ApiTokenManager({
   // Plaintext of the most recently created token. Shown once, then unrecoverable.
   const [newToken, setNewToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-
-  const supabase = createClient();
 
   const handleCreate = async () => {
     setCreating(true);
@@ -55,7 +53,7 @@ export default function ApiTokenManager({
     const prev = tokens;
     setTokens((t) => t.filter((x) => x.id !== id));
     try {
-      await revokeApiToken(supabase, id);
+      await revokeApiTokenAction(id);
     } catch (e) {
       console.error(e);
       setTokens(prev);

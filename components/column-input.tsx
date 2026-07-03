@@ -3,15 +3,15 @@
 import { createClient } from "@/lib/supabase/client";
 import { Dispatch, SetStateAction, useState, useRef } from "react";
 import {
-  uploadURLColumn,
-  uploadTextColumn,
-  uploadImageColumn,
-  updateColumnMeta,
-  Column,
-} from "@/lib/colosseum/column";
+  uploadURLColumnAction,
+  uploadTextColumnAction,
+  uploadImageColumnAction,
+  updateColumnMetaAction,
+} from "@/lib/colosseum/actions";
+import type { Column } from "@/lib/colosseum/column";
 import { isURL } from "@/lib/utils";
 import { User } from "@supabase/supabase-js";
-import { Channel } from "@/lib/colosseum/channel";
+import type { Channel } from "@/lib/colosseum/channel";
 import { Spinner } from "./ui/spinner";
 import { toast } from "sonner";
 
@@ -98,9 +98,8 @@ export default function ColumnInput({
         data: { publicUrl },
       } = supabase.storage.from("blocks").getPublicUrl(path);
 
-      const column = await uploadImageColumn(supabase, {
-        created_by: user.id,
-        channel_id: channel.id,
+      const column = await uploadImageColumnAction({
+        channelId: channel.id,
         image: publicUrl,
       });
 
@@ -156,15 +155,13 @@ export default function ColumnInput({
     let column: Column;
     try {
       if (isUrlInput) {
-        column = await uploadURLColumn(supabase, {
-          created_by: user.id,
-          channel_id: channel.id,
+        column = await uploadURLColumnAction({
+          channelId: channel.id,
           text: urlText,
         });
       } else {
-        column = await uploadTextColumn(supabase, {
-          created_by: user.id,
-          channel_id: channel.id,
+        column = await uploadTextColumnAction({
+          channelId: channel.id,
           text,
         });
       }
@@ -203,7 +200,7 @@ export default function ColumnInput({
         if (meta?.title && !newColumn.title) patch.title = meta.title;
         if (meta?.description && !newColumn.description) patch.description = meta.description;
         if (Object.keys(patch).length > 0) {
-          await updateColumnMeta(supabase, newColumn.id, patch);
+          await updateColumnMetaAction(newColumn.id, patch);
           setColumns((prev) => prev.map((c) => (c.id === newColumn.id ? { ...c, ...patch } : c)));
         }
       } catch (e) {

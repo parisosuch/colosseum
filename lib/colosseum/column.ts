@@ -1,6 +1,8 @@
-import { SupabaseClient } from "@supabase/supabase-js";
+import { and, asc, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
 
-import { sanitizeSearch, tagContainsFilter } from "@/lib/utils";
+import { db } from "@/lib/db";
+import { column } from "@/lib/db/schema";
+import { sanitizeSearch } from "@/lib/utils";
 
 export type Column = {
   id: number;
@@ -16,30 +18,33 @@ export type Column = {
   tags: string[];
 };
 
-// Fetch a single block by id. Returns null when it doesn't exist or RLS hides
-// it (a block in a private channel the requester doesn't own), so callers can
-// render a not-found state without leaking which case it was.
-export async function getColumn(
-  supabase: SupabaseClient,
-  column_id: number,
-): Promise<Column | null> {
+type ColumnRow = typeof column.$inferSelect;
+function toColumn(row: ColumnRow): Column {
+  return {
+    id: row.id,
+    created_at: row.created_at.toISOString(),
+    type: row.type,
+    title: row.title ?? undefined,
+    description: row.description ?? undefined,
+    url: row.url ?? undefined,
+    text: row.text ?? undefined,
+    image: row.image ?? undefined,
+    created_by: row.created_by,
+    channel_id: row.channel_id,
+    tags: row.tags,
+  };
+}
+
+// Fetch a single block by id. Returns null when it doesn't exist. Visibility is
+// NOT enforced here — callers authorize via the block's channel first.
+export async function getColumn(column_id: number): Promise<Column | null> {
   // A non-numeric route param (e.g. parseInt("foo") → NaN) is never a real id;
   // treat it as not-found instead of letting Postgres reject NaN for a bigint.
   if (!Number.isFinite(column_id)) {
     return null;
   }
-
-  const { data, error } = await supabase
-    .from("column")
-    .select("*")
-    .eq("id", column_id)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return data;
+  const [row] = await db.select().from(column).where(eq(column.id, column_id)).limit(1);
+  return row ? toColumn(row) : null;
 }
 
 export type ColumnSort = "newest" | "oldest" | "title_az" | "title_za";
@@ -61,259 +66,192 @@ export type ColumnQuery = {
   offset?: number;
 };
 
+// Callers must authorize the channel's visibility before calling this (see the
+// channel page and authorizeChannelRead); it returns every block in the channel.
 export async function getChannelColumns(
-  supabase: SupabaseClient,
   channel_id: number,
   query: ColumnQuery = {},
 ): Promise<Column[]> {
   const { search, type = "all", sort = "newest", limit, offset = 0 } = query;
 
-  let builder = supabase.from("column").select("*").eq("channel_id", channel_id);
+  const filters: SQL[] = [eq(column.channel_id, channel_id)];
 
   if (type !== "all") {
-    builder = builder.eq("type", type);
+    filters.push(eq(column.type, type));
   }
 
   const term = search ? sanitizeSearch(search) : "";
   if (term) {
     const pattern = `%${term}%`;
-    const filters = ["title", "description", "text", "url"].map((col) => `${col}.ilike.${pattern}`);
-    const tagFilter = tagContainsFilter(term);
-    if (tagFilter) filters.push(tagFilter);
-    builder = builder.or(filters.join(","));
+    const tag = term.replace(/["\\]/g, "");
+    filters.push(
+      or(
+        ilike(column.title, pattern),
+        ilike(column.description, pattern),
+        ilike(column.text, pattern),
+        ilike(column.url, pattern),
+        sql`${column.tags} @> ARRAY[${tag}]::text[]`,
+      )!,
+    );
   }
 
-  switch (sort) {
-    case "oldest":
-      builder = builder.order("created_at", { ascending: true });
-      break;
-    case "title_az":
-      builder = builder.order("title", { ascending: true, nullsFirst: false });
-      break;
-    case "title_za":
-      builder = builder.order("title", { ascending: false, nullsFirst: false });
-      break;
-    default:
-      builder = builder.order("created_at", { ascending: false });
-  }
+  const orderBy: SQL = (() => {
+    switch (sort) {
+      case "oldest":
+        return asc(column.created_at);
+      case "title_az":
+        return sql`${column.title} asc nulls last`;
+      case "title_za":
+        return sql`${column.title} desc nulls last`;
+      default:
+        return desc(column.created_at);
+    }
+  })();
 
-  if (limit !== undefined) {
-    builder = builder.range(offset, offset + limit - 1);
-  }
+  const rows = await db
+    .select()
+    .from(column)
+    .where(and(...filters))
+    .orderBy(orderBy)
+    .limit(limit ?? Number.MAX_SAFE_INTEGER)
+    .offset(offset);
 
-  const { data, error } = await builder;
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return data;
+  return rows.map(toColumn);
 }
 
 // Blocks the user created whose title/description/text/url or a tag match
-// `query`.
-// Used by the nav search box, so capped to a handful of results. Returns []
-// for an empty/whitespace-only query rather than the user's whole block list.
-export async function searchUserColumns(
-  supabase: SupabaseClient,
-  user_id: string,
-  query: string,
-): Promise<Column[]> {
+// `query`. Used by the nav search box, so capped to a handful of results.
+// Returns [] for an empty/whitespace-only query rather than the whole list.
+export async function searchUserColumns(user_id: string, query: string): Promise<Column[]> {
   const term = sanitizeSearch(query);
   if (!term) {
     return [];
   }
 
   const pattern = `%${term}%`;
-  const filters = ["title", "description", "text", "url"].map((col) => `${col}.ilike.${pattern}`);
-  const tagFilter = tagContainsFilter(term);
-  if (tagFilter) filters.push(tagFilter);
-  const { data, error } = await supabase
-    .from("column")
-    .select("*")
-    .eq("created_by", user_id)
-    .or(filters.join(","))
+  const tag = term.replace(/["\\]/g, "");
+  const rows = await db
+    .select()
+    .from(column)
+    .where(
+      and(
+        eq(column.created_by, user_id),
+        or(
+          ilike(column.title, pattern),
+          ilike(column.description, pattern),
+          ilike(column.text, pattern),
+          ilike(column.url, pattern),
+          sql`${column.tags} @> ARRAY[${tag}]::text[]`,
+        ),
+      ),
+    )
     .limit(10);
-
-  if (error) {
-    throw new Error(error.message);
-  }
-  return data ?? [];
+  return rows.map(toColumn);
 }
 
-export async function uploadURLColumn(
-  supabase: SupabaseClient,
-  column: {
-    created_by: string;
-    channel_id: number;
-    text: string;
-  },
-): Promise<Column> {
-  const columnData = {
-    type: "url",
-    url: column.text,
-    channel_id: column.channel_id,
-    created_by: column.created_by,
-  };
-  const { data, error: insertError } = await supabase
-    .from("column")
-    .insert(columnData) // use insert instead of upsert
-    .select()
-    .single();
-
-  if (insertError) {
-    throw new Error(insertError.message);
-  }
-
-  return data;
+export async function uploadURLColumn(input: {
+  created_by: string;
+  channel_id: number;
+  text: string;
+}): Promise<Column> {
+  const [row] = await db
+    .insert(column)
+    .values({
+      type: "url",
+      url: input.text,
+      channel_id: input.channel_id,
+      created_by: input.created_by,
+    })
+    .returning();
+  return toColumn(row);
 }
 
-export async function uploadTextColumn(
-  supabase: SupabaseClient,
-  column: {
-    created_by: string;
-    channel_id: number;
-    text: string;
-  },
-): Promise<Column> {
-  const columnData = {
-    type: "text",
-    text: column.text,
-    channel_id: column.channel_id,
-    created_by: column.created_by,
-  };
-
-  const { data, error: insertError } = await supabase
-    .from("column")
-    .insert(columnData) // use insert instead of upsert
-    .select()
-    .single();
-
-  if (insertError) {
-    throw new Error(insertError.message);
-  }
-
-  return data;
+export async function uploadTextColumn(input: {
+  created_by: string;
+  channel_id: number;
+  text: string;
+}): Promise<Column> {
+  const [row] = await db
+    .insert(column)
+    .values({
+      type: "text",
+      text: input.text,
+      channel_id: input.channel_id,
+      created_by: input.created_by,
+    })
+    .returning();
+  return toColumn(row);
 }
 
-export async function uploadImageColumn(
-  supabase: SupabaseClient,
-  column: {
-    created_by: string;
-    channel_id: number;
-    // Public URL of the already-uploaded storage object.
-    image: string;
-  },
-): Promise<Column> {
-  const columnData = {
-    type: "image",
-    image: column.image,
-    channel_id: column.channel_id,
-    created_by: column.created_by,
-  };
-
-  const { data, error: insertError } = await supabase
-    .from("column")
-    .insert(columnData)
-    .select()
-    .single();
-
-  if (insertError) {
-    throw new Error(insertError.message);
-  }
-
-  return data;
+export async function uploadImageColumn(input: {
+  created_by: string;
+  channel_id: number;
+  // Public URL of the already-uploaded storage object.
+  image: string;
+}): Promise<Column> {
+  const [row] = await db
+    .insert(column)
+    .values({
+      type: "image",
+      image: input.image,
+      channel_id: input.channel_id,
+      created_by: input.created_by,
+    })
+    .returning();
+  return toColumn(row);
 }
 
-export async function updateColumnTitle(
-  supabase: SupabaseClient,
-  column_id: number,
-  title: string,
-): Promise<void> {
-  const { error } = await supabase.from("column").update({ title: title }).eq("id", column_id);
-
-  if (error) {
-    throw new Error(error.message);
-  }
+export async function updateColumnTitle(column_id: number, title: string): Promise<void> {
+  await db.update(column).set({ title }).where(eq(column.id, column_id));
 }
 
 export async function updateColumnDescription(
-  supabase: SupabaseClient,
   column_id: number,
   description: string,
-) {
-  const { error } = await supabase
-    .from("column")
-    .update({ description: description })
-    .eq("id", column_id);
-
-  if (error) {
-    throw new Error(error.message);
-  }
+): Promise<void> {
+  await db.update(column).set({ description }).where(eq(column.id, column_id));
 }
 
-export async function updateColumnTags(
-  supabase: SupabaseClient,
-  column_id: number,
-  tags: string[],
-): Promise<void> {
-  const { error } = await supabase.from("column").update({ tags }).eq("id", column_id);
-
-  if (error) {
-    throw new Error(error.message);
-  }
+export async function updateColumnTags(column_id: number, tags: string[]): Promise<void> {
+  await db.update(column).set({ tags }).where(eq(column.id, column_id));
 }
 
 // Set title and/or description in one update — used to pre-fill a URL block
 // from its page metadata after capture.
 export async function updateColumnMeta(
-  supabase: SupabaseClient,
   column_id: number,
   fields: { title?: string; description?: string },
 ): Promise<void> {
-  const { error } = await supabase.from("column").update(fields).eq("id", column_id);
-
-  if (error) {
-    throw new Error(error.message);
-  }
+  await db.update(column).set(fields).where(eq(column.id, column_id));
 }
 
-export async function deleteColumn(supabase: SupabaseClient, column_id: number): Promise<void> {
-  const { error } = await supabase.from("column").delete().eq("id", column_id);
-
-  if (error) {
-    throw new Error(error.message);
+// Partial update of a block's editable fields (title/description/text/url/image),
+// returning the updated row. Used by the REST API and MCP block-edit handlers,
+// which pick the allowed fields per block type before calling this. Callers must
+// authorize ownership first.
+export async function updateColumn(
+  column_id: number,
+  fields: Partial<Pick<Column, "title" | "description" | "text" | "url" | "image">>,
+): Promise<Column> {
+  const [row] = await db.update(column).set(fields).where(eq(column.id, column_id)).returning();
+  if (!row) {
+    throw new Error("Block not found.");
   }
+  return toColumn(row);
 }
 
-export async function getChannelColumnCount(
-  supabase: SupabaseClient,
-  channel_id: number,
-): Promise<number> {
-  const { count, error } = await supabase
-    .from("column")
-    .select("id", { count: "exact" })
-    .eq("channel_id", channel_id);
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  if (count === null) {
-    throw new Error("Count for columns was null.");
-  }
-
-  return count;
+export async function deleteColumn(column_id: number): Promise<void> {
+  await db.delete(column).where(eq(column.id, column_id));
 }
 
-export async function updateColumnText(supabase: SupabaseClient, column_id: number, text: string) {
-  const { error } = await supabase
-    .from("column")
-    .update({ text: text })
-    .eq("id", column_id)
-    .select();
+export async function getChannelColumnCount(channel_id: number): Promise<number> {
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(column)
+    .where(eq(column.channel_id, channel_id));
+  return row?.count ?? 0;
+}
 
-  if (error) {
-    throw new Error(error.message);
-  }
+export async function updateColumnText(column_id: number, text: string): Promise<void> {
+  await db.update(column).set({ text }).where(eq(column.id, column_id));
 }

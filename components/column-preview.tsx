@@ -1,5 +1,5 @@
-import { Column } from "@/lib/colosseum/column";
-import { createClient } from "@/lib/supabase/server";
+import type { Column } from "@/lib/colosseum/column";
+import { getScreenshot } from "@/lib/colosseum/screenshot-data";
 import ScreenShotPreview from "./screenshot-preview";
 
 export default async function ColumnPreview({ column }: { column: Column }) {
@@ -24,15 +24,10 @@ export default async function ColumnPreview({ column }: { column: Column }) {
   }
 
   // get the image url of the screenshot
-  const supabase = await createClient();
-
-  const { data, error: selectError } = await supabase
-    .from("screenshot")
-    .select("*")
-    .eq("url", column.url)
-    .maybeSingle();
-
-  if (selectError) {
+  let data: Awaited<ReturnType<typeof getScreenshot>>;
+  try {
+    data = column.url ? await getScreenshot(column.url) : null;
+  } catch {
     return (
       <div>
         <p>Error fetching the screenshot.</p>
@@ -40,8 +35,8 @@ export default async function ColumnPreview({ column }: { column: Column }) {
     );
   }
 
-  // `data` is null when no screenshot has been cached for this URL yet
-  // (maybeSingle returns null, not an error). ScreenShotPreview handles null.
+  // `data` is null when no screenshot has been cached for this URL yet.
+  // ScreenShotPreview handles null.
   return (
     <ScreenShotPreview image_url={data?.image_url ?? null} version={data?.captured_at ?? null} />
   );

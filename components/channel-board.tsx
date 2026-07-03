@@ -340,7 +340,7 @@ export default function ChannelBoard({
           <div className="flex flex-wrap gap-2">
             {channel.tags.map((tag) => (
               <Badge key={tag} variant="secondary">
-                {tag}
+                #{tag}
               </Badge>
             ))}
           </div>

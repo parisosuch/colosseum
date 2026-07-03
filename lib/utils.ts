@@ -39,18 +39,6 @@ export function isURL(text: string): boolean {
   return true;
 }
 
-// Parses a tags input into a deduped, trimmed list.
-export function parseTags(input: string): string[] {
-  return [
-    ...new Set(
-      input
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean),
-    ),
-  ];
-}
-
 // Escapes ilike wildcards so a literal `%`/`_` in a search term isn't treated
 // as one, and strips the characters PostgREST uses to delimit an `.or(...)`
 // filter so a search term can't break out of it.
@@ -59,6 +47,16 @@ export function sanitizeSearch(term: string): string {
     .replace(/[%_]/g, (m) => `\\${m}`)
     .replace(/[(),]/g, " ")
     .trim();
+}
+
+// A PostgREST `.or(...)` fragment matching rows whose `tags` array contains the
+// search term exactly. Drops `"`/`\` so the term can't break out of the
+// {"..."} array literal; the sanitizeSearch `%`-escaping round-trips back to a
+// literal `%`. Exact-match only — a search for "des" won't hit tag "design".
+// ponytail: exact tag match; add a trigram index if partial matching is needed.
+export function tagContainsFilter(sanitizedTerm: string): string {
+  const t = sanitizedTerm.replace(/["\\]/g, "").trim();
+  return t ? `tags.cs.{"${t}"}` : "";
 }
 
 export function timeAgo(date: Date) {

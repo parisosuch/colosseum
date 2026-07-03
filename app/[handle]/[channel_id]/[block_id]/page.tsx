@@ -130,7 +130,7 @@ export default async function BlockPage({ params }: BlockPageParams) {
               <div className="flex flex-wrap gap-1 pt-1">
                 {column.tags.map((tag) => (
                   <Badge key={tag} variant="secondary">
-                    {tag}
+                    #{tag}
                   </Badge>
                 ))}
               </div>

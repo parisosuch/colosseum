@@ -1,6 +1,6 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 
-import { sanitizeSearch } from "@/lib/utils";
+import { sanitizeSearch, tagContainsFilter } from "@/lib/utils";
 
 export type Column = {
   id: number;
@@ -77,9 +77,10 @@ export async function getChannelColumns(
   const term = search ? sanitizeSearch(search) : "";
   if (term) {
     const pattern = `%${term}%`;
-    builder = builder.or(
-      ["title", "description", "text", "url"].map((col) => `${col}.ilike.${pattern}`).join(","),
-    );
+    const filters = ["title", "description", "text", "url"].map((col) => `${col}.ilike.${pattern}`);
+    const tagFilter = tagContainsFilter(term);
+    if (tagFilter) filters.push(tagFilter);
+    builder = builder.or(filters.join(","));
   }
 
   switch (sort) {
@@ -109,7 +110,8 @@ export async function getChannelColumns(
   return data;
 }
 
-// Blocks the user created whose title/description/text/url match `query`.
+// Blocks the user created whose title/description/text/url or a tag match
+// `query`.
 // Used by the nav search box, so capped to a handful of results. Returns []
 // for an empty/whitespace-only query rather than the user's whole block list.
 export async function searchUserColumns(
@@ -123,11 +125,14 @@ export async function searchUserColumns(
   }
 
   const pattern = `%${term}%`;
+  const filters = ["title", "description", "text", "url"].map((col) => `${col}.ilike.${pattern}`);
+  const tagFilter = tagContainsFilter(term);
+  if (tagFilter) filters.push(tagFilter);
   const { data, error } = await supabase
     .from("column")
     .select("*")
     .eq("created_by", user_id)
-    .or(["title", "description", "text", "url"].map((col) => `${col}.ilike.${pattern}`).join(","))
+    .or(filters.join(","))
     .limit(10);
 
   if (error) {

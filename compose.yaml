@@ -1,16 +1,15 @@
-# The whole app: `docker compose up -d` boots Postgres, migrates the schema,
-# and serves. Upgrading is `docker compose pull && docker compose up -d` —
-# migrations run on boot, before the server accepts traffic.
+# The whole app: `docker compose up -d --build` builds from source, boots
+# Postgres, migrates the schema, and serves. Upgrading is
+# `git pull && docker compose up -d --build` — migrations run on boot, before
+# the server accepts traffic.
 #
 # Set AUTH_SECRET (and optionally POSTGRES_PASSWORD) in a `.env` file next to
 # this compose file. Generate one with: openssl rand -base64 32
 
 services:
   app:
-    # Pin a real version when pulling from a registry — never :latest, or
-    # `compose pull` upgrades you blind. `build:` lets a checkout build the
-    # same image locally with `docker compose up --build`.
-    image: colosseum:0.1.0
+    # Built from this checkout — there is no published image to pull.
+    image: colosseum:local
     build: .
     depends_on:
       db:

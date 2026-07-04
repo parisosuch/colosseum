@@ -15,10 +15,9 @@ export const SCREENSHOT_SIZE = 1200;
 /**
  * Capture a square PNG of the top of a web page.
  *
- * Shared by `app/api/screenshot/route.ts` (runtime screenshots) and
- * `scripts/generate-seed-screenshots.ts` (seed data) so both produce identical
- * images. Requires a launchable Chromium; in minimal Linux/WSL environments the
- * Chromium system libraries must be installed first (see the README).
+ * Used by `app/api/screenshot/route.ts`. Requires a launchable Chromium; in
+ * minimal Linux/WSL environments the Chromium system libraries must be
+ * installed first (see the README).
  */
 export async function captureWebsiteScreenshot(
   url: string,

@@ -18,5 +18,5 @@
     "jsx-a11y/prefer-tag-over-role": "warn",
     "nextjs/no-img-element": "warn"
   },
-  "ignorePatterns": [".next", "node_modules", "supabase"]
+  "ignorePatterns": [".next", "node_modules"]
 }

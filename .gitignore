@@ -43,5 +43,3 @@ next-env.d.ts
 
 # local blob storage (see STORAGE_DIR in .env.example)
 /data
-
-# generated seed screenshots (run `make db-seed` to (re)create)

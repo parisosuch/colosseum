@@ -35,6 +35,8 @@ Use `bun`, never `npm`. A `Makefile` wraps the common ones:
   `bun run lint`, `bun run format:check`, and `bun run typecheck` and fails on
   any of them — `format:check` does not auto-fix, so run `bun run format`
   (or `make check`) first or CI will reject the unformatted code.
+- **1.0.0 is released.** Every change after it bumps `version` in
+  `package.json` (semver) and tags the release commit `vX.Y.Z`.
 
 ## Conventions
 

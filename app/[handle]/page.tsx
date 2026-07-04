@@ -17,7 +17,9 @@ async function ChannelColumnsView({ channel }: { channel: Channel }) {
     <div className="flex flex-col md:flex-row gap-8 p-2">
       <div className="flex flex-col justify-center items-center space-y-1 w-full md:w-[250px] md:h-[250px] shrink-0">
         <h2 className="text-heading">{channel.title}</h2>
-        {channel.description ? <p className="text-center">{channel.description}</p> : null}
+        {channel.description ? (
+          <p className="text-center line-clamp-3 break-words max-w-full">{channel.description}</p>
+        ) : null}
         <p className="text-caption">{columnCount} column(s)</p>
       </div>
       <div className="hidden md:flex gap-8 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

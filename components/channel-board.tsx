@@ -255,13 +255,20 @@ export default function ChannelBoard({
               screenshotRetries.current.delete(url);
               continue;
             }
-            // No preview yet — it may still be capturing (this block could've
+            if (fetched.has(url)) {
+              // A row exists but has no image — capture ran and failed
+              // permanently. Settle now; no point polling further.
+              next.set(url, row!);
+              screenshotRetries.current.delete(url);
+              continue;
+            }
+            // No row at all yet — it may still be capturing (this block could've
             // been created via the API, or by another session). Keep polling a
             // bounded number of times before settling on "no preview" for good.
             const attempts = (screenshotRetries.current.get(url) ?? 0) + 1;
             screenshotRetries.current.set(url, attempts);
             if (attempts >= SCREENSHOT_MAX_RETRIES) {
-              next.set(url, row ?? { url, image_url: null, title: null, captured_at: null });
+              next.set(url, { url, image_url: null, title: null, captured_at: null });
             } else {
               stillPending = true;
             }
@@ -296,6 +303,18 @@ export default function ChannelBoard({
 
   const beginCapture = useCallback((url: string) => {
     setCapturing((prev) => new Set(prev).add(url));
+    // A previous attempt for this URL may have already settled to "no
+    // preview" (this block's own prior instance, or a sibling block sharing
+    // the URL) — clear it and the exhausted retry count so this fresh
+    // attempt starts from a real loading state instead of instantly
+    // re-showing the stale failure.
+    screenshotRetries.current.delete(url);
+    setScreenshots((prev) => {
+      if (!prev.has(url)) return prev;
+      const next = new Map(prev);
+      next.delete(url);
+      return next;
+    });
   }, []);
 
   // The screenshot landed: stop treating the URL as capturing and drop it from

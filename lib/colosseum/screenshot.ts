@@ -116,7 +116,10 @@ const inFlightCaptures = new Map<string, Promise<void>>();
 // sent, so the capture just finishes on its own time. Skips URLs that already
 // have a cached screenshot (shared per-URL, so another block may have already
 // captured this one). Callers poll the block/channel API for `preview` to
-// land once it's done; a failed capture just leaves `preview: null`.
+// land once it's done. A permanent failure (dead site, DNS failure, blocks
+// headless browsers, etc.) writes a null-image row instead of leaving none —
+// that's what tells a poller to stop waiting instead of retrying for minutes
+// on something that already failed.
 export function triggerScreenshotCapture(url: string, ownerId: string): void {
   if (inFlightCaptures.has(url)) return;
 
@@ -133,6 +136,11 @@ export function triggerScreenshotCapture(url: string, ownerId: string): void {
       await withCaptureSlot(() => captureAndCacheScreenshot(url, ownerId));
     } catch (e) {
       console.error(`background screenshot capture failed for ${url}:`, e);
+      try {
+        await upsertScreenshot({ url, image_url: null, title: "", description: "" });
+      } catch (upsertError) {
+        console.error(`failed to record capture failure for ${url}:`, upsertError);
+      }
     }
   })().finally(() => inFlightCaptures.delete(url));
 

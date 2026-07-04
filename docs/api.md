@@ -76,10 +76,15 @@ Add a block to a channel you own. One of:
 
 > A url block's preview screenshot captures in the background — the create call
 > returns immediately with `preview: null` and doesn't block on it. Poll
-> `GET /api/v1/blocks/:id` until `preview` is `{ "image_url": "...", "title": "..." }`
-> (capture usually takes a few seconds; a permanent failure just leaves it
-> `null`). Skipped entirely if another block already has a cached preview for
-> the same URL. `text` and `image` blocks always have `preview: null`.
+> `GET /api/v1/blocks/:id` and watch `preview`:
+>
+> - `null` — still capturing (or not triggered yet). Keep polling.
+> - `{ "failed": true }` — capture ran and failed permanently (dead site, DNS
+>   failure, etc). Stop polling.
+> - `{ "image_url": "...", "title": "..." }` — captured successfully.
+>
+> Skipped entirely if another block already has a cached preview for the same
+> URL. `text` and `image` blocks always have `preview: null`.
 
 ### `GET /api/v1/blocks/:id`
 

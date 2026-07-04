@@ -76,10 +76,13 @@ export async function getScreenshot(url: string): Promise<ScreenshotRow | null> 
 
 // Upsert a freshly captured screenshot, refreshing a stale row in place so
 // image_url/title/description are rewritten and captured_at is bumped (which
-// also serves as the client cache-busting version).
+// also serves as the client cache-busting version). image_url is nullable so
+// a permanently failed capture can still record "we tried, it didn't work" —
+// distinct from no row at all ("still capturing") — see
+// triggerScreenshotCapture in ./screenshot.
 export async function upsertScreenshot(input: {
   url: string;
-  image_url: string;
+  image_url: string | null;
   title: string;
   description: string;
 }): Promise<void> {

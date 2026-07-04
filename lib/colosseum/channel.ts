@@ -1,4 +1,4 @@
-import { and, eq, ilike, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { channel, column } from "@/lib/db/schema";
@@ -33,16 +33,26 @@ function toChannel(row: ChannelRow): Channel {
   };
 }
 
+// Order channels by their most recently added block, so a channel bubbles up
+// when the owner drops something new in it. Channels with no blocks yet fall
+// back to their own creation time.
+const lastBlockAddedAt = sql`coalesce((select max(${column.created_at}) from ${column} where ${column.channel_id} = ${channel.id}), ${channel.created_at})`;
+
 export async function getUserPublicChannels(user_id: string): Promise<Channel[]> {
   const rows = await db
     .select()
     .from(channel)
-    .where(and(eq(channel.owner_id, user_id), eq(channel.private, false)));
+    .where(and(eq(channel.owner_id, user_id), eq(channel.private, false)))
+    .orderBy(desc(lastBlockAddedAt));
   return rows.map(toChannel);
 }
 
 export async function getUserChannels(user_id: string): Promise<Channel[]> {
-  const rows = await db.select().from(channel).where(eq(channel.owner_id, user_id));
+  const rows = await db
+    .select()
+    .from(channel)
+    .where(eq(channel.owner_id, user_id))
+    .orderBy(desc(lastBlockAddedAt));
   return rows.map(toChannel);
 }
 

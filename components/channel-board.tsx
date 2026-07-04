@@ -437,13 +437,6 @@ export default function ChannelBoard({
                   ))}
             </div>
           )}
-
-          {!loadingPage && columns.length === 0 ? (
-            <p className="text-muted-foreground">
-              {isFiltered ? "No blocks match your search." : "No blocks yet."}
-            </p>
-          ) : null}
-
           {/* Infinite-scroll sentinel + load-more spinner. */}
           <div ref={sentinelRef} className="h-1" />
           {loadingMore ? (

@@ -8,6 +8,7 @@ import {
   json,
 } from "@/lib/colosseum/api-auth";
 import { deleteChannel, getChannel, updateChannel } from "@/lib/colosseum/channel";
+import { logError, logInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
 
@@ -65,9 +66,10 @@ export async function PATCH(req: Request, { params }: Ctx) {
       description,
       private: isPrivate,
     });
+    logInfo("channels.id.PATCH", `updated channel ${channelId} for user ${auth.userId}`);
     return json({ channel: updated });
   } catch (e) {
-    console.error(e);
+    logError("channels.id.PATCH", `failed to update channel ${channelId}`, e);
     return apiError("Failed to update channel.", 500);
   }
 }
@@ -86,9 +88,10 @@ export async function DELETE(req: Request, { params }: Ctx) {
 
   try {
     await deleteChannel(channelId);
+    logInfo("channels.id.DELETE", `deleted channel ${channelId} for user ${auth.userId}`);
     return json({ success: true });
   } catch (e) {
-    console.error(e);
+    logError("channels.id.DELETE", `failed to delete channel ${channelId}`, e);
     return apiError("Failed to delete channel.", 500);
   }
 }

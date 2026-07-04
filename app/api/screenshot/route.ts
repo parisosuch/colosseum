@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/auth";
 import { deleteMediaByUrl } from "@/lib/colosseum/blob";
 import { captureAndCacheScreenshot } from "@/lib/colosseum/screenshot";
 import { getScreenshot } from "@/lib/colosseum/screenshot-data";
+import { logError, logInfo } from "@/lib/log";
 
 export const runtime = "nodejs"; // puppeteer is going to require nodejs runtime for browsing
 
@@ -36,7 +37,7 @@ export async function POST(req: NextRequest) {
   try {
     existing = await getScreenshot(url);
   } catch (lookupError) {
-    console.error(lookupError);
+    logError("screenshot.interactive", `lookup failed for ${url}`, lookupError);
     return NextResponse.json({ error: "Failed to look up screenshot" }, { status: 500 });
   }
 
@@ -52,6 +53,8 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  const startedAt = Date.now();
+  logInfo("screenshot.interactive", `starting capture: ${url}`, { userId: user.id });
   try {
     // Stores the bytes in content-addressed local-disk blob storage behind a
     // public media reference and upserts the shared per-URL cache row (so a
@@ -69,10 +72,10 @@ export async function POST(req: NextRequest) {
       await deleteMediaByUrl(existing.image_url);
     }
 
+    logInfo("screenshot.interactive", `captured ${url} in ${Date.now() - startedAt}ms`);
     return NextResponse.json({ image_url: publicUrl, title, description });
   } catch (error) {
-    console.error(error);
-
+    logError("screenshot.interactive", `failed after ${Date.now() - startedAt}ms: ${url}`, error);
     return NextResponse.json({ error: error }, { status: 500 });
   }
 }

@@ -1,5 +1,6 @@
 import { getSessionUser } from "@/lib/auth";
 import { apiError, createApiToken, json } from "@/lib/colosseum/api-auth";
+import { logError, logInfo } from "@/lib/log";
 
 // node runtime: createApiToken hashes with node:crypto.
 export const runtime = "nodejs";
@@ -26,9 +27,10 @@ export async function POST(req: Request) {
 
   try {
     const { token, row } = await createApiToken({ userId: user.id, name });
+    logInfo("tokens.POST", `created API token ${row.id} for user ${user.id}`);
     return json({ token, ...row }, 201);
   } catch (e) {
-    console.error(e);
+    logError("tokens.POST", `failed to create token for user ${user.id}`, e);
     return apiError("Could not create token.", 500);
   }
 }

@@ -17,6 +17,7 @@ import {
   uploadURLColumn,
 } from "@/lib/colosseum/column";
 import { triggerScreenshotCapture } from "@/lib/colosseum/screenshot";
+import { logError, logInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
 
@@ -50,7 +51,7 @@ export async function GET(req: Request, { params }: Ctx) {
     const blocks = await getChannelColumns(channelId, { limit });
     return json({ blocks: await attachPreviews(blocks) });
   } catch (e) {
-    console.error(e);
+    logError("channels.id.blocks.GET", `failed to list blocks for channel ${channelId}`, e);
     return apiError("Failed to list blocks.", 500);
   }
 }
@@ -105,9 +106,17 @@ export async function POST(req: Request, { params }: Ctx) {
     } else {
       return apiError("`type` must be one of: text, url, image.", 400);
     }
+    logInfo(
+      "channels.id.blocks.POST",
+      `created ${type} block ${block.id} in channel ${channelId} for user ${auth.userId}`,
+    );
     return json({ block: await attachPreview(block) }, 201);
   } catch (e) {
-    console.error(e);
+    logError(
+      "channels.id.blocks.POST",
+      `failed to create ${type} block in channel ${channelId}`,
+      e,
+    );
     return apiError("Failed to create block.", 500);
   }
 }

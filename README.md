@@ -30,13 +30,14 @@ the database is only reachable from the compose network either way).
 ### Upgrading
 
 ```bash
-docker compose pull
-docker compose up -d
+git pull
+docker compose up -d --build
 ```
 
-That's the whole procedure. The new image migrates the database on boot,
-before serving. File bytes never migrate — blobs are immutable and
-content-addressed, so the storage volume carries across any upgrade untouched.
+That's the whole procedure — the image builds from source. The new build
+migrates the database on boot, before serving. File bytes never migrate —
+blobs are immutable and content-addressed, so the storage volume carries
+across any upgrade untouched.
 
 ### Backup and restore
 

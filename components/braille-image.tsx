@@ -35,7 +35,7 @@ const DOT_BITS = [
 // hovered dot fade fully into the background (the cursor-trail erase effect).
 const COLORS = {
   light: { base: [208, 208, 208], hover: [18, 18, 18] }, // dots over the dark light-mode panel
-  dark: { base: [64, 64, 64], hover: [250, 250, 250] }, // dots over the near-white dark-mode panel
+  dark: { base: [0, 0, 0], hover: [250, 250, 250] }, // dots over the near-white dark-mode panel
 } as const;
 
 // The image the mask renders (served from /public). Swap this one path for a

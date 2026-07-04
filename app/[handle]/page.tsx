@@ -61,7 +61,7 @@ function ChannelsView({
   return (
     <div className="space-y-4">
       {isOwner ? <CreateChannelButton /> : null}
-      <div className="grid grid-cols-1 gap-4 md:flex md:flex-col md:space-y-4 md:gap-0">
+      <div className="grid grid-cols-2 gap-4 md:flex md:flex-col md:space-y-4 md:gap-0">
         {channels.map((channel) => (
           <Link key={channel.id} href={`/${handle}/${channel.id}`}>
             <div

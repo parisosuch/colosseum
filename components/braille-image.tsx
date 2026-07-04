@@ -29,11 +29,13 @@ const DOT_BITS = [
   [0x40, 0x80],
 ];
 
-// Resting -> hovered dot color, per theme. Light theme matches the original;
-// dark theme flips it so dots stay visible on the near-black background.
+// Resting -> hovered dot color, per theme. The mark sits on `bg-primary`,
+// which inverts with the theme: a near-black panel in light mode, a near-white
+// one in dark. So each palette's hover lands on its own panel color, letting a
+// hovered dot fade fully into the background (the cursor-trail erase effect).
 const COLORS = {
-  light: { base: [208, 208, 208], hover: [18, 18, 18] },
-  dark: { base: [64, 64, 64], hover: [235, 235, 235] },
+  light: { base: [208, 208, 208], hover: [18, 18, 18] }, // dots over the dark light-mode panel
+  dark: { base: [0, 0, 0], hover: [250, 250, 250] }, // dots over the near-white dark-mode panel
 } as const;
 
 // The image the mask renders (served from /public). Swap this one path for a
@@ -60,7 +62,13 @@ function cellBits(cell: Cell, threshold: number) {
 
 export default function BrailleImage() {
   const { resolvedTheme } = useTheme();
-  const palette = resolvedTheme === "dark" ? COLORS.dark : COLORS.light;
+  // resolvedTheme is undefined until mounted; gate on it so SSR and the first
+  // client render agree (light palette), then swap to the real theme on mount.
+  // Without this the container color hydration-mismatches and React leaves the
+  // stale server color in place — dark-mode dots never turn black.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const palette = mounted && resolvedTheme === "dark" ? COLORS.dark : COLORS.light;
 
   const [img, setImg] = useState<HTMLImageElement | null>(null);
   const [metrics, setMetrics] = useState<{ charW: number; lineH: number } | null>(null);

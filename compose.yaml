@@ -35,6 +35,10 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    # Loopback-only host access: local dev (bun run db:*) and pg_dump both
+    # reach Postgres at 127.0.0.1:54322 without exposing it off-machine.
+    ports:
+      - "127.0.0.1:54322:5432"
     volumes:
       - db:/var/lib/postgresql/data
     restart: unless-stopped

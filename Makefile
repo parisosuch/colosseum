@@ -1,18 +1,18 @@
-.PHONY: help install dev build start format lint typecheck check start-supabase stop-supabase restart-supabase status migrate-create migrate-up db-reset setup clean
+.PHONY: help install dev build start format lint typecheck check start-db stop-db restart-db status migrate-create migrate-up db-reset setup clean
 
 help:
 	@echo "Colosseum - Development Commands"
 	@echo ""
 	@echo "Setup Commands:"
-	@echo "  make setup               Complete local dev setup (install deps, start Supabase)"
+	@echo "  make setup               Complete local dev setup (install deps, start Postgres)"
 	@echo ""
 	@echo "Development Commands:"
 	@echo "  make dev                 Start Next.js development server"
 	@echo "  make build               Build the production bundle"
 	@echo "  make start               Start the production server"
-	@echo "  make start-supabase      Start local Supabase stack"
-	@echo "  make stop-supabase       Stop local Supabase stack"
-	@echo "  make restart-supabase    Restart local Supabase stack"
+	@echo "  make start-db            Start the local Postgres (compose db service)"
+	@echo "  make stop-db             Stop it (data persists)"
+	@echo "  make restart-db          Restart it"
 	@echo ""
 	@echo "Quality Commands (run before committing):"
 	@echo "  make format              Format code with oxfmt"
@@ -27,7 +27,7 @@ help:
 	@echo ""
 	@echo "Utility Commands:"
 	@echo "  make install             Install dependencies only"
-	@echo "  make status              Show Supabase service status"
+	@echo "  make status              Show local Postgres status"
 	@echo "  make clean               Remove build + cache artifacts"
 	@echo ""
 
@@ -68,22 +68,17 @@ check: format lint typecheck
 	@echo ""
 	@echo "✓ All checks passed"
 
-start-supabase:
-	@echo "Starting Supabase local stack..."
+start-db:
+	@echo "Starting local Postgres..."
 	bun run db:start
-	@echo "✓ Supabase running"
-	@echo ""
-	@echo "Access points:"
-	@echo "  Studio: http://127.0.0.1:54323"
-	@echo "  API:    http://127.0.0.1:54321"
-	@echo "  DB:     postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+	@echo "✓ Postgres running at postgresql://postgres:postgres@127.0.0.1:54322/postgres"
 
-stop-supabase:
-	@echo "Stopping Supabase..."
+stop-db:
+	@echo "Stopping local Postgres..."
 	bun run db:stop
-	@echo "✓ Supabase stopped"
+	@echo "✓ Postgres stopped"
 
-restart-supabase: stop-supabase start-supabase
+restart-db: stop-db start-db
 
 status:
 	@echo "Checking services..."
@@ -104,7 +99,7 @@ db-reset:
 	bun run db:migrate:drizzle
 	@echo "✓ Database reset"
 
-setup: install start-supabase
+setup: install start-db
 	@echo ""
 	@echo "✓ Setup complete!"
 	@echo ""

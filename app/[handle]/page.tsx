@@ -50,7 +50,7 @@ function ChannelsView({
   if (channels.length === 0) {
     return (
       <div className="w-full flex items-center justify-center">
-        <div className="w-1/2 flex space-x-4 items-center">
+        <div className="w-1/2 flex flex-col space-y-4 items-center">
           <h1 className="text-display">Looks like {isOwner ? "you" : "they"} have no channels.</h1>
           {isOwner ? <CreateChannelButton /> : null}
         </div>

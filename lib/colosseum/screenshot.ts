@@ -60,16 +60,16 @@ export async function captureWebsiteScreenshot(
     const title = (meta.ogTitle || meta.docTitle).slice(0, 200);
     const description = (meta.ogDescription || meta.metaDescription).slice(0, 500);
 
-    // Full-page screenshot, then crop to the top square.
+    // Full-page screenshot, then crop to the top square. A page shorter than
+    // SCREENSHOT_SIZE (viewport width, but full-page height) would make a
+    // fixed-offset `.extract()` request a region past the image's actual
+    // bounds and throw ("bad extract area") — `resize` with `cover` always
+    // produces exactly SCREENSHOT_SIZE square regardless of source size,
+    // cropping a taller page or upscaling a shorter one, anchored to the top.
     const buffer = (await page.screenshot({ fullPage: true })) as Buffer;
 
     const image = await sharp(buffer)
-      .extract({
-        left: 0,
-        top: 0,
-        width: SCREENSHOT_SIZE,
-        height: SCREENSHOT_SIZE,
-      })
+      .resize(SCREENSHOT_SIZE, SCREENSHOT_SIZE, { fit: "cover", position: "top" })
       .toFormat("png")
       .toBuffer();
 

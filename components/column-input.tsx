@@ -42,16 +42,15 @@ export default function ColumnInput({
   onScreenshotReady,
 }: ColumnInputProps) {
   const [text, setText] = useState("");
-  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const loading = uploading > 0;
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files?.[0];
-    if (selected) handleFileUpload(selected);
-    // Reset so picking the same file again still fires onChange.
+    if (e.target.files?.length) handleFilesUpload(e.target.files);
+    // Reset so picking the same file(s) again still fires onChange.
     e.target.value = "";
   };
 
@@ -60,42 +59,60 @@ export default function ColumnInput({
     e.stopPropagation();
     setIsDragging(false);
 
-    const droppedFile = e.dataTransfer.files?.[0];
-    if (droppedFile) handleFileUpload(droppedFile);
+    if (e.dataTransfer.files?.length) handleFilesUpload(e.dataTransfer.files);
   };
 
-  // Upload an image file and create an image column. The bytes go through a
-  // server action to local-disk blob storage; type/size are validated here for
-  // fast feedback and re-checked server-side. On any failure nothing is
-  // created and the error is surfaced.
-  const handleFileUpload = async (selected: File) => {
+  // Paste image(s) straight into a block — a clipboard screenshot or a copied
+  // image file. Text/URL pastes fall through to the textarea (submit with
+  // Enter), so only swallow the event when there's actually an image.
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const images = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith("image/"));
+    if (images.length > 0) {
+      e.preventDefault();
+      handleFilesUpload(images);
+    }
+  };
+
+  // Upload one or more image files, creating an image column per file. Bytes go
+  // through a server action to local-disk blob storage; type/size are validated
+  // here for fast feedback and re-checked server-side. Invalid files are
+  // reported and skipped; valid ones upload sequentially so a big multi-drop
+  // doesn't fire dozens of requests at once. Newest ends up on top.
+  const handleFilesUpload = async (fileList: FileList | File[]) => {
     if (!user?.id || !channel) return;
 
-    if (!ALLOWED_IMAGE_TYPES.includes(selected.type)) {
-      toast.error("Only image files (PNG, JPEG, GIF, WebP, AVIF) are supported.");
-      return;
+    const valid: File[] = [];
+    for (const f of Array.from(fileList)) {
+      if (!ALLOWED_IMAGE_TYPES.includes(f.type)) {
+        toast.error(`${f.name}: only image files (PNG, JPEG, GIF, WebP, AVIF) are supported.`);
+      } else if (f.size > MAX_IMAGE_BYTES) {
+        toast.error(`${f.name} is too large (max 10MB).`);
+      } else {
+        valid.push(f);
+      }
     }
-    if (selected.size > MAX_IMAGE_BYTES) {
-      toast.error("That image is too large (max 10MB).");
-      return;
-    }
+    if (valid.length === 0) return;
 
-    setFile(selected);
-    setLoading(true);
+    setUploading(valid.length);
+    const created: Column[] = [];
     try {
-      const formData = new FormData();
-      formData.set("channelId", String(channel.id));
-      formData.set("file", selected);
-      const column = await uploadImageColumnAction(formData);
-
-      setColumns([column, ...columns]);
-      onBlockAdded();
+      for (const f of valid) {
+        const formData = new FormData();
+        formData.set("channelId", String(channel.id));
+        formData.set("file", f);
+        created.push(await uploadImageColumnAction(formData));
+        setUploading((n) => n - 1);
+      }
     } catch (e) {
       console.error(e);
-      toast.error("Couldn't upload that image. Please try again.");
+      toast.error("Couldn't upload one or more images. Please try again.");
     } finally {
-      setLoading(false);
-      setFile(null);
+      setUploading(0);
+    }
+
+    if (created.length > 0) {
+      setColumns((prev) => [...created.reverse(), ...prev]);
+      created.forEach(() => onBlockAdded());
     }
   };
 
@@ -211,49 +228,50 @@ export default function ColumnInput({
       onDrop={handleDrop}
     >
       {/* Text input */}
-      {!file && (
-        <textarea
-          ref={textareaRef}
-          disabled={loading}
-          className={`w-full h-full bg-transparent resize-none focus:outline-none p-3 leading-normal text-sm ${loading ? "hidden" : ""}`}
-          value={text}
-          onChange={(e) => {
-            setText(e.target.value);
-          }}
-          placeholder=""
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              handleTextAreaUpload();
-            }
-          }}
-        />
-      )}
+      <textarea
+        ref={textareaRef}
+        disabled={loading}
+        className={`w-full h-full bg-transparent resize-none focus:outline-none p-3 leading-normal text-sm ${loading ? "hidden" : ""}`}
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
+        }}
+        onPaste={handlePaste}
+        placeholder=""
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            handleTextAreaUpload();
+          }
+        }}
+      />
 
       {/* Overlay placeholder with clickable Upload */}
-      {!text && !file && (
+      {!text && !loading && (
         <div className="absolute inset-0 px-3 pt-3 text-sm leading-normal text-gray-500 flex items-start pointer-events-none">
           <span>
-            Type here... or{" "}
+            Type, paste an image, or{" "}
             <label className="underline cursor-pointer pointer-events-auto">
-              upload an image
-              <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+              upload
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={handleFileChange}
+              />
             </label>{" "}
-            or drop one
+            — one or many.
           </span>
         </div>
       )}
 
-      {/* Show file name if file is selected */}
-      {file && (
-        <div className="absolute inset-0 flex items-center justify-center text-center text-sm break-all px-3">
-          <p>{file.name}</p>
-        </div>
-      )}
-
       {loading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-100/60 dark:bg-black/50 z-10">
+        <div className="absolute inset-0 flex flex-col gap-2 items-center justify-center bg-gray-100/60 dark:bg-black/50 z-10">
           <Spinner variant="circle" className="size-10" />
+          {uploading > 1 ? (
+            <p className="text-xs text-muted-foreground">{uploading} left…</p>
+          ) : null}
         </div>
       )}
     </div>

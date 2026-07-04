@@ -111,6 +111,19 @@ export default function ChannelBoard({
   // to an empty preview) until the capture lands.
   const [capturing, setCapturing] = useState<Set<string>>(new Set());
 
+  // Blocks can also arrive with no screenshot yet from outside this session —
+  // the REST API captures previews asynchronously, so a freshly created (or
+  // just-migrated) url block may take a few seconds to a couple minutes before
+  // one lands. Retry count per URL, so the hydrate effect below keeps polling
+  // instead of caching "no preview" on the very first miss. Not component
+  // state: a bump doesn't need its own render.
+  const screenshotRetries = useRef(new Map<string, number>());
+  // ponytail: fixed poll interval + attempt cap (no websocket/SSE); bump this
+  // to re-run the hydrate effect on a timer.
+  const [pollTick, setPollTick] = useState(0);
+  const SCREENSHOT_POLL_MS = 5000;
+  const SCREENSHOT_MAX_RETRIES = 60; // ~5 minutes before settling on "no preview"
+
   const metaData = useMemo(() => {
     let lastModified = "-";
     if (newestAt) {
@@ -231,18 +244,36 @@ export default function ChannelBoard({
       try {
         const fetched = new Map(await getScreenshotsForUrlsAction(missing));
         if (cancelled) return;
+
+        let stillPending = false;
         setScreenshots((prev) => {
           const next = new Map(prev);
-          // Record every requested URL so a missing screenshot resolves to a
-          // null image (and isn't refetched on the next render).
           for (const url of missing) {
-            next.set(
-              url,
-              fetched.get(url) ?? { url, image_url: null, title: null, captured_at: null },
-            );
+            const row = fetched.get(url);
+            if (row?.image_url) {
+              next.set(url, row);
+              screenshotRetries.current.delete(url);
+              continue;
+            }
+            // No preview yet — it may still be capturing (this block could've
+            // been created via the API, or by another session). Keep polling a
+            // bounded number of times before settling on "no preview" for good.
+            const attempts = (screenshotRetries.current.get(url) ?? 0) + 1;
+            screenshotRetries.current.set(url, attempts);
+            if (attempts >= SCREENSHOT_MAX_RETRIES) {
+              next.set(url, row ?? { url, image_url: null, title: null, captured_at: null });
+            } else {
+              stillPending = true;
+            }
           }
           return next;
         });
+
+        if (stillPending) {
+          setTimeout(() => {
+            if (!cancelled) setPollTick((t) => t + 1);
+          }, SCREENSHOT_POLL_MS);
+        }
       } catch (e) {
         console.error(e);
       }
@@ -251,7 +282,8 @@ export default function ChannelBoard({
     return () => {
       cancelled = true;
     };
-  }, [columns, screenshots, capturing]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pollTick only retriggers the effect; it's not read inside.
+  }, [columns, screenshots, capturing, pollTick]);
 
   // A new block is the newest and bumps the channel length; reflect that in the
   // stats without refetching the whole channel.

@@ -72,10 +72,14 @@ Add a block to a channel you own. One of:
 { "type": "image", "image": "https://.../public-image.png" }
 ```
 
-→ `201 { "block": { ... } }`
+→ `201 { "block": { ..., "preview": null } }`
 
-> URL blocks added via the API are **not** screenshotted (the screenshot capture
-> flow is part of the web app). The block is created with its `url`.
+> A url block's preview screenshot captures in the background — the create call
+> returns immediately with `preview: null` and doesn't block on it. Poll
+> `GET /api/v1/blocks/:id` until `preview` is `{ "image_url": "...", "title": "..." }`
+> (capture usually takes a few seconds; a permanent failure just leaves it
+> `null`). Skipped entirely if another block already has a cached preview for
+> the same URL. `text` and `image` blocks always have `preview: null`.
 
 ### `GET /api/v1/blocks/:id`
 

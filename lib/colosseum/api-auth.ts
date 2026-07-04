@@ -9,7 +9,9 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { apiToken } from "@/lib/db/schema";
 import { Channel } from "./channel";
+import { Column } from "./column";
 import { ApiToken } from "./api-token";
+import { getScreenshot, getScreenshotsForUrls } from "./screenshot-data";
 
 // Tokens look like `clsm_<43 base64url chars>`. The prefix namespaces the secret
 // (so it's greppable in logs/secret scanners) and the random part has 256 bits
@@ -155,4 +157,29 @@ export function authorizeChannelWrite(
     return apiError("You do not have permission to modify this resource.", 403);
   }
   return null;
+}
+
+// url blocks capture a preview asynchronously (see triggerScreenshotCapture in
+// ./screenshot); these attach whatever's currently cached so API clients can
+// poll a block until `preview` shows up instead of the API blocking on a
+// multi-second Puppeteer run. null means "no preview yet" (still capturing,
+// or it failed), not an error.
+export type BlockWithPreview = Column & { preview: { image_url: string; title: string } | null };
+
+function toPreview(row: { image_url: string | null; title: string | null } | undefined) {
+  return row?.image_url ? { image_url: row.image_url, title: row.title ?? "" } : null;
+}
+
+export async function attachPreview(block: Column): Promise<BlockWithPreview> {
+  if (block.type !== "url" || !block.url) return { ...block, preview: null };
+  return { ...block, preview: toPreview((await getScreenshot(block.url)) ?? undefined) };
+}
+
+export async function attachPreviews(blocks: Column[]): Promise<BlockWithPreview[]> {
+  const urls = blocks.filter((b) => b.type === "url" && b.url).map((b) => b.url!);
+  const screenshots = await getScreenshotsForUrls(urls);
+  return blocks.map((b) => ({
+    ...b,
+    preview: b.type === "url" && b.url ? toPreview(screenshots.get(b.url)) : null,
+  }));
 }

@@ -3,12 +3,14 @@ import { NextResponse } from "next/server";
 import {
   authenticateApiToken,
   apiError,
+  attachPreview,
   authorizeChannelRead,
   authorizeChannelWrite,
   json,
 } from "@/lib/colosseum/api-auth";
 import { getChannel } from "@/lib/colosseum/channel";
 import { deleteColumn, getColumn, updateColumn } from "@/lib/colosseum/column";
+import { triggerScreenshotCapture } from "@/lib/colosseum/screenshot";
 
 export const runtime = "nodejs";
 
@@ -34,7 +36,7 @@ export async function GET(req: Request, { params }: Ctx) {
   const denied = authorizeChannelRead(channel, auth.userId);
   if (denied) return denied;
 
-  return json({ block });
+  return json({ block: await attachPreview(block) });
 }
 
 // Fields a block PATCH may set, by block type. title/description apply to any.
@@ -78,7 +80,12 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
   try {
     const updated = await updateColumn(blockId, updates);
-    return json({ block: updated });
+    // A new url means a new preview to capture; skips itself if this URL is
+    // already cached.
+    if (block.type === "url" && typeof updates.url === "string") {
+      triggerScreenshotCapture(updates.url, auth.userId);
+    }
+    return json({ block: await attachPreview(updated) });
   } catch (e) {
     console.error(e);
     return apiError("Failed to update block.", 500);

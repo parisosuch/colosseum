@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
-import { createMedia, deleteMediaByUrl, putBlob } from "@/lib/colosseum/blob";
-import { captureWebsiteScreenshot } from "@/lib/colosseum/screenshot";
-import { getScreenshot, upsertScreenshot } from "@/lib/colosseum/screenshot-data";
+import { deleteMediaByUrl } from "@/lib/colosseum/blob";
+import { captureAndCacheScreenshot } from "@/lib/colosseum/screenshot";
+import { getScreenshot } from "@/lib/colosseum/screenshot-data";
 
 export const runtime = "nodejs"; // puppeteer is going to require nodejs runtime for browsing
 
@@ -53,30 +53,15 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { image: squareBuffer, title, description } = await captureWebsiteScreenshot(url);
-
-    // Store the bytes in content-addressed local-disk blob storage behind a
-    // public media reference (screenshots are a shared per-URL cache). A
-    // recapture with identical pixels dedupes to the same blob but still gets
-    // its own reference.
-    let publicUrl: string;
-    try {
-      const sha256 = await putBlob(squareBuffer, "image/png", user.id);
-      publicUrl = await createMedia(sha256, user.id, "public");
-    } catch (uploadError) {
-      console.error(uploadError);
-      return NextResponse.json({ error: "Failed to upload image" }, { status: 500 });
-    }
-
-    // Upsert so a stale row is refreshed in place: image_url/title/description
-    // get rewritten and captured_at is bumped, which also serves as the client
-    // cache-busting version.
-    try {
-      await upsertScreenshot({ url, image_url: publicUrl, title, description });
-    } catch (insertError) {
-      console.error(insertError);
-      return NextResponse.json({ error: "Failed to save screenshot" }, { status: 500 });
-    }
+    // Stores the bytes in content-addressed local-disk blob storage behind a
+    // public media reference and upserts the shared per-URL cache row (so a
+    // stale row is refreshed in place — captured_at also serves as the
+    // client cache-busting version).
+    const {
+      image_url: publicUrl,
+      title,
+      description,
+    } = await captureAndCacheScreenshot(url, user.id);
 
     // The refresh replaced the row's media reference; drop the old one so its
     // blob can GC once nothing else points at it.

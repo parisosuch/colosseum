@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import {
   authenticateApiToken,
   apiError,
+  attachPreview,
+  attachPreviews,
   authorizeChannelRead,
   authorizeChannelWrite,
   json,
@@ -14,6 +16,7 @@ import {
   uploadTextColumn,
   uploadURLColumn,
 } from "@/lib/colosseum/column";
+import { triggerScreenshotCapture } from "@/lib/colosseum/screenshot";
 
 export const runtime = "nodejs";
 
@@ -45,7 +48,7 @@ export async function GET(req: Request, { params }: Ctx) {
 
   try {
     const blocks = await getChannelColumns(channelId, { limit });
-    return json({ blocks });
+    return json({ blocks: await attachPreviews(blocks) });
   } catch (e) {
     console.error(e);
     return apiError("Failed to list blocks.", 500);
@@ -56,7 +59,8 @@ export async function GET(req: Request, { params }: Ctx) {
 //   { "type": "text", "text": "..." }
 //   { "type": "url", "url": "https://..." }
 //   { "type": "image", "image": "https://...(public url)" }
-// URL blocks are not screenshotted here — the web capture flow stays UI-only.
+// A url block's preview captures in the background (skipped if this URL is
+// already cached) — poll GET .../blocks/:id and watch for `preview` to land.
 export async function POST(req: Request, { params }: Ctx) {
   const auth = await authenticateApiToken(req);
   if (auth instanceof NextResponse) return auth;
@@ -90,7 +94,9 @@ export async function POST(req: Request, { params }: Ctx) {
         return apiError("`url` is required for a url block.", 400);
       }
       // uploadURLColumn stores its `text` arg as the block's url.
-      block = await uploadURLColumn({ ...base, text: body.url.trim() });
+      const url = body.url.trim();
+      block = await uploadURLColumn({ ...base, text: url });
+      triggerScreenshotCapture(url, auth.userId);
     } else if (type === "image") {
       if (typeof body.image !== "string" || !body.image.trim()) {
         return apiError("`image` (a public URL) is required for an image block.", 400);
@@ -99,7 +105,7 @@ export async function POST(req: Request, { params }: Ctx) {
     } else {
       return apiError("`type` must be one of: text, url, image.", 400);
     }
-    return json({ block }, 201);
+    return json({ block: await attachPreview(block) }, 201);
   } catch (e) {
     console.error(e);
     return apiError("Failed to create block.", 500);

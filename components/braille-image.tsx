@@ -62,7 +62,13 @@ function cellBits(cell: Cell, threshold: number) {
 
 export default function BrailleImage() {
   const { resolvedTheme } = useTheme();
-  const palette = resolvedTheme === "dark" ? COLORS.dark : COLORS.light;
+  // resolvedTheme is undefined until mounted; gate on it so SSR and the first
+  // client render agree (light palette), then swap to the real theme on mount.
+  // Without this the container color hydration-mismatches and React leaves the
+  // stale server color in place — dark-mode dots never turn black.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const palette = mounted && resolvedTheme === "dark" ? COLORS.dark : COLORS.light;
 
   const [img, setImg] = useState<HTMLImageElement | null>(null);
   const [metrics, setMetrics] = useState<{ charW: number; lineH: number } | null>(null);

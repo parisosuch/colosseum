@@ -111,8 +111,6 @@ export default function ChannelBoard({
   // to an empty preview) until the capture lands.
   const [capturing, setCapturing] = useState<Set<string>>(new Set());
 
-  const isFiltered = debouncedSearch.trim() !== "" || typeFilter !== "all";
-
   const metaData = useMemo(() => {
     let lastModified = "-";
     if (newestAt) {

@@ -2,7 +2,6 @@
 .next
 node_modules
 data
-supabase
 .env*
 !.env.example
 *.md

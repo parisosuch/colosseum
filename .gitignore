@@ -45,5 +45,3 @@ next-env.d.ts
 /data
 
 # generated seed screenshots (run `make db-seed` to (re)create)
-supabase/seed-screenshots/*
-!supabase/seed-screenshots/.gitkeep

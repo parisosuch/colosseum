@@ -9,7 +9,7 @@ columns. Next.js (App Router) + Postgres via Drizzle + Better Auth.
 - **Postgres** via **Drizzle** (`lib/db/`); migrations in `drizzle/`;
   authorization enforced in app code (the connection bypasses RLS)
 - **Better Auth** in-process (`lib/auth.ts`, client `lib/auth-client.ts`)
-- The Supabase CLI only runs the local Postgres in Docker
+- Local dev Postgres is the compose `db` service (`make start-db`)
 - **Tailwind** + Radix UI primitives
 - **Bun** as package manager and script runner
 - **oxlint** / **oxfmt** for lint + format
@@ -20,7 +20,7 @@ Use `bun`, never `npm`. A `Makefile` wraps the common ones:
 
 - `make dev` — start the dev server (`bun run dev`)
 - `make check` — format + lint + typecheck (run before committing)
-- `make start-supabase` / `make stop-supabase` — local Postgres stack
+- `make start-db` / `make stop-db` — local Postgres (compose `db` service)
 - `make db-reset` — recreate DB and apply all Drizzle migrations
 - `make help` — list everything
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { PlusIcon, CheckIcon, CopyIcon, Trash2Icon } from "lucide-react";
 
 import { createInviteCodeAction, revokeInviteCodeAction } from "@/lib/colosseum/actions";
@@ -83,6 +84,19 @@ export default function InviteManager({
                   </span>
                   {invite.note ? (
                     <span className="text-xs text-muted-foreground">{invite.note}</span>
+                  ) : null}
+                  {invite.redeemers.length > 0 ? (
+                    <span className="text-xs text-muted-foreground">
+                      Used by{" "}
+                      {invite.redeemers.map((handle, i) => (
+                        <span key={handle}>
+                          {i > 0 ? ", " : ""}
+                          <Link href={`/${handle}`} className="underline hover:text-foreground">
+                            @{handle}
+                          </Link>
+                        </span>
+                      ))}
+                    </span>
                   ) : null}
                 </div>
                 <div className="flex items-center gap-3">

@@ -1,7 +1,7 @@
 import { and, desc, eq, lt, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { inviteCode, inviteRedemption, user } from "@/lib/db/schema";
+import { inviteCode, inviteRedemption, user, userProfile } from "@/lib/db/schema";
 
 export type InviteCode = {
   code: string;
@@ -10,6 +10,10 @@ export type InviteCode = {
   max_uses: number;
   uses: number;
   note: string | null;
+  // Handles of the users who redeemed this code, so the invites page can link
+  // to the accounts a code created. May be shorter than `uses` when a redeemer
+  // hasn't finished onboarding (no profile/handle yet).
+  redeemers: string[];
 };
 
 // Human-friendly alphabet: no 0/O/1/I to avoid transcription mistakes when a
@@ -35,6 +39,7 @@ function toInviteCode(row: InviteCodeRow): InviteCode {
     max_uses: row.max_uses,
     uses: row.uses,
     note: row.note,
+    redeemers: [],
   };
 }
 
@@ -66,12 +71,29 @@ export async function recordInviteRedemption(code: string, userId: string): Prom
 // Codes the member has minted, newest first. Scoped to the caller by the
 // explicit created_by filter (this connection bypasses RLS).
 export async function getMyInviteCodes(userId: string): Promise<InviteCode[]> {
+  // Left-join redemptions (and their redeemer's profile) so each code carries
+  // the handles it created. An unredeemed code yields a single row with a null
+  // handle; a code used N times yields N rows.
   const rows = await db
-    .select()
+    .select({ invite: inviteCode, handle: userProfile.handle })
     .from(inviteCode)
+    .leftJoin(inviteRedemption, eq(inviteRedemption.code, inviteCode.code))
+    .leftJoin(userProfile, eq(userProfile.user_id, inviteRedemption.user_id))
     .where(eq(inviteCode.created_by, userId))
     .orderBy(desc(inviteCode.created_at));
-  return rows.map(toInviteCode);
+
+  const byCode = new Map<string, InviteCode>();
+  for (const { invite, handle } of rows) {
+    let entry = byCode.get(invite.code);
+    if (!entry) {
+      entry = toInviteCode(invite);
+      byCode.set(invite.code, entry);
+    }
+    if (handle) {
+      entry.redeemers.push(handle);
+    }
+  }
+  return [...byCode.values()];
 }
 
 export async function createInviteCode(params: {

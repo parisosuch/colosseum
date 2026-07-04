@@ -7,71 +7,77 @@ import { getPublicUserProfile } from "@/lib/colosseum/user";
 import { getSessionUser } from "@/lib/auth";
 import Link from "next/link";
 
+async function ChannelColumnsView({ channel }: { channel: Channel }) {
+  // Only the first 5 previews are shown, so don't fetch the whole channel.
+  const columns = await getChannelColumns(channel.id, { limit: 5 });
+
+  const columnCount = await getChannelColumnCount(channel.id);
+
+  return (
+    <div className="flex flex-col md:flex-row gap-8 p-2">
+      <div className="flex flex-col justify-center items-center space-y-1 w-full md:w-[250px] md:h-[250px] shrink-0">
+        <h2 className="text-heading">{channel.title}</h2>
+        {channel.description ? <p className="text-center">{channel.description}</p> : null}
+        <p className="text-caption">{columnCount} column(s)</p>
+      </div>
+      <div className="hidden md:flex gap-8 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {columns.map((column, index) => (
+          <div
+            key={column.id}
+            className={
+              index >= 5
+                ? "hidden"
+                : "border-2 rounded-md w-[200px] h-[200px] sm:w-[250px] sm:h-[250px] shrink-0"
+            }
+          >
+            <ColumnPreview column={column} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ChannelsView({
+  channels,
+  isOwner,
+  handle,
+}: {
+  channels: Channel[];
+  isOwner: boolean;
+  handle: string;
+}) {
+  if (channels.length === 0) {
+    return (
+      <div className="w-full flex items-center justify-center">
+        <div className="w-1/2 flex space-x-4 items-center">
+          <h1 className="text-display">Looks like {isOwner ? "you" : "they"} have no channels.</h1>
+          {isOwner ? <CreateChannelButton /> : null}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {isOwner ? <CreateChannelButton /> : null}
+      <div className="grid grid-cols-1 gap-4 md:flex md:flex-col md:space-y-4 md:gap-0">
+        {channels.map((channel) => (
+          <Link key={channel.id} href={`/${handle}/${channel.id}`}>
+            <div
+              className={`flex aspect-square items-center justify-center p-4 md:block md:aspect-auto md:p-8 border-2 rounded-lg transition-colors ${channel.private ? "bg-red-500/5 border-red-500/50 hover:border-red-500" : "border-gray-500/50 hover:border-gray-500"}`}
+            >
+              <ChannelColumnsView channel={channel} />
+            </div>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default async function UserPage({ params }: { params: Promise<{ handle: string }> }) {
   const { handle } = await params;
-
-  const ChannelColumnsView = async ({ channel }: { channel: Channel }) => {
-    // Only the first 5 previews are shown, so don't fetch the whole channel.
-    const columns = await getChannelColumns(channel.id, { limit: 5 });
-
-    const columnCount = await getChannelColumnCount(channel.id);
-
-    return (
-      <div className="flex flex-col md:flex-row gap-8 p-2">
-        <div className="flex flex-col justify-center items-center space-y-1 w-full md:w-[250px] md:h-[250px] shrink-0">
-          <h2 className="text-heading">{channel.title}</h2>
-          {channel.description ? <p className="text-center">{channel.description}</p> : null}
-          <p className="text-caption">{columnCount} column(s)</p>
-        </div>
-        <div className="hidden md:flex gap-8 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {columns.map((column, index) => (
-            <div
-              key={column.id}
-              className={
-                index >= 5
-                  ? "hidden"
-                  : "border-2 rounded-md w-[200px] h-[200px] sm:w-[250px] sm:h-[250px] shrink-0"
-              }
-            >
-              <ColumnPreview column={column} />
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  };
-
-  const ChannelsView = ({ channels, isOwner }: { channels: Channel[]; isOwner: boolean }) => {
-    if (channels.length === 0) {
-      return (
-        <div className="w-full flex items-center justify-center">
-          <div className="w-1/2 flex space-x-4 items-center">
-            <h1 className="text-display">
-              Looks like {isOwner ? "you" : "they"} have no channels.
-            </h1>
-            {isOwner ? <CreateChannelButton /> : null}
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div className="space-y-4">
-        {isOwner ? <CreateChannelButton /> : null}
-        <div className="grid grid-cols-1 gap-4 md:flex md:flex-col md:space-y-4 md:gap-0">
-          {channels.map((channel) => (
-            <Link key={channel.id} href={`/${handle}/${channel.id}`}>
-              <div
-                className={`flex aspect-square items-center justify-center p-4 md:block md:aspect-auto md:p-8 border-2 rounded-lg transition-colors ${channel.private ? "bg-red-500/5 border-red-500/50 hover:border-red-500" : "border-gray-500/50 hover:border-gray-500"}`}
-              >
-                <ChannelColumnsView channel={channel} />
-              </div>
-            </Link>
-          ))}
-        </div>
-      </div>
-    );
-  };
 
   // determine if user is authenticated
   const user = await getSessionUser();
@@ -121,7 +127,7 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
         </div>
       </div>
 
-      <ChannelsView channels={channels} isOwner={match} />
+      <ChannelsView channels={channels} isOwner={match} handle={handle} />
     </div>
   );
 }

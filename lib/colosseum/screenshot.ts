@@ -1,4 +1,4 @@
-import puppeteer from "puppeteer";
+import puppeteer, { TimeoutError } from "puppeteer";
 import sharp from "sharp";
 
 import { createMedia, putBlob } from "./blob";
@@ -33,7 +33,15 @@ export async function captureWebsiteScreenshot(
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: SCREENSHOT_SIZE, height: SCREENSHOT_SIZE });
-    await page.goto(url, { waitUntil: "networkidle2" });
+    try {
+      await page.goto(url, { waitUntil: "networkidle2" });
+    } catch (e) {
+      // Many real sites (analytics beacons, chat widgets, websockets) never
+      // drop to networkidle2's <=2-connections threshold — the page has
+      // still loaded by this point, so capture it instead of failing the
+      // whole thing over background chatter that was never going to stop.
+      if (!(e instanceof TimeoutError)) throw e;
+    }
 
     // Pull the page's own metadata so a captured URL block can pre-fill its
     // title and description. Prefer Open Graph, fall back to <title> / the

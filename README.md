@@ -83,13 +83,17 @@ cp .env.example .env.local      # safe local defaults
 
 bun run db:start                # boots the local Postgres (Docker)
 bun run db:migrate:drizzle      # creates the schema
+bun run db:seed                 # loads sample data (optional)
 bun run dev                     # http://localhost:3000
 ```
 
 Postgres is reachable at `postgresql://postgres:postgres@127.0.0.1:54322/postgres`.
 
-There is no seeded login — sign up in the app. The first account needs no
-invite code; every account after that does (mint codes on `/invites`).
+`bun run db:seed` populates deterministic sample data (users, channels, blocks,
+invites) so you have something to browse — e.g. the `/alice` and `/bob`
+profiles. It does not create login credentials: to sign in, sign up in the app.
+The first account needs no invite code; every account after that does (mint
+codes on `/invites`).
 
 ### Everyday commands
 
@@ -99,11 +103,27 @@ bun run db:stop                 # stop it (data persists)
 bun run db:reset                # wipe the DB (run db:migrate:drizzle after)
 bun run db:generate             # generate a migration from lib/db/schema.ts
 bun run db:migrate:drizzle      # apply pending Drizzle migrations
+bun run db:seed                 # load deterministic sample data / test fixtures
+bun run test                    # run the test suite (needs a running, seeded DB)
 ```
 
-`make db-reset` chains the wipe + migrate for you. The `db:*` scripts drive
-the compose `db` service (with `.env.local` as the compose env file, so the
-required variables are always present).
+`make db-reset` chains the wipe + migrate + seed for you. The `db:*` scripts
+drive the compose `db` service (with `.env.local` as the compose env file, so
+the required variables are always present).
+
+### Testing
+
+Tests use Bun's built-in runner (`bun test`) against a real Postgres, so start
+and seed the DB first:
+
+```bash
+make db-reset                   # wipe, migrate, seed
+make test                       # or: bun run test
+```
+
+The data-access layer imports `server-only`, so `db:seed` and `test` run with
+`--conditions=react-server`. CI runs the same suite against a throwaway
+Postgres service on every PR.
 
 ### Changing the schema
 

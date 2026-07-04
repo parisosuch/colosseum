@@ -29,11 +29,13 @@ const DOT_BITS = [
   [0x40, 0x80],
 ];
 
-// Resting -> hovered dot color, per theme. Light theme matches the original;
-// dark theme flips it so dots stay visible on the near-black background.
+// Resting -> hovered dot color, per theme. The mark sits on `bg-primary`,
+// which inverts with the theme: a near-black panel in light mode, a near-white
+// one in dark. So each palette's hover lands on its own panel color, letting a
+// hovered dot fade fully into the background (the cursor-trail erase effect).
 const COLORS = {
-  light: { base: [208, 208, 208], hover: [18, 18, 18] },
-  dark: { base: [64, 64, 64], hover: [235, 235, 235] },
+  light: { base: [208, 208, 208], hover: [18, 18, 18] }, // dots over the dark light-mode panel
+  dark: { base: [64, 64, 64], hover: [250, 250, 250] }, // dots over the near-white dark-mode panel
 } as const;
 
 // The image the mask renders (served from /public). Swap this one path for a

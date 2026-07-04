@@ -17,6 +17,10 @@ services:
     environment:
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/postgres
       AUTH_SECRET: ${AUTH_SECRET:?generate with `openssl rand -base64 32`}
+      # Better Auth checks the request's Origin against this; behind a real
+      # domain it must be that public URL or sign-in/sign-up gets a 403
+      # "Invalid origin".
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
       STORAGE_DIR: /data/storage
     volumes:
       - storage:/data/storage

@@ -27,6 +27,10 @@ invite code.
 Optionally set `POSTGRES_PASSWORD` in the same `.env` (defaults to `postgres`;
 the database is only reachable from the compose network either way).
 
+Deploying behind a real domain (Coolify, a reverse proxy, etc.)? Set
+`BETTER_AUTH_URL` in the same `.env` to that public URL — otherwise
+sign-in/sign-up requests fail with a 403 `Invalid origin`.
+
 ### Upgrading
 
 ```bash

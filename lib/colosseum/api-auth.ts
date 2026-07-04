@@ -12,6 +12,7 @@ import { Channel } from "./channel";
 import { Column } from "./column";
 import { ApiToken } from "./api-token";
 import { getScreenshot, getScreenshotsForUrls } from "./screenshot-data";
+import { logError, logInfo } from "@/lib/log";
 
 // Tokens look like `clsm_<43 base64url chars>`. The prefix namespaces the secret
 // (so it's greppable in logs/secret scanners) and the random part has 256 bits
@@ -88,11 +89,14 @@ export async function authenticateApiToken(req: Request): Promise<ApiAuth | Next
   try {
     const auth = await resolveApiToken(token);
     if (!auth) {
+      // Never log the token itself, even truncated — just that one was
+      // rejected, useful for spotting a client using a revoked/typo'd token.
+      logInfo("api-auth", "rejected an invalid API token");
       return apiError("Invalid API token.", 401);
     }
     return auth;
   } catch (e) {
-    console.error(e);
+    logError("api-auth", "token resolution failed (DB error)", e);
     return apiError("Authentication failed.", 500);
   }
 }
@@ -154,6 +158,10 @@ export function authorizeChannelWrite(
     return apiError("Not found.", 404);
   }
   if (channel.owner_id !== userId) {
+    logInfo(
+      "api-auth",
+      `user ${userId} denied write on channel ${channel.id} (owned by ${channel.owner_id})`,
+    );
     return apiError("You do not have permission to modify this resource.", 403);
   }
   return null;

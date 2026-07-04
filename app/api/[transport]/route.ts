@@ -32,6 +32,7 @@ import {
   uploadTextColumn,
   uploadURLColumn,
 } from "@/lib/colosseum/column";
+import { logError } from "@/lib/log";
 
 export const runtime = "nodejs";
 
@@ -329,7 +330,7 @@ const verifyToken = async (_req: Request, bearerToken?: string): Promise<AuthInf
     if (!auth) return undefined;
     return { token: bearerToken, clientId: auth.userId, scopes: [], extra: { auth } };
   } catch (e) {
-    console.error(e);
+    logError("mcp.auth", "token resolution failed (DB error)", e);
     return undefined;
   }
 };

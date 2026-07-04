@@ -3,6 +3,7 @@ import sharp from "sharp";
 
 import { createMedia, putBlob } from "./blob";
 import { getScreenshot, upsertScreenshot, ScreenshotRow } from "./screenshot-data";
+import { logError, logInfo } from "@/lib/log";
 
 export interface Screenshot {
   id: number;
@@ -136,18 +137,25 @@ export function triggerScreenshotCapture(url: string, ownerId: string): void {
     try {
       existing = await getScreenshot(url);
     } catch (e) {
-      console.error(`screenshot lookup failed for ${url}:`, e);
+      logError("screenshot.capture", `lookup failed for ${url}`, e);
       return;
     }
     if (existing?.image_url) return;
+
+    const startedAt = Date.now();
+    logInfo("screenshot.capture", `starting capture: ${url}`, {
+      activeCaptures,
+      queued: captureQueue.length,
+    });
     try {
       await withCaptureSlot(() => captureAndCacheScreenshot(url, ownerId));
+      logInfo("screenshot.capture", `captured ${url} in ${Date.now() - startedAt}ms`);
     } catch (e) {
-      console.error(`background screenshot capture failed for ${url}:`, e);
+      logError("screenshot.capture", `failed after ${Date.now() - startedAt}ms: ${url}`, e);
       try {
         await upsertScreenshot({ url, image_url: null, title: "", description: "" });
       } catch (upsertError) {
-        console.error(`failed to record capture failure for ${url}:`, upsertError);
+        logError("screenshot.capture", `failed to record capture failure for ${url}`, upsertError);
       }
     }
   })().finally(() => inFlightCaptures.delete(url));

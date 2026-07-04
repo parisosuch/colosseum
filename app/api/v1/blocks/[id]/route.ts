@@ -11,6 +11,7 @@ import {
 import { getChannel } from "@/lib/colosseum/channel";
 import { deleteColumn, getColumn, updateColumn } from "@/lib/colosseum/column";
 import { triggerScreenshotCapture } from "@/lib/colosseum/screenshot";
+import { logError, logInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
 
@@ -85,9 +86,10 @@ export async function PATCH(req: Request, { params }: Ctx) {
     if (block.type === "url" && typeof updates.url === "string") {
       triggerScreenshotCapture(updates.url, auth.userId);
     }
+    logInfo("blocks.id.PATCH", `updated block ${blockId} (${Object.keys(updates).join(", ")})`);
     return json({ block: await attachPreview(updated) });
   } catch (e) {
-    console.error(e);
+    logError("blocks.id.PATCH", `failed to update block ${blockId}`, e);
     return apiError("Failed to update block.", 500);
   }
 }
@@ -109,9 +111,10 @@ export async function DELETE(req: Request, { params }: Ctx) {
 
   try {
     await deleteColumn(blockId);
+    logInfo("blocks.id.DELETE", `deleted block ${blockId}`);
     return json({ success: true });
   } catch (e) {
-    console.error(e);
+    logError("blocks.id.DELETE", `failed to delete block ${blockId}`, e);
     return apiError("Failed to delete block.", 500);
   }
 }

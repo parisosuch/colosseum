@@ -303,6 +303,18 @@ export default function ChannelBoard({
 
   const beginCapture = useCallback((url: string) => {
     setCapturing((prev) => new Set(prev).add(url));
+    // A previous attempt for this URL may have already settled to "no
+    // preview" (this block's own prior instance, or a sibling block sharing
+    // the URL) — clear it and the exhausted retry count so this fresh
+    // attempt starts from a real loading state instead of instantly
+    // re-showing the stale failure.
+    screenshotRetries.current.delete(url);
+    setScreenshots((prev) => {
+      if (!prev.has(url)) return prev;
+      const next = new Map(prev);
+      next.delete(url);
+      return next;
+    });
   }, []);
 
   // The screenshot landed: stop treating the URL as capturing and drop it from

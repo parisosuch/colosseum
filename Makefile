@@ -1,4 +1,4 @@
-.PHONY: help install dev build start format lint typecheck check start-db stop-db restart-db status migrate-create migrate-up db-reset setup clean
+.PHONY: help install dev build start format lint typecheck check test start-db stop-db restart-db status migrate-create migrate-up db-reset seed setup clean
 
 help:
 	@echo "Colosseum - Development Commands"
@@ -19,11 +19,13 @@ help:
 	@echo "  make lint                Lint with oxlint"
 	@echo "  make typecheck           Type-check with tsc"
 	@echo "  make check               format + lint + typecheck"
+	@echo "  make test                Run the bun test suite (needs a running DB)"
 	@echo ""
 	@echo "Database Commands:"
 	@echo "  make migrate-create      Generate a Drizzle migration from lib/db/schema.ts"
 	@echo "  make migrate-up          Apply pending Drizzle migrations"
-	@echo "  make db-reset            Recreate DB and apply all Drizzle migrations"
+	@echo "  make db-reset            Recreate DB, apply migrations, and seed fixtures"
+	@echo "  make seed                Load deterministic dev/test fixtures"
 	@echo ""
 	@echo "Utility Commands:"
 	@echo "  make install             Install dependencies only"
@@ -68,6 +70,11 @@ check: format lint typecheck
 	@echo ""
 	@echo "✓ All checks passed"
 
+test:
+	@echo "Running tests..."
+	bun run test
+	@echo "✓ Tests passed"
+
 start-db:
 	@echo "Starting local Postgres..."
 	bun run db:start
@@ -97,7 +104,13 @@ db-reset:
 	@echo "Resetting database (Drizzle owns the schema)..."
 	bun run db:reset
 	bun run db:migrate:drizzle
-	@echo "✓ Database reset"
+	bun run db:seed
+	@echo "✓ Database reset and seeded"
+
+seed:
+	@echo "Seeding fixtures..."
+	bun run db:seed
+	@echo "✓ Fixtures seeded"
 
 setup: install start-db
 	@echo ""

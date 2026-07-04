@@ -20,8 +20,10 @@ Use `bun`, never `npm`. A `Makefile` wraps the common ones:
 
 - `make dev` — start the dev server (`bun run dev`)
 - `make check` — format + lint + typecheck (run before committing)
+- `make test` — run the `bun test` suite (needs a running, seeded DB)
 - `make start-db` / `make stop-db` — local Postgres (compose `db` service)
-- `make db-reset` — recreate DB and apply all Drizzle migrations
+- `make db-reset` — recreate DB, apply migrations, and seed fixtures
+- `make seed` — load deterministic dev/test fixtures (`bun run db:seed`)
 - `make help` — list everything
 
 ## Git
@@ -35,8 +37,10 @@ Use `bun`, never `npm`. A `Makefile` wraps the common ones:
   `bun run lint`, `bun run format:check`, and `bun run typecheck` and fails on
   any of them — `format:check` does not auto-fix, so run `bun run format`
   (or `make check`) first or CI will reject the unformatted code.
-- **1.0.0 is released.** Every change after it bumps `version` in
-  `package.json` (semver) and tags the release commit `vX.Y.Z`.
+- **1.0.0 is released.** Do **not** bump `version` in `package.json` in a
+  feature/fix PR — leave it untouched. The version is bumped (semver) and the
+  release commit tagged `vX.Y.Z` only at release time, when a batch of merged
+  changes ships.
 
 ## Conventions
 
@@ -48,3 +52,8 @@ Use `bun`, never `npm`. A `Makefile` wraps the common ones:
   `column.ts`). Lookups that may legitimately miss return `null`; callers
   treat that as not-found, not an error.
 - Pages render not-found states inline rather than throwing.
+- Tests are colocated `*.test.ts` files run with `bun test`. The data layer's
+  tests hit a real Postgres and set up via `seed()` from `scripts/seed.ts`
+  (`beforeAll`), so keep the seed and its exported fixture constants the single
+  source of test data. Because the data layer imports `server-only`, `db:seed`
+  and `test` run with `--conditions=react-server`.

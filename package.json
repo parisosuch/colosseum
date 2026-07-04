@@ -15,7 +15,9 @@
     "db:status": "docker compose --env-file .env.local ps db",
     "db:reset": "docker compose --env-file .env.local down -v && docker compose --env-file .env.local up -d --wait db",
     "db:generate": "drizzle-kit generate",
-    "db:migrate:drizzle": "drizzle-kit migrate"
+    "db:migrate:drizzle": "drizzle-kit migrate",
+    "db:seed": "bun --conditions=react-server scripts/seed.ts",
+    "test": "bun test --conditions=react-server"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",

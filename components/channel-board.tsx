@@ -245,36 +245,49 @@ export default function ChannelBoard({
         const fetched = new Map(await getScreenshotsForUrlsAction(missing));
         if (cancelled) return;
 
+        // Collect into a plain Map first and only call setScreenshots if
+        // something actually resolved. `screenshots` is a dependency of this
+        // same effect — writing a new Map reference on every round (even one
+        // where every URL is still pending) would retrigger this effect
+        // immediately, cascading into itself and orphaning every scheduled
+        // poll timer below (each instance gets cancelled by the next before
+        // its own timer fires). Skipping the write when nothing changed is
+        // what keeps the 5s cadence real instead of racing itself.
         let stillPending = false;
-        setScreenshots((prev) => {
-          const next = new Map(prev);
-          for (const url of missing) {
-            const row = fetched.get(url);
-            if (row?.image_url) {
-              next.set(url, row);
-              screenshotRetries.current.delete(url);
-              continue;
-            }
-            if (fetched.has(url)) {
-              // A row exists but has no image — capture ran and failed
-              // permanently. Settle now; no point polling further.
-              next.set(url, row!);
-              screenshotRetries.current.delete(url);
-              continue;
-            }
-            // No row at all yet — it may still be capturing (this block could've
-            // been created via the API, or by another session). Keep polling a
-            // bounded number of times before settling on "no preview" for good.
-            const attempts = (screenshotRetries.current.get(url) ?? 0) + 1;
-            screenshotRetries.current.set(url, attempts);
-            if (attempts >= SCREENSHOT_MAX_RETRIES) {
-              next.set(url, { url, image_url: null, title: null, captured_at: null });
-            } else {
-              stillPending = true;
-            }
+        const updates = new Map<string, ColumnScreenshot>();
+        for (const url of missing) {
+          const row = fetched.get(url);
+          if (row?.image_url) {
+            updates.set(url, row);
+            screenshotRetries.current.delete(url);
+            continue;
           }
-          return next;
-        });
+          if (fetched.has(url)) {
+            // A row exists but has no image — capture ran and failed
+            // permanently. Settle now; no point polling further.
+            updates.set(url, row!);
+            screenshotRetries.current.delete(url);
+            continue;
+          }
+          // No row at all yet — it may still be capturing (this block could've
+          // been created via the API, or by another session). Keep polling a
+          // bounded number of times before settling on "no preview" for good.
+          const attempts = (screenshotRetries.current.get(url) ?? 0) + 1;
+          screenshotRetries.current.set(url, attempts);
+          if (attempts >= SCREENSHOT_MAX_RETRIES) {
+            updates.set(url, { url, image_url: null, title: null, captured_at: null });
+          } else {
+            stillPending = true;
+          }
+        }
+
+        if (updates.size > 0) {
+          setScreenshots((prev) => {
+            const next = new Map(prev);
+            for (const [url, row] of updates) next.set(url, row);
+            return next;
+          });
+        }
 
         if (stillPending) {
           setTimeout(() => {

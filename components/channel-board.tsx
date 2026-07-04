@@ -255,13 +255,20 @@ export default function ChannelBoard({
               screenshotRetries.current.delete(url);
               continue;
             }
-            // No preview yet — it may still be capturing (this block could've
+            if (fetched.has(url)) {
+              // A row exists but has no image — capture ran and failed
+              // permanently. Settle now; no point polling further.
+              next.set(url, row!);
+              screenshotRetries.current.delete(url);
+              continue;
+            }
+            // No row at all yet — it may still be capturing (this block could've
             // been created via the API, or by another session). Keep polling a
             // bounded number of times before settling on "no preview" for good.
             const attempts = (screenshotRetries.current.get(url) ?? 0) + 1;
             screenshotRetries.current.set(url, attempts);
             if (attempts >= SCREENSHOT_MAX_RETRIES) {
-              next.set(url, row ?? { url, image_url: null, title: null, captured_at: null });
+              next.set(url, { url, image_url: null, title: null, captured_at: null });
             } else {
               stillPending = true;
             }

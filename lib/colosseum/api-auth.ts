@@ -161,13 +161,19 @@ export function authorizeChannelWrite(
 
 // url blocks capture a preview asynchronously (see triggerScreenshotCapture in
 // ./screenshot); these attach whatever's currently cached so API clients can
-// poll a block until `preview` shows up instead of the API blocking on a
-// multi-second Puppeteer run. null means "no preview yet" (still capturing,
-// or it failed), not an error.
-export type BlockWithPreview = Column & { preview: { image_url: string; title: string } | null };
+// poll a block until `preview` resolves instead of the API blocking on a
+// multi-second Puppeteer run.
+// - null            -> no row yet, still capturing (or never triggered) — keep polling.
+// - { failed: true } -> capture ran and failed permanently — stop polling.
+// - { image_url, title } -> captured successfully.
+export type BlockWithPreview = Column & {
+  preview: { image_url: string; title: string } | { failed: true } | null;
+};
 
 function toPreview(row: { image_url: string | null; title: string | null } | undefined) {
-  return row?.image_url ? { image_url: row.image_url, title: row.title ?? "" } : null;
+  if (!row) return null;
+  if (row.image_url) return { image_url: row.image_url, title: row.title ?? "" };
+  return { failed: true } as const;
 }
 
 export async function attachPreview(block: Column): Promise<BlockWithPreview> {

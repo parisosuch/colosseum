@@ -12,19 +12,19 @@ import {
 import { isURL } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@/components/ui/drawer";
 
 export type PickableChannel = { id: number; title: string; private: boolean };
 
-// The bottom-nav "+": paste/type block content, Continue, then pick which
-// channel to drop it in. A URL becomes a link block (and kicks off a
+// The bottom-nav "+": a drawer to paste/type block content, Continue, then pick
+// which channel to drop it in. A URL becomes a link block (and kicks off a
 // screenshot), an image becomes an image block, anything else a text block.
-export function AddBlockDialog({ channels }: { channels: PickableChannel[] }) {
+export function AddBlockDrawer({ channels }: { channels: PickableChannel[] }) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"content" | "channel">("content");
   const [text, setText] = useState("");
@@ -85,20 +85,20 @@ export function AddBlockDialog({ channels }: { channels: PickableChannel[] }) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogTrigger
+    <Drawer open={open} onOpenChange={onOpenChange}>
+      <DrawerTrigger
         aria-label="Add block"
         className="flex size-10 items-center justify-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <PlusIcon />
-      </DialogTrigger>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>{step === "content" ? "Add a block" : "Add to which channel?"}</DialogTitle>
-        </DialogHeader>
+      </DrawerTrigger>
+      <DrawerContent>
+        <DrawerHeader>
+          <DrawerTitle>{step === "content" ? "Add a block" : "Add to which channel?"}</DrawerTitle>
+        </DrawerHeader>
 
         {step === "content" ? (
-          <div className="space-y-3">
+          <div className="space-y-3 px-4 pb-6">
             <textarea
               value={text}
               onChange={(e) => {
@@ -142,13 +142,13 @@ export function AddBlockDialog({ channels }: { channels: PickableChannel[] }) {
             </Button>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-3 px-4 pb-6">
             {channels.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 You have no channels yet — create one first.
               </p>
             ) : (
-              <ul className="flex max-h-72 flex-col divide-y overflow-y-auto rounded-md border">
+              <ul className="flex max-h-[50vh] flex-col divide-y overflow-y-auto rounded-md border">
                 {channels.map((channel) => (
                   <li key={channel.id}>
                     <button
@@ -177,7 +177,7 @@ export function AddBlockDialog({ channels }: { channels: PickableChannel[] }) {
             </Button>
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+      </DrawerContent>
+    </Drawer>
   );
 }

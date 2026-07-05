@@ -4,23 +4,18 @@ import { useState } from "react";
 import Link from "next/link";
 import { HomeIcon, SearchIcon } from "lucide-react";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import SearchBar from "@/components/search-bar";
-import { UserMenuItems } from "@/components/user-menu";
-import { AddBlockDialog, type PickableChannel } from "@/components/add-block-dialog";
+import { AddBlockDrawer, type PickableChannel } from "@/components/add-block-drawer";
+import { ProfileDrawer } from "@/components/profile-drawer";
 
 const ITEM =
   "flex size-10 items-center justify-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 // The Are.na-style bottom tab bar for mobile: Home, Search, the "+" add-block
 // flow, and the profile menu (which replaces the top avatar menu on mobile).
-// Rendered as the last flex child of the app shell and hidden at `sm` and up.
+// Every action opens a bottom drawer. Rendered as the last flex child of the
+// app shell and hidden at `sm` and up.
 export function MobileBottomBar({
   userId,
   handle,
@@ -50,22 +45,9 @@ export function MobileBottomBar({
           <SearchIcon />
         </button>
 
-        <AddBlockDialog channels={channels} />
+        <AddBlockDrawer channels={channels} />
 
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            aria-label="Profile menu"
-            className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <Avatar className="size-9">
-              <AvatarImage src={avatarUrl} />
-              <AvatarFallback>{handle.charAt(0).toUpperCase()}</AvatarFallback>
-            </Avatar>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent side="top" align="end">
-            <UserMenuItems />
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <ProfileDrawer handle={handle} avatarUrl={avatarUrl} />
       </div>
 
       <Drawer open={searchOpen} onOpenChange={setSearchOpen}>

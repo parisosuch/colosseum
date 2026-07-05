@@ -6,6 +6,10 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  // Keep the puppeteer-extra chain out of the webpack bundle. Next externalizes
+  // `puppeteer` by default but not these; bundling them fails on clone-deep's
+  // dynamic require(). They run server-side only, so leave them as node requires.
+  serverExternalPackages: ["puppeteer-extra", "puppeteer-extra-plugin-stealth"],
   experimental: {
     // Image uploads go through a server action (uploadImageColumnAction), which
     // defaults to a 1MB body cap. Keep this above the 10MB client-side image

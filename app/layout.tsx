@@ -8,6 +8,7 @@ import { HeroFrame } from "@/components/hero-frame";
 import { Toaster } from "@/components/ui/sonner";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
 import { NoZoomGuard } from "@/components/no-zoom-guard";
+import MobileBottomNav from "@/components/mobile-bottom-nav";
 
 const defaultUrl = process.env.VERCEL_URL
   ? `https://${process.env.VERCEL_URL}`
@@ -74,6 +75,9 @@ export default async function RootLayout({
               <NavBar />
             </NavBarGate>
             <HeroFrame>{children}</HeroFrame>
+            <NavBarGate>
+              <MobileBottomNav />
+            </NavBarGate>
           </div>
           <Toaster />
           <ServiceWorkerRegister />

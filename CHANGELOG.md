@@ -8,6 +8,45 @@ release.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-05
+
+### Added
+
+- A command palette (Cmd/Ctrl+K) for quick navigation, search, theme switching,
+  and logout.
+- Installable iOS PWA: a web manifest, home-screen icons, and an offline service
+  worker.
+- A mobile bottom navigation bar with a "+" flow to add a block, then pick its
+  channel.
+- A list-view toggle for the channels on a profile, alongside the existing grid.
+- Pasting images and capturing multiple files into blocks in one go.
+- An in-app changelog page rendered from this file.
+- Instant navigation: profile, channel, and block routes stream a loading shell
+  on click.
+- Accounts created from an invite link are attributed to the inviter.
+
+### Changed
+
+- Rebuilt the screenshot engine: faster and stealthier, with an og:image
+  fallback.
+- Channels are ordered by their most recently added block.
+- The channel grid is two columns on mobile.
+
+### Fixed
+
+- Mobile drawers size with dvh, so the keyboard no longer shifts the layout in
+  the installed PWA.
+- The browser favicon shows the logo again instead of a stale icon.
+- Removed a stray focus outline on the command palette input.
+- The block modal keeps a constant size and the mobile bottom bar stays fixed.
+- Long channel descriptions truncate on the profile card, and wrapped titles are
+  centered.
+- Dark-mode braille previews render correctly.
+- iOS no longer zooms when focusing the block input, and pinch/double-tap zoom is
+  disabled for an app-like feel.
+- Larger image uploads no longer hit the server action body limit.
+- puppeteer-extra is kept out of the webpack bundle, fixing a build failure.
+
 ## [1.0.3] - 2026-07-04
 
 ### Fixed

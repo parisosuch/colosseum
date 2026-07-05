@@ -43,3 +43,6 @@ next-env.d.ts
 
 # local blob storage (see STORAGE_DIR in .env.example)
 /data
+
+# retired Supabase local CLI scratch (the app migrated off Supabase)
+/supabase

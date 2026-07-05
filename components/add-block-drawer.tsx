@@ -148,7 +148,7 @@ export function AddBlockDrawer({ channels }: { channels: PickableChannel[] }) {
                 You have no channels yet — create one first.
               </p>
             ) : (
-              <ul className="flex max-h-[50vh] flex-col divide-y overflow-y-auto rounded-md border">
+              <ul className="flex max-h-[50dvh] flex-col divide-y overflow-y-auto rounded-md border">
                 {channels.map((channel) => (
                   <li key={channel.id}>
                     <button

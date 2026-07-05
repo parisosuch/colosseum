@@ -70,7 +70,9 @@ export default async function RootLayout({
           {/* App shell lives on a div, not <body>: Next doesn't reconcile
               <body> attributes across client navigations, so hanging the
               flex layout off <body> left pages uncentered until a reload. */}
-          <div className="h-screen flex flex-col">
+          {/* h-[100dvh], not h-screen (100vh): in an iOS standalone PWA with
+              viewportFit=cover, 100vh overshoots the visible area. */}
+          <div className="h-[100dvh] flex flex-col">
             <NavBarGate>
               <NavBar />
             </NavBarGate>

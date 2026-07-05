@@ -2,6 +2,7 @@ import { getUserProfile } from "@/lib/colosseum/user";
 import { getSessionUser } from "@/lib/auth";
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
+import CommandPalette from "./command-palette";
 import { Logo } from "./logo";
 import SearchBar from "./search-bar";
 import { ThemeSwitcher } from "./theme-switcher";
@@ -35,9 +36,12 @@ export default async function NavBar() {
         <Logo className="h-6 w-auto" />
       </Link>
       {userProfile ? (
-        <div className="hidden sm:block flex-1 max-w-xs">
-          <SearchBar userId={user.id} handle={userProfile.handle} />
-        </div>
+        <>
+          <div className="hidden sm:block flex-1 max-w-xs">
+            <SearchBar userId={user.id} handle={userProfile.handle} />
+          </div>
+          <CommandPalette handle={userProfile.handle} />
+        </>
       ) : null}
       <div className="flex flex-row space-x-2 items-center">
         {/* Theme lives inside the avatar menu; a user who hasn't onboarded yet

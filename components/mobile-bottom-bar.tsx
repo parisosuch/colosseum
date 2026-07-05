@@ -5,7 +5,7 @@ import Link from "next/link";
 import { HomeIcon, SearchIcon } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -68,14 +68,18 @@ export function MobileBottomBar({
         </DropdownMenu>
       </div>
 
-      <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Search</DialogTitle>
-          </DialogHeader>
-          <SearchBar userId={userId} handle={handle} />
-        </DialogContent>
-      </Dialog>
+      <Drawer open={searchOpen} onOpenChange={setSearchOpen}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>Search</DrawerTitle>
+          </DrawerHeader>
+          {/* Room below the input for the results dropdown, which renders
+              absolutely under it. */}
+          <div className="min-h-[55vh] px-4 pb-4">
+            <SearchBar userId={userId} handle={handle} />
+          </div>
+        </DrawerContent>
+      </Drawer>
     </nav>
   );
 }

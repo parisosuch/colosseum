@@ -5,7 +5,7 @@ import Link from "next/link";
 import { HomeIcon, SearchIcon } from "lucide-react";
 
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
-import SearchBar from "@/components/search-bar";
+import { MobileSearch } from "@/components/mobile-search";
 import { AddBlockDrawer, type PickableChannel } from "@/components/add-block-drawer";
 import { ProfileDrawer } from "@/components/profile-drawer";
 
@@ -17,12 +17,10 @@ const ITEM =
 // Every action opens a bottom drawer. Rendered as the last flex child of the
 // app shell and hidden at `sm` and up.
 export function MobileBottomBar({
-  userId,
   handle,
   avatarUrl,
   channels,
 }: {
-  userId: string;
   handle: string;
   avatarUrl?: string;
   channels: PickableChannel[];
@@ -55,11 +53,7 @@ export function MobileBottomBar({
           <DrawerHeader>
             <DrawerTitle>Search</DrawerTitle>
           </DrawerHeader>
-          {/* Room below the input for the results dropdown, which renders
-              absolutely under it. */}
-          <div className="min-h-[55vh] px-4 pb-4">
-            <SearchBar userId={userId} handle={handle} />
-          </div>
+          <MobileSearch handle={handle} onClose={() => setSearchOpen(false)} />
         </DrawerContent>
       </Drawer>
     </nav>

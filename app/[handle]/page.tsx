@@ -1,17 +1,22 @@
 import PageHeader from "@/components/page-header";
 import ColumnPreview from "@/components/column-preview";
 import CreateChannelButton from "@/components/create-channel-button";
+import { ChannelsView } from "@/components/channels-view";
 import { Channel, getUserChannels, getUserPublicChannels } from "@/lib/colosseum/channel";
 import { getChannelColumnCount, getChannelColumns } from "@/lib/colosseum/column";
 import { getPublicUserProfile } from "@/lib/colosseum/user";
 import { getSessionUser } from "@/lib/auth";
 import Link from "next/link";
 
-async function ChannelColumnsView({ channel }: { channel: Channel }) {
+async function ChannelColumnsView({
+  channel,
+  columnCount,
+}: {
+  channel: Channel;
+  columnCount: number;
+}) {
   // Only the first 5 previews are shown, so don't fetch the whole channel.
   const columns = await getChannelColumns(channel.id, { limit: 5 });
-
-  const columnCount = await getChannelColumnCount(channel.id);
 
   return (
     <div className="flex flex-col md:flex-row gap-8 p-2">
@@ -40,44 +45,6 @@ async function ChannelColumnsView({ channel }: { channel: Channel }) {
   );
 }
 
-function ChannelsView({
-  channels,
-  isOwner,
-  handle,
-}: {
-  channels: Channel[];
-  isOwner: boolean;
-  handle: string;
-}) {
-  if (channels.length === 0) {
-    return (
-      <div className="w-full flex items-center justify-center">
-        <div className="w-1/2 flex flex-col space-y-4 items-center">
-          <h1 className="text-display">Looks like {isOwner ? "you" : "they"} have no channels.</h1>
-          {isOwner ? <CreateChannelButton /> : null}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {isOwner ? <CreateChannelButton /> : null}
-      <div className="grid grid-cols-2 gap-4 md:flex md:flex-col md:space-y-4 md:gap-0">
-        {channels.map((channel) => (
-          <Link key={channel.id} href={`/${handle}/${channel.id}`}>
-            <div
-              className={`flex aspect-square items-center justify-center p-4 md:block md:aspect-auto md:p-8 border-2 rounded-lg transition-colors ${channel.private ? "bg-red-500/5 border-red-500/50 hover:border-red-500" : "border-gray-500/50 hover:border-gray-500"}`}
-            >
-              <ChannelColumnsView channel={channel} />
-            </div>
-          </Link>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export default async function UserPage({ params }: { params: Promise<{ handle: string }> }) {
   const { handle } = await params;
 
@@ -95,20 +62,41 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
     );
   }
 
-  let match: boolean;
-  if (!user) {
-    match = false;
-  } else {
-    match = userProfile?.user_id === user.id;
-  }
+  const match = !!user && userProfile.user_id === user.id;
 
-  let channels: Channel[];
+  const channels: Channel[] = match
+    ? await getUserChannels(user!.id)
+    : await getUserPublicChannels(userProfile.user_id);
 
-  if (!match) {
-    channels = await getUserPublicChannels(userProfile.user_id);
-  } else {
-    channels = await getUserChannels(user!.id);
-  }
+  // One count per channel, fetched once and shared by the grid cards and the
+  // list rows so the two views don't each re-query.
+  const counts = await Promise.all(channels.map((c) => getChannelColumnCount(c.id)));
+  const countById = new Map(channels.map((c, i) => [c.id, counts[i]]));
+
+  // The grid keeps its server-fetched previews; it's handed to the (client)
+  // ChannelsView as-is so the view toggle can swap it for the list.
+  const grid = (
+    <div className="grid grid-cols-2 gap-4 md:flex md:flex-col md:space-y-4 md:gap-0">
+      {channels.map((channel) => (
+        <Link key={channel.id} href={`/${handle}/${channel.id}`}>
+          <div
+            className={`flex aspect-square items-center justify-center p-4 md:block md:aspect-auto md:p-8 border-2 rounded-lg transition-colors ${channel.private ? "bg-red-500/5 border-red-500/50 hover:border-red-500" : "border-gray-500/50 hover:border-gray-500"}`}
+          >
+            <ChannelColumnsView channel={channel} columnCount={countById.get(channel.id) ?? 0} />
+          </div>
+        </Link>
+      ))}
+    </div>
+  );
+
+  const channelRows = channels.map((c) => ({
+    id: c.id,
+    title: c.title,
+    description: c.description,
+    private: c.private,
+    created_at: c.created_at,
+    count: countById.get(c.id) ?? 0,
+  }));
 
   return (
     <div className="w-full flex-1 min-h-0 overflow-y-auto p-6 sm:p-12 space-y-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -129,7 +117,16 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
         </div>
       </div>
 
-      <ChannelsView channels={channels} isOwner={match} handle={handle} />
+      {channels.length === 0 ? (
+        <div className="w-full flex items-center justify-center">
+          <div className="w-1/2 flex flex-col space-y-4 items-center">
+            <h1 className="text-display">Looks like {match ? "you" : "they"} have no channels.</h1>
+            {match ? <CreateChannelButton /> : null}
+          </div>
+        </div>
+      ) : (
+        <ChannelsView isOwner={match} handle={handle} grid={grid} channels={channelRows} />
+      )}
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { HeroFrame } from "@/components/hero-frame";
 import { Toaster } from "@/components/ui/sonner";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
 import { NoZoomGuard } from "@/components/no-zoom-guard";
+import MobileBottomNav from "@/components/mobile-bottom-nav";
 
 const defaultUrl = process.env.VERCEL_URL
   ? `https://${process.env.VERCEL_URL}`
@@ -73,7 +74,15 @@ export default async function RootLayout({
             <NavBarGate>
               <NavBar />
             </NavBarGate>
-            <HeroFrame>{children}</HeroFrame>
+            {/* Fills the space between nav and the mobile bottom bar so the bar
+                pins to the bottom regardless of how tall the page content is,
+                and scrolls content that overflows. */}
+            <div className="flex-1 min-h-0 flex flex-col overflow-y-auto">
+              <HeroFrame>{children}</HeroFrame>
+            </div>
+            <NavBarGate>
+              <MobileBottomNav />
+            </NavBarGate>
           </div>
           <Toaster />
           <ServiceWorkerRegister />

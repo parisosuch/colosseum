@@ -41,9 +41,12 @@ export default async function NavBar() {
       ) : null}
       <div className="flex flex-row space-x-2 items-center">
         {/* Theme lives inside the avatar menu; a user who hasn't onboarded yet
-            (no profile) has no menu, so fall back to the standalone switcher. */}
+            (no profile) has no menu, so fall back to the standalone switcher.
+            On mobile the avatar moves to the bottom bar, so hide it here. */}
         {userProfile ? (
-          <UserMenu avatarUrl={userProfile.avatar_url} handle={userProfile.handle} />
+          <div className="hidden sm:block">
+            <UserMenu avatarUrl={userProfile.avatar_url} handle={userProfile.handle} />
+          </div>
         ) : (
           <ThemeSwitcher />
         )}

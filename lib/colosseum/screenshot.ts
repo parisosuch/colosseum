@@ -1,9 +1,20 @@
-import puppeteer, { TimeoutError } from "puppeteer";
+import { TimeoutError, type HTTPResponse } from "puppeteer";
+import puppeteer from "puppeteer-extra";
+import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import sharp from "sharp";
 
 import { createMedia, putBlob } from "./blob";
+import { DESKTOP_UA, fetchOgFallback } from "./og-meta";
 import { getScreenshot, upsertScreenshot, ScreenshotRow } from "./screenshot-data";
 import { logError, logInfo } from "@/lib/log";
+
+// Stealth patches the automation fingerprints (navigator.webdriver, the
+// HeadlessChrome UA, missing Accept-Language, and ~9 others) that bot
+// protection reads to serve a challenge instead of the page. Registered once at
+// module load. It clears most public detectors but not IP-reputation walls
+// (Cloudflare/DataDome from a datacenter IP) — those need a proxy/unlocker,
+// which the og:image fallback below partly covers for free.
+puppeteer.use(StealthPlugin());
 
 export interface Screenshot {
   id: number;
@@ -27,6 +38,16 @@ const NAV_TIMEOUT_MS = 15_000; // max wait for the initial DOM
 const SETTLE_IDLE_MS = 500; // "quiet" window that counts as settled
 const SETTLE_TIMEOUT_MS = 3_000; // max extra wait for that quiet window
 
+// Resize any image to the SCREENSHOT_SIZE square. `cover` crops the overflow;
+// full-page renders anchor to the top, og:image fallbacks stay centered (they're
+// composed as a whole).
+async function toSquarePng(buffer: Buffer, position: "top" | "centre"): Promise<Buffer> {
+  return sharp(buffer)
+    .resize(SCREENSHOT_SIZE, SCREENSHOT_SIZE, { fit: "cover", position })
+    .png()
+    .toBuffer();
+}
+
 /**
  * Capture a square PNG of the top of a web page.
  *
@@ -39,20 +60,35 @@ export async function captureWebsiteScreenshot(
 ): Promise<{ image: Buffer; title: string; description: string }> {
   const browser = await puppeteer.launch({
     headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-blink-features=AutomationControlled",
+    ],
   });
 
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: SCREENSHOT_SIZE, height: SCREENSHOT_SIZE });
+    await page.setUserAgent(DESKTOP_UA);
+    await page.setExtraHTTPHeaders({ "Accept-Language": "en-US,en;q=0.9" });
+
+    let response: HTTPResponse | null = null;
     try {
       // Wait only for the DOM, not the network to fall idle — that's fast on
       // essentially every site and doesn't hang on background chatter.
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
+      response = await page.goto(url, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
     } catch (e) {
       // Too slow to even parse its DOM in time — capture whatever rendered
       // rather than failing the whole thing.
       if (!(e instanceof TimeoutError)) throw e;
+    }
+
+    // A 4xx/5xx is an error or block page (e.g. a bot challenge), not real
+    // content — bail so the caller can try the og:image fallback, which a plain
+    // fetch (no automation fingerprint) often still gets.
+    if (response && response.status() >= 400) {
+      throw new Error(`navigation returned HTTP ${response.status()}`);
     }
 
     // Give late content (hero images, fonts, client-rendered apps fetching
@@ -85,11 +121,7 @@ export async function captureWebsiteScreenshot(
     // produces exactly SCREENSHOT_SIZE square regardless of source size,
     // cropping a taller page or upscaling a shorter one, anchored to the top.
     const buffer = (await page.screenshot({ fullPage: true })) as Buffer;
-
-    const image = await sharp(buffer)
-      .resize(SCREENSHOT_SIZE, SCREENSHOT_SIZE, { fit: "cover", position: "top" })
-      .toFormat("png")
-      .toBuffer();
+    const image = await toSquarePng(buffer, "top");
 
     return { image, title, description };
   } finally {
@@ -105,7 +137,28 @@ export async function captureAndCacheScreenshot(
   url: string,
   ownerId: string,
 ): Promise<{ image_url: string; title: string; description: string }> {
-  const { image, title, description } = await captureWebsiteScreenshot(url);
+  let image: Buffer;
+  let title: string;
+  let description: string;
+  try {
+    ({ image, title, description } = await captureWebsiteScreenshot(url));
+  } catch (renderError) {
+    // Live render failed or was blocked. Fall back to the site's published
+    // og:image, which a plain fetch (no automation fingerprint) often still
+    // gets. If there's no usable preview image either, there's genuinely
+    // nothing to show — rethrow so the caller records the failure.
+    logError("screenshot.capture", `render failed for ${url}, trying og:image`, renderError);
+    const fallback = await fetchOgFallback(url, NAV_TIMEOUT_MS);
+    if (!fallback) throw renderError;
+    try {
+      image = await toSquarePng(fallback.image, "centre");
+    } catch {
+      throw renderError; // the og:image wasn't a usable image
+    }
+    title = fallback.title;
+    description = fallback.description;
+  }
+
   const sha256 = await putBlob(image, "image/png", ownerId);
   const image_url = await createMedia(sha256, ownerId, "public");
   await upsertScreenshot({ url, image_url, title, description });

@@ -74,10 +74,9 @@ export default async function RootLayout({
             <NavBarGate>
               <NavBar />
             </NavBarGate>
-            {/* Fills the space between nav and the mobile bottom bar so the bar
-                pins to the bottom regardless of how tall the page content is,
-                and scrolls content that overflows. */}
-            <div className="flex-1 min-h-0 flex flex-col overflow-y-auto">
+            {/* Scrollable content region. Bottom padding on mobile clears the
+                fixed bottom bar so the last content isn't hidden behind it. */}
+            <div className="flex-1 min-h-0 flex flex-col overflow-y-auto pb-[calc(3.5rem+env(safe-area-inset-bottom))] sm:pb-0">
               <HeroFrame>{children}</HeroFrame>
             </div>
             <NavBarGate>

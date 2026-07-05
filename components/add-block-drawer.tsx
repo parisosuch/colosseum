@@ -155,7 +155,7 @@ export function AddBlockDrawer({ channels }: { channels: PickableChannel[] }) {
                       type="button"
                       disabled={submitting}
                       onClick={() => addToChannel(channel.id)}
-                      className="flex w-full items-center justify-between gap-2 p-3 text-left text-sm hover:bg-accent disabled:opacity-50"
+                      className={`flex w-full items-center justify-between gap-2 p-3 text-left text-sm hover:bg-accent disabled:opacity-50 ${channel.private ? "bg-red-500/5 border-red-500/50 hover:border-red-500" : ""}`}
                     >
                       <span className="truncate">{channel.title}</span>
                       {channel.private ? (

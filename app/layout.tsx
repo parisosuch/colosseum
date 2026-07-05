@@ -25,7 +25,12 @@ export const metadata: Metadata = {
     title: "Colosseum",
     statusBarStyle: "default",
   },
+  // Declaring `icons` here overrides Next's file-based icon convention, so the
+  // browser favicon must be listed explicitly — otherwise only `apple` is
+  // emitted and browsers fall back to auto-fetching /favicon.ico. Point it at
+  // the SVG logo mark (app/icon.svg) so the tab shows the brand, not a leftover.
   icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
     apple: "/apple-touch-icon.png",
   },
 };

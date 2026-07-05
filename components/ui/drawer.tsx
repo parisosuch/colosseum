@@ -51,7 +51,10 @@ function DrawerContent({
       <DrawerPrimitive.Content
         data-slot="drawer-content"
         className={cn(
-          "bg-background fixed inset-x-0 bottom-0 z-50 mt-24 flex h-auto max-h-[80vh] flex-col rounded-t-lg border-t",
+          // dvh (not vh): in an iOS standalone PWA and when the keyboard opens,
+          // vh resolves against the large layout viewport, so the sheet oversizes
+          // and vaul's input-repositioning snaps it. dvh tracks the visible area.
+          "bg-background fixed inset-x-0 bottom-0 z-50 mt-24 flex h-auto max-h-[80dvh] flex-col rounded-t-lg border-t",
           className,
         )}
         {...props}

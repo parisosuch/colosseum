@@ -56,7 +56,7 @@ export function MobileSearch({ handle, onClose }: { handle: string; onClose: () 
   const hasResults = channels.length > 0 || columns.length > 0;
 
   return (
-    <div className="flex min-h-[60vh] flex-col gap-3 px-4 pb-6">
+    <div className="flex min-h-[60dvh] flex-col gap-3 px-4 pb-6">
       <div className="relative">
         <SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input

@@ -30,7 +30,7 @@ export function MobileSearch({ handle, onClose }: { handle: string; onClose: () 
   }, []);
 
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedQuery(query), 300);
+    const t = setTimeout(() => setDebouncedQuery(query), 50);
     return () => clearTimeout(t);
   }, [query]);
 
@@ -81,7 +81,7 @@ export function MobileSearch({ handle, onClose }: { handle: string; onClose: () 
             key={`channel-${channel.id}`}
             href={`/${handle}/${channel.id}`}
             onClick={onClose}
-            className="rounded-md px-2 py-2.5 text-sm hover:bg-accent"
+            className="px-2 py-2.5 text-sm hover:bg-accent border-b"
           >
             {channel.title}
             <span className="ml-2 text-xs text-muted-foreground">channel</span>
@@ -93,7 +93,7 @@ export function MobileSearch({ handle, onClose }: { handle: string; onClose: () 
             key={`block-${column.id}`}
             href={`/${handle}/${column.channel_id}/${column.id}`}
             onClick={onClose}
-            className="truncate rounded-md px-2 py-2.5 text-sm hover:bg-accent"
+            className="truncate px-2 py-2.5 text-sm hover:bg-accent border-b"
           >
             {blockLabel(column)}
             <span className="ml-2 text-xs text-muted-foreground">block</span>

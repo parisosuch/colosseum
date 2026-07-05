@@ -16,6 +16,17 @@ export interface Screenshot {
 /** Side length of the square screenshot, in pixels. */
 export const SCREENSHOT_SIZE = 1200;
 
+// Navigation waits, tuned for speed over completeness. The old engine waited
+// for `networkidle2` under the default 30s timeout, so any site that keeps a
+// connection open (analytics, chat widgets, websockets) burned the whole 30s
+// before capturing. Instead: get the DOM up fast, then allow a short, bounded
+// settle for late content — a chatty page can never block longer than
+// NAV + SETTLE. Knobs; raise SETTLE_TIMEOUT_MS if client-rendered apps come out
+// half-painted.
+const NAV_TIMEOUT_MS = 15_000; // max wait for the initial DOM
+const SETTLE_IDLE_MS = 500; // "quiet" window that counts as settled
+const SETTLE_TIMEOUT_MS = 3_000; // max extra wait for that quiet window
+
 /**
  * Capture a square PNG of the top of a web page.
  *
@@ -35,14 +46,21 @@ export async function captureWebsiteScreenshot(
     const page = await browser.newPage();
     await page.setViewport({ width: SCREENSHOT_SIZE, height: SCREENSHOT_SIZE });
     try {
-      await page.goto(url, { waitUntil: "networkidle2" });
+      // Wait only for the DOM, not the network to fall idle — that's fast on
+      // essentially every site and doesn't hang on background chatter.
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
     } catch (e) {
-      // Many real sites (analytics beacons, chat widgets, websockets) never
-      // drop to networkidle2's <=2-connections threshold — the page has
-      // still loaded by this point, so capture it instead of failing the
-      // whole thing over background chatter that was never going to stop.
+      // Too slow to even parse its DOM in time — capture whatever rendered
+      // rather than failing the whole thing.
       if (!(e instanceof TimeoutError)) throw e;
     }
+
+    // Give late content (hero images, fonts, client-rendered apps fetching
+    // their data) a brief, bounded window to settle. Capped low so a page that
+    // never goes idle proceeds anyway — this is the fix for the old 30s wait.
+    await page
+      .waitForNetworkIdle({ idleTime: SETTLE_IDLE_MS, timeout: SETTLE_TIMEOUT_MS })
+      .catch(() => {});
 
     // Pull the page's own metadata so a captured URL block can pre-fill its
     // title and description. Prefer Open Graph, fall back to <title> / the

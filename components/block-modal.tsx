@@ -59,8 +59,11 @@ export default function BlockModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
+      {/* Fixed frame on every breakpoint (not h-auto), and flex-col so the body
+          fills it — stepping between blocks never resizes the modal or shifts
+          the nav arrows. */}
       <DialogContent
-        className="w-[97vw] h-auto max-h-[95vh] md:!h-[97vh] !max-w-none p-4 outline-none"
+        className="flex flex-col w-[97vw] h-[95vh] md:h-[97vh] !max-w-none p-4 outline-none"
         onKeyDown={(e) => {
           // Arrow keys step between blocks — but not while editing a field,
           // where the arrows should move the cursor.
@@ -223,9 +226,9 @@ function BlockModalBody({
     <div
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
-      className="flex flex-col md:flex-row pt-4 px-4 gap-4 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className="flex flex-1 min-h-0 flex-col md:flex-row pt-4 px-4 gap-4 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
-      <div className="flex w-full items-start justify-center p-2 md:w-3/4 md:p-6">
+      <div className="flex w-full min-h-0 items-center justify-center p-2 md:w-3/4 md:p-6">
         {column.text ? (
           <Textarea
             ref={textInputRef}
@@ -238,7 +241,7 @@ function BlockModalBody({
           <img
             src={column.image}
             alt={column.title ?? "Image block"}
-            className="max-h-[85vh] w-auto object-contain rounded-md"
+            className="max-h-[70vh] md:max-h-full max-w-full object-contain rounded-md"
           />
         ) : (
           <a href={column.url} target="_blank" className="block w-full max-w-3xl">

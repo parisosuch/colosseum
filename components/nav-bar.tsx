@@ -3,6 +3,7 @@ import { getSessionUser } from "@/lib/auth";
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { Logo } from "./logo";
+import { MobileMenu } from "./mobile-menu";
 import SearchBar from "./search-bar";
 import { ThemeSwitcher } from "./theme-switcher";
 import { UserMenu } from "./user-menu";
@@ -41,9 +42,18 @@ export default async function NavBar() {
       ) : null}
       <div className="flex flex-row space-x-2 items-center">
         {/* Theme lives inside the avatar menu; a user who hasn't onboarded yet
-            (no profile) has no menu, so fall back to the standalone switcher. */}
+            (no profile) has no menu, so fall back to the standalone switcher.
+            Desktop shows the avatar menu, mobile the hamburger menu — exactly
+            one per breakpoint. */}
         {userProfile ? (
-          <UserMenu avatarUrl={userProfile.avatar_url} handle={userProfile.handle} />
+          <>
+            <div className="hidden sm:block">
+              <UserMenu avatarUrl={userProfile.avatar_url} handle={userProfile.handle} />
+            </div>
+            <div className="sm:hidden">
+              <MobileMenu />
+            </div>
+          </>
         ) : (
           <ThemeSwitcher />
         )}

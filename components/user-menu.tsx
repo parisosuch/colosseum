@@ -21,9 +21,15 @@ import {
 
 const ICON_SIZE = 16;
 
-// Avatar in the nav opens an anchored menu: Settings, a Theme submenu, and
-// Logout. (Logged-out users get the standalone ThemeSwitcher instead.)
-export function UserMenu({ avatarUrl, handle }: { avatarUrl?: string; handle: string }) {
+function ThemeIcon({ theme }: { theme?: string }) {
+  const Icon = theme === "light" ? Sun : theme === "dark" ? Moon : Laptop;
+  return <Icon size={ICON_SIZE} className="text-muted-foreground" />;
+}
+
+// The menu body shared by the desktop avatar menu and the mobile menu: Settings,
+// Invites, a Theme submenu, and Logout. Each trigger renders this inside its own
+// DropdownMenuContent, so the two menus can never drift.
+export function UserMenuItems() {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
 
@@ -34,8 +40,51 @@ export function UserMenu({ avatarUrl, handle }: { avatarUrl?: string; handle: st
     window.location.assign("/auth/login");
   };
 
-  const ThemeIcon = theme === "light" ? Sun : theme === "dark" ? Moon : Laptop;
+  return (
+    <>
+      <DropdownMenuItem onSelect={() => router.push("/settings")}>
+        <SettingsIcon />
+        Settings
+      </DropdownMenuItem>
 
+      <DropdownMenuItem onSelect={() => router.push("/invites")}>
+        <MailIcon />
+        Invites
+      </DropdownMenuItem>
+
+      <DropdownMenuSub>
+        <DropdownMenuSubTrigger className="gap-2">
+          <ThemeIcon theme={theme} />
+          Theme
+        </DropdownMenuSubTrigger>
+        <DropdownMenuSubContent>
+          <DropdownMenuRadioGroup value={theme} onValueChange={setTheme}>
+            <DropdownMenuRadioItem className="gap-2" value="light">
+              <Sun size={ICON_SIZE} className="text-muted-foreground" /> Light
+            </DropdownMenuRadioItem>
+            <DropdownMenuRadioItem className="gap-2" value="dark">
+              <Moon size={ICON_SIZE} className="text-muted-foreground" /> Dark
+            </DropdownMenuRadioItem>
+            <DropdownMenuRadioItem className="gap-2" value="system">
+              <Laptop size={ICON_SIZE} className="text-muted-foreground" /> System
+            </DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuSubContent>
+      </DropdownMenuSub>
+
+      <DropdownMenuSeparator />
+
+      <DropdownMenuItem onSelect={logout}>
+        <LogOutIcon />
+        Logout
+      </DropdownMenuItem>
+    </>
+  );
+}
+
+// Desktop nav: the avatar opens the shared menu. Hidden on mobile, where
+// MobileMenu takes over. (Logged-out users get the standalone ThemeSwitcher.)
+export function UserMenu({ avatarUrl, handle }: { avatarUrl?: string; handle: string }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -45,42 +94,7 @@ export function UserMenu({ avatarUrl, handle }: { avatarUrl?: string; handle: st
         </Avatar>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onSelect={() => router.push("/settings")}>
-          <SettingsIcon />
-          Settings
-        </DropdownMenuItem>
-
-        <DropdownMenuItem onSelect={() => router.push("/invites")}>
-          <MailIcon />
-          Invites
-        </DropdownMenuItem>
-
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger className="gap-2">
-            <ThemeIcon size={ICON_SIZE} className="text-muted-foreground" />
-            Theme
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent>
-            <DropdownMenuRadioGroup value={theme} onValueChange={setTheme}>
-              <DropdownMenuRadioItem className="gap-2" value="light">
-                <Sun size={ICON_SIZE} className="text-muted-foreground" /> Light
-              </DropdownMenuRadioItem>
-              <DropdownMenuRadioItem className="gap-2" value="dark">
-                <Moon size={ICON_SIZE} className="text-muted-foreground" /> Dark
-              </DropdownMenuRadioItem>
-              <DropdownMenuRadioItem className="gap-2" value="system">
-                <Laptop size={ICON_SIZE} className="text-muted-foreground" /> System
-              </DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
-
-        <DropdownMenuSeparator />
-
-        <DropdownMenuItem onSelect={logout}>
-          <LogOutIcon />
-          Logout
-        </DropdownMenuItem>
+        <UserMenuItems />
       </DropdownMenuContent>
     </DropdownMenu>
   );

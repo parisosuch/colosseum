@@ -227,11 +227,12 @@ export default function ColumnInput({
       }}
       onDrop={handleDrop}
     >
-      {/* Text input */}
+      {/* Text input. text-base (16px), not text-sm — iOS Safari auto-zooms on
+          focus of any input smaller than 16px. */}
       <textarea
         ref={textareaRef}
         disabled={loading}
-        className={`w-full h-full bg-transparent resize-none focus:outline-none p-3 leading-normal text-sm ${loading ? "hidden" : ""}`}
+        className={`w-full h-full bg-transparent resize-none focus:outline-none p-3 leading-normal text-base ${loading ? "hidden" : ""}`}
         value={text}
         onChange={(e) => {
           setText(e.target.value);
@@ -248,7 +249,7 @@ export default function ColumnInput({
 
       {/* Overlay placeholder with clickable Upload */}
       {!text && !loading && (
-        <div className="absolute inset-0 px-3 pt-3 text-sm leading-normal text-gray-500 flex items-start pointer-events-none">
+        <div className="absolute inset-0 px-3 pt-3 text-base leading-normal text-gray-500 flex items-start pointer-events-none">
           <span>
             Type, paste an image, or{" "}
             <label className="underline cursor-pointer pointer-events-auto">

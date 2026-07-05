@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Fraunces, Geist } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
@@ -6,6 +6,7 @@ import NavBar from "@/components/nav-bar";
 import { NavBarGate } from "@/components/nav-bar-gate";
 import { HeroFrame } from "@/components/hero-frame";
 import { Toaster } from "@/components/ui/sonner";
+import { ServiceWorkerRegister } from "@/components/service-worker-register";
 
 const defaultUrl = process.env.VERCEL_URL
   ? `https://${process.env.VERCEL_URL}`
@@ -15,6 +16,21 @@ export const metadata: Metadata = {
   metadataBase: new URL(defaultUrl),
   title: "Colosseum",
   description: "Visualize the web.",
+  applicationName: "Colosseum",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "Colosseum",
+    statusBarStyle: "default",
+  },
+  icons: {
+    apple: "/apple-touch-icon.png",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#ffffff",
+  viewportFit: "cover",
 };
 
 const geistSans = Geist({
@@ -54,6 +70,7 @@ export default async function RootLayout({
             <HeroFrame>{children}</HeroFrame>
           </div>
           <Toaster />
+          <ServiceWorkerRegister />
         </ThemeProvider>
       </body>
     </html>

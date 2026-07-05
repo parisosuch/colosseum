@@ -7,6 +7,7 @@ import { NavBarGate } from "@/components/nav-bar-gate";
 import { HeroFrame } from "@/components/hero-frame";
 import { Toaster } from "@/components/ui/sonner";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
+import { NoZoomGuard } from "@/components/no-zoom-guard";
 
 const defaultUrl = process.env.VERCEL_URL
   ? `https://${process.env.VERCEL_URL}`
@@ -31,6 +32,11 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   themeColor: "#ffffff",
   viewportFit: "cover",
+  // App-like on mobile: no page zoom (also stops iOS auto-zoom on input focus).
+  // Pinch/double-tap are additionally handled by touch-action and the gesture
+  // guard, since iOS Safari ignores these for accessibility.
+  maximumScale: 1,
+  userScalable: false,
 };
 
 const geistSans = Geist({
@@ -71,6 +77,7 @@ export default async function RootLayout({
           </div>
           <Toaster />
           <ServiceWorkerRegister />
+          <NoZoomGuard />
         </ThemeProvider>
       </body>
     </html>

@@ -66,6 +66,8 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* App-like: no double-tap-to-zoom (pan/scroll still work). */
+    touch-action: manipulation;
   }
 }
 

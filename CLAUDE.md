@@ -30,6 +30,11 @@ Use `bun`, never `npm`. A `Makefile` wraps the common ones:
 
 - **Conventional Commits** (`feat:`, `fix:`, `docs:`, `chore:`, etc.).
 - **Branch off `main`** for every change; open a PR back into `main`.
+  - **Exception — active release branch.** When a versioned release branch
+    exists (e.g. `release-1.2.0`), branch off it and target it for that
+    milestone's issues instead of `main`. The release branch is cut from `main`,
+    collects the milestone's PRs, then merges into `main` and is tagged
+    `vX.Y.Z` at release time.
 - PRs are **squash-merged**, so don't put the issue number in the commit
   subject — reference the issue in the PR description instead (the squash
   commit links the PR automatically).

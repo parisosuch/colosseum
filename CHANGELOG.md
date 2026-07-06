@@ -8,6 +8,13 @@ release.
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-07-06
+
+### Fixed
+
+- The changelog page no longer crashes in production: `CHANGELOG.md` is now
+  shipped in the Docker image instead of being excluded by `.dockerignore`.
+
 ## [1.1.0] - 2026-07-05
 
 ### Added

@@ -1,11 +1,11 @@
-// Warm the grid thumbnail for every stored image blob. Runs on every boot from
-// entrypoint.sh, right after the schema migration, so existing images get
-// thumbnails without anyone eating the one-time resize on first view.
-// Idempotent (ensureThumbnail skips images already generated), so re-running is
-// a cheap stat per image. Thumbnails also generate lazily on first `?thumb`
-// request (see lib/colosseum/blob.ts), so this is best-effort, not required.
-// Needs the DB + STORAGE_DIR populated:
+// One-shot: warm the grid thumbnail for every stored image blob. Run it once
+// after deploying this change so existing images get thumbnails without anyone
+// eating the one-time resize on first view:
 //   bun run backfill-thumbnails
+// Idempotent (ensureThumbnail skips images already generated), so re-running is
+// a cheap stat per image and safe. New uploads and anything missed here
+// generate lazily on first `?thumb` request (see lib/colosseum/blob.ts).
+// Needs the DB + STORAGE_DIR populated.
 
 import { like } from "drizzle-orm";
 

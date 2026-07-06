@@ -5,4 +5,6 @@ data
 .env*
 !.env.example
 *.md
+# The /changelog page reads CHANGELOG.md at runtime, so it must ship in the image.
+!CHANGELOG.md
 .claude

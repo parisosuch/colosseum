@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { LayersIcon, LayoutGrid, List, SearchIcon } from "lucide-react";
 
@@ -32,18 +32,12 @@ export function ChannelsView({
 }) {
   const [view, setView] = useState<"grid" | "list">("grid");
   const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
 
-  // Debounce the search box to match the block search's feel (the filter itself
-  // is a cheap in-memory pass, so this is for parity, not load).
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search), 300);
-    return () => clearTimeout(t);
-  }, [search]);
-
+  // No debounce: the list is already in memory, so filtering on every keystroke
+  // is cheap and keeps the search feeling instant.
   const visibleIds = useMemo(
-    () => new Set(channels.filter((c) => channelMatches(c, debouncedSearch)).map((c) => c.id)),
-    [channels, debouncedSearch],
+    () => new Set(channels.filter((c) => channelMatches(c, search)).map((c) => c.id)),
+    [channels, search],
   );
   const visibleChannels = channels.filter((c) => visibleIds.has(c.id));
   const visibleCards = gridCards.filter((c) => visibleIds.has(c.id));

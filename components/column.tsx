@@ -54,7 +54,7 @@ const ColumnComponent = memo(function ColumnComponent({
       <p className="text-sm line-clamp-[10] p-2">{column.text}</p>
     ) : column.type === "image" ? (
       <img
-        src={column.image}
+        src={`${column.image}?thumb`}
         alt={column.title ?? "Image block"}
         className="w-full h-full object-cover rounded-lg"
       />

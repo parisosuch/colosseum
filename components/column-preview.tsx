@@ -16,7 +16,7 @@ export default async function ColumnPreview({ column }: { column: Column }) {
   if (column.type === "image") {
     return (
       <img
-        src={column.image}
+        src={`${column.image}?thumb`}
         alt={column.title ?? "Image block"}
         className="w-full h-full object-cover rounded-md"
       />

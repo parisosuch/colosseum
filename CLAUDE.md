@@ -46,6 +46,10 @@ Use `bun`, never `npm`. A `Makefile` wraps the common ones:
   feature/fix PR — leave it untouched. The version is bumped (semver) and the
   release commit tagged `vX.Y.Z` only at release time, when a batch of merged
   changes ships.
+- **Bumping the version means updating the changelog.** Whenever you bump
+  `package.json` for a release (the PR that ships to `main`), stamp a matching
+  `## [X.Y.Z] - YYYY-MM-DD` section in `CHANGELOG.md` in the same commit,
+  moving the accumulated `Unreleased` notes under it. The two never move apart.
 
 ## Conventions
 

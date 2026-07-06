@@ -1,44 +1,68 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { LayersIcon, LayoutGrid, List } from "lucide-react";
+import { LayersIcon, LayoutGrid, List, SearchIcon } from "lucide-react";
 
 import { LIST_GRID } from "./column";
 import { timeAgo } from "@/lib/utils";
 import CreateChannelButton from "./create-channel-button";
 import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { channelMatches, type ChannelRow } from "./channel-filter";
 
-export type ChannelRow = {
-  id: number;
-  title: string;
-  description?: string;
-  private: boolean;
-  created_at: string;
-  count: number;
-};
+export type { ChannelRow };
 
-// The profile's channel listing with a grid/list toggle, mirroring the channel
-// board's block view switcher. The grid (with server-fetched previews) is passed
-// in as `grid`; the list is built here from channel metadata and reuses the
-// board's LIST_GRID table style. View choice is ephemeral, like the board's.
+// The profile's channel listing with a search box and grid/list toggle,
+// mirroring the channel board's block search and view switcher. Each grid card
+// (with its server-fetched previews) is passed in via `gridCards` keyed by id;
+// the list is built here from channel metadata and reuses the board's LIST_GRID
+// table style. Search filters both views client-side over the already-loaded
+// list. View choice and query are ephemeral, like the board's.
 export function ChannelsView({
   isOwner,
   handle,
-  grid,
+  gridCards,
   channels,
 }: {
   isOwner: boolean;
   handle: string;
-  grid: ReactNode;
+  gridCards: { id: number; node: ReactNode }[];
   channels: ChannelRow[];
 }) {
   const [view, setView] = useState<"grid" | "list">("grid");
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  // Debounce the search box to match the block search's feel (the filter itself
+  // is a cheap in-memory pass, so this is for parity, not load).
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const visibleIds = useMemo(
+    () => new Set(channels.filter((c) => channelMatches(c, debouncedSearch)).map((c) => c.id)),
+    [channels, debouncedSearch],
+  );
+  const visibleChannels = channels.filter((c) => visibleIds.has(c.id));
+  const visibleCards = gridCards.filter((c) => visibleIds.has(c.id));
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {isOwner ? <CreateChannelButton /> : null}
+        <div className="relative w-full sm:w-64">
+          <SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search channels"
+            aria-label="Search channels"
+            className="pl-8"
+          />
+        </div>
         <div className="ml-auto flex items-center gap-2">
           <Button
             variant={view === "grid" ? "secondary" : "ghost"}
@@ -59,8 +83,14 @@ export function ChannelsView({
         </div>
       </div>
 
-      {view === "grid" ? (
-        grid
+      {visibleChannels.length === 0 ? (
+        <p className="text-muted-foreground">No channels match your search.</p>
+      ) : view === "grid" ? (
+        <div className="grid grid-cols-2 gap-4 md:flex md:flex-col md:space-y-4 md:gap-0">
+          {visibleCards.map((card) => (
+            <div key={card.id}>{card.node}</div>
+          ))}
+        </div>
       ) : (
         <div>
           <div className={`border-b px-2 py-2 text-label ${LIST_GRID}`}>
@@ -69,7 +99,7 @@ export function ChannelsView({
             <span className="hidden sm:block">Blocks</span>
             <span className="hidden sm:block">Created</span>
           </div>
-          {channels.map((channel) => (
+          {visibleChannels.map((channel) => (
             <Link
               key={channel.id}
               href={`/${handle}/${channel.id}`}

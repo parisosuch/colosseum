@@ -1,9 +1,11 @@
-// Warm the grid thumbnail for every stored image blob. Thumbnails generate
-// lazily on first `?thumb` request (see ensureThumbnail in lib/colosseum/blob.ts),
-// so this is optional — it just moves the one-time resize cost off the first
-// viewer for images that already exist. Idempotent; safe to re-run. Needs the
-// local DB + STORAGE_DIR populated:
-//   bun --conditions=react-server scripts/backfill-thumbnails.ts
+// Warm the grid thumbnail for every stored image blob. Runs on every boot from
+// entrypoint.sh, right after the schema migration, so existing images get
+// thumbnails without anyone eating the one-time resize on first view.
+// Idempotent (ensureThumbnail skips images already generated), so re-running is
+// a cheap stat per image. Thumbnails also generate lazily on first `?thumb`
+// request (see lib/colosseum/blob.ts), so this is best-effort, not required.
+// Needs the DB + STORAGE_DIR populated:
+//   bun run backfill-thumbnails
 
 import { like } from "drizzle-orm";
 

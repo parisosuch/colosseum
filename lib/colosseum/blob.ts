@@ -10,10 +10,11 @@
 import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
+import { mkdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { and, eq, inArray, notExists } from "drizzle-orm";
+import sharp from "sharp";
 
 import { db } from "@/lib/db";
 import { blobs, media } from "@/lib/db/schema";
@@ -35,6 +36,32 @@ export const ALLOWED_IMAGE_TYPES = [
 
 export function blobDiskPath(sha256: string): string {
   return path.join(STORAGE_DIR, sha256.slice(0, 2), sha256);
+}
+
+// Grid thumbnails render columns a few hundred px wide; 600 covers 2x DPR.
+const THUMB_MAX_WIDTH = 600;
+
+// The thumbnail sits next to its source blob. It's derived from the immutable
+// blob bytes, so it's content-addressed too and shares the blob's lifetime.
+export function thumbDiskPath(sha256: string): string {
+  return `${blobDiskPath(sha256)}.thumb`;
+}
+
+// Generate (once) a downsized webp thumbnail for a stored image blob and return
+// its disk path. Idempotent: an existing thumbnail is returned as-is. Throws if
+// the blob isn't a decodable image, so callers fall back to the full bytes.
+export async function ensureThumbnail(sha256: string): Promise<string> {
+  const dest = thumbDiskPath(sha256);
+  if (await stat(dest).catch(() => null)) {
+    return dest;
+  }
+  const tmp = `${dest}.tmp-${randomUUID()}`;
+  await sharp(blobDiskPath(sha256))
+    .resize({ width: THUMB_MAX_WIDTH, withoutEnlargement: true })
+    .webp({ quality: 72 })
+    .toFile(tmp);
+  await rename(tmp, dest);
+  return dest;
 }
 
 export function mediaUrl(id: string): string {
@@ -146,6 +173,7 @@ export async function deleteMediaByUrl(url: string): Promise<void> {
     .catch(() => []);
   if (gone.length > 0) {
     await unlink(blobDiskPath(deleted.sha256)).catch(() => {});
+    await unlink(thumbDiskPath(deleted.sha256)).catch(() => {});
   }
 }
 

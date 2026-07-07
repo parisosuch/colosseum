@@ -73,21 +73,20 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
   const counts = await Promise.all(channels.map((c) => getChannelColumnCount(c.id)));
   const countById = new Map(channels.map((c, i) => [c.id, counts[i]]));
 
-  // The grid keeps its server-fetched previews; it's handed to the (client)
-  // ChannelsView as-is so the view toggle can swap it for the list.
-  const grid = (
-    <div className="grid grid-cols-2 gap-4 md:flex md:flex-col md:space-y-4 md:gap-0">
-      {channels.map((channel) => (
-        <Link key={channel.id} href={`/${handle}/${channel.id}`}>
-          <div
-            className={`flex aspect-square items-center justify-center p-4 md:block md:aspect-auto md:p-8 border-2 rounded-lg transition-colors ${channel.private ? "bg-red-500/5 border-red-500/50 hover:border-red-500" : "border-gray-500/50 hover:border-gray-500"}`}
-          >
-            <ChannelColumnsView channel={channel} columnCount={countById.get(channel.id) ?? 0} />
-          </div>
-        </Link>
-      ))}
-    </div>
-  );
+  // One grid card per channel, keyed by id, so the (client) ChannelsView can
+  // pick which to render when filtering while the previews stay server-fetched.
+  const gridCards = channels.map((channel) => ({
+    id: channel.id,
+    node: (
+      <Link key={channel.id} href={`/${handle}/${channel.id}`}>
+        <div
+          className={`flex aspect-square items-center justify-center p-4 md:block md:aspect-auto md:p-8 border-2 rounded-lg transition-colors ${channel.private ? "bg-red-500/5 border-red-500/50 hover:border-red-500" : "border-gray-500/50 hover:border-gray-500"}`}
+        >
+          <ChannelColumnsView channel={channel} columnCount={countById.get(channel.id) ?? 0} />
+        </div>
+      </Link>
+    ),
+  }));
 
   const channelRows = channels.map((c) => ({
     id: c.id,
@@ -125,7 +124,12 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
           </div>
         </div>
       ) : (
-        <ChannelsView isOwner={match} handle={handle} grid={grid} channels={channelRows} />
+        <ChannelsView
+          isOwner={match}
+          handle={handle}
+          gridCards={gridCards}
+          channels={channelRows}
+        />
       )}
     </div>
   );

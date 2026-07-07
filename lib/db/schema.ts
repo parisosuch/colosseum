@@ -11,6 +11,7 @@
 import {
   bigint,
   boolean,
+  index,
   integer,
   pgTable,
   text,
@@ -77,47 +78,76 @@ export const verification = pgTable("verification", {
 // App tables
 // ---------------------------------------------------------------------------
 
-export const userProfile = pgTable("user_profile", {
-  user_id: uuid("user_id")
-    .primaryKey()
-    .references(() => user.id, { onDelete: "cascade" }),
-  created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  handle: text("handle").notNull().unique(),
-  avatar_url: text("avatar_url"),
-  about: text("about"),
-});
+export const userProfile = pgTable(
+  "user_profile",
+  {
+    user_id: uuid("user_id")
+      .primaryKey()
+      .references(() => user.id, { onDelete: "cascade" }),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    handle: text("handle").notNull().unique(),
+    avatar_url: text("avatar_url"),
+    about: text("about"),
+  },
+  (t) => [
+    // Explore feed orders new members by join time.
+    index("user_profile_created_at_idx").on(t.created_at),
+  ],
+);
 
-export const channel = pgTable("channel", {
-  id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
-  created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  title: text("title").notNull(),
-  description: text("description"),
-  private: boolean("private").notNull().default(false),
-  owner_id: uuid("owner_id")
-    .notNull()
-    .references(() => user.id, { onDelete: "cascade" }),
-  updated_at: timestamp("updated_at", { withTimezone: true }),
-  tags: text("tags").array().notNull().default([]),
-});
+export const channel = pgTable(
+  "channel",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    title: text("title").notNull(),
+    description: text("description"),
+    private: boolean("private").notNull().default(false),
+    owner_id: uuid("owner_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    updated_at: timestamp("updated_at", { withTimezone: true }),
+    tags: text("tags").array().notNull().default([]),
+  },
+  (t) => [
+    // Explore feed orders newly created channels by time.
+    index("channel_created_at_idx").on(t.created_at),
+  ],
+);
 
 // "column" is a reserved SQL keyword; Drizzle quotes the table name for us.
-export const column = pgTable("column", {
-  id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
-  created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  type: text("type", { enum: ["url", "text", "image"] }).notNull(),
-  title: text("title"),
-  description: text("description"),
-  url: text("url"),
-  text: text("text"),
-  image: text("image"),
-  created_by: uuid("created_by")
-    .notNull()
-    .references(() => user.id, { onDelete: "cascade" }),
-  channel_id: bigint("channel_id", { mode: "number" })
-    .notNull()
-    .references(() => channel.id, { onDelete: "cascade" }),
-  tags: text("tags").array().notNull().default([]),
-});
+export const column = pgTable(
+  "column",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    type: text("type", { enum: ["url", "text", "image", "channel"] }).notNull(),
+    title: text("title"),
+    description: text("description"),
+    url: text("url"),
+    text: text("text"),
+    image: text("image"),
+    created_by: uuid("created_by")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    channel_id: bigint("channel_id", { mode: "number" })
+      .notNull()
+      .references(() => channel.id, { onDelete: "cascade" }),
+    // Set only for `channel` columns: the channel this column links to. Cascades,
+    // so the column disappears if the linked channel is deleted.
+    linked_channel_id: bigint("linked_channel_id", { mode: "number" }).references(
+      () => channel.id,
+      {
+        onDelete: "cascade",
+      },
+    ),
+    tags: text("tags").array().notNull().default([]),
+  },
+  (t) => [
+    // Explore feed orders newly added blocks by time.
+    index("column_created_at_idx").on(t.created_at),
+  ],
+);
 
 export const screenshot = pgTable("screenshot", {
   id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),

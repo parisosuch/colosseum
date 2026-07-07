@@ -17,9 +17,11 @@ import {
 import {
   Column,
   ColumnQuery,
+  addChannelColumn,
   deleteColumn,
   getChannelColumns,
   getColumn,
+  moveColumn,
   searchUserColumns,
   updateColumnDescription,
   updateColumnMeta,
@@ -221,6 +223,40 @@ export async function deleteColumnAction(columnId: number): Promise<void> {
   const userId = await requireUserId();
   await requireOwnedBlock(columnId, userId);
   await deleteColumn(columnId);
+}
+
+// Move a block to another channel. The caller must own both the block's current
+// channel and the target — this connection bypasses RLS, so both checks live
+// here. requireOwnedBlock already authorizes the current side.
+export async function moveColumnAction(columnId: number, targetChannelId: number): Promise<void> {
+  const userId = await requireUserId();
+  await requireOwnedBlock(columnId, userId);
+  await requireOwnedChannel(targetChannelId, userId);
+  await moveColumn(columnId, targetChannelId);
+}
+
+// Add a channel as a column inside one of the caller's channels (Are.na-style).
+// The caller must own the host; the linked channel must exist and be public
+// (you can't nest a private channel, so nothing private ever leaks through the
+// link). A channel can't be added to itself.
+export async function addChannelColumnAction(
+  linkedChannelId: number,
+  hostChannelId: number,
+): Promise<void> {
+  const userId = await requireUserId();
+  await requireOwnedChannel(hostChannelId, userId);
+  const linked = await getChannel(linkedChannelId);
+  if (!linked || linked.private) {
+    throw new Error("Not found.");
+  }
+  if (linkedChannelId === hostChannelId) {
+    throw new Error("A channel can't be added to itself.");
+  }
+  await addChannelColumn({
+    created_by: userId,
+    channel_id: hostChannelId,
+    linked_channel_id: linkedChannelId,
+  });
 }
 
 // ---------------------------------------------------------------------------

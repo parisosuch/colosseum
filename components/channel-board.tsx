@@ -3,6 +3,8 @@
 import PageHeader from "@/components/page-header";
 import ColumnComponent, { LIST_GRID } from "@/components/column";
 import BlockModal from "@/components/block-modal";
+import AddChannelToChannelButton from "@/components/add-channel-to-channel-button";
+import type { PickableChannel } from "@/components/add-block-drawer";
 import ManageChannelButton from "@/components/manage-channel-button";
 import ExportChannelButton from "@/components/export-channel-button";
 import ColumnInput from "@/components/column-input";
@@ -65,6 +67,9 @@ type ChannelBoardProps = {
   // Created-on formatted on the server, so the absolute date can't shift with
   // the client timezone and cause a hydration mismatch.
   createdOnLabel: string;
+  // The viewer's own channels, for the block modal's "Move" picker (owner only)
+  // and the "Add to channel" button (any viewer). Empty when signed out.
+  channels: PickableChannel[];
 };
 
 export default function ChannelBoard({
@@ -75,6 +80,7 @@ export default function ChannelBoard({
   initialCount,
   newestAt: initialNewestAt,
   createdOnLabel,
+  channels,
 }: ChannelBoardProps) {
   const [channel, setChannel] = useState<Channel>(initialChannel);
   const [columns, setColumns] = useState<Column[]>([]);
@@ -375,6 +381,10 @@ export default function ChannelBoard({
         {isOwner ? (
           <ManageChannelButton channel={channel} handle={handle} onUpdated={setChannel} />
         ) : null}
+        {/* Any signed-in viewer can nest a public channel into one of their own. */}
+        {!channel.private ? (
+          <AddChannelToChannelButton channelId={channel.id} channels={channels} />
+        ) : null}
         <ExportChannelButton channel={channel} />
         <Button
           variant={view === "grid" ? "secondary" : "ghost"}
@@ -518,6 +528,7 @@ export default function ChannelBoard({
         isOwner={isOwner}
         handle={handle}
         setColumns={setColumns}
+        channels={channels}
         screenshot={openColumn?.url ? screenshots.get(openColumn.url) : undefined}
         onPrev={() => navigate(-1)}
         onNext={() => navigate(1)}

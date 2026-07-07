@@ -8,6 +8,27 @@ release.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-07
+
+### Added
+
+- An Explore page (`/explore`, where signed-in users land from `/`) with a feed
+  of recent public activity — new blocks, channels, and members — from across
+  the invite-connected network.
+- A search box on the profile page to filter channels by title or description,
+  in both grid and list views.
+- Rich link previews (Open Graph / Twitter card) for shared public channel URLs,
+  showing the channel name, description, and owner.
+- Move a block to a different channel from the block modal, keeping its title,
+  description, and tags.
+- Add a public channel as a column inside one of your own channels (Are.na-style
+  nesting); the column links straight to that channel.
+
+### Changed
+
+- Image column previews load faster: the grid serves generated thumbnails
+  instead of the full-resolution image.
+
 ## [1.1.2] - 2026-07-07
 
 ### Fixed

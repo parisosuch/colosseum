@@ -14,11 +14,11 @@ import { Readable } from "node:stream";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
-import { blobDiskPath, getMedia } from "@/lib/colosseum/blob";
+import { blobDiskPath, ensureThumbnail, getMedia } from "@/lib/colosseum/blob";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   if (!UUID_RE.test(id)) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
@@ -37,7 +37,19 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     }
   }
 
-  const filePath = blobDiskPath(item.sha256);
+  // `?thumb` serves a downsized webp derived from the same bytes (used by grid
+  // previews). Generation is idempotent + cached on disk; a non-image blob (or
+  // any failure) falls back to the full bytes.
+  let filePath = blobDiskPath(item.sha256);
+  let contentType = item.mime;
+  if (req.nextUrl.searchParams.has("thumb")) {
+    const thumb = await ensureThumbnail(item.sha256).catch(() => null);
+    if (thumb) {
+      filePath = thumb;
+      contentType = "image/webp";
+    }
+  }
+
   const fileStat = await stat(filePath).catch(() => null);
   if (!fileStat) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
@@ -52,7 +64,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   // the unknown hop; at runtime they're the same thing.
   return new Response(Readable.toWeb(createReadStream(filePath)) as unknown as ReadableStream, {
     headers: {
-      "Content-Type": item.mime,
+      "Content-Type": contentType,
       "Content-Length": String(fileStat.size),
       "Cache-Control": cacheControl,
     },

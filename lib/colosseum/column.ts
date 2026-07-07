@@ -1,14 +1,14 @@
-import { and, asc, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { column } from "@/lib/db/schema";
+import { channel, column, userProfile } from "@/lib/db/schema";
 import { sanitizeSearch } from "@/lib/utils";
 import { deleteMediaByUrl } from "./blob";
 
 export type Column = {
   id: number;
   created_at: string;
-  type: "url" | "text" | "image";
+  type: "url" | "text" | "image" | "channel";
   title?: string;
   description?: string;
   url?: string;
@@ -16,11 +16,17 @@ export type Column = {
   image?: string;
   created_by: string;
   channel_id: number;
+  // Set for `channel` columns: the channel this column links to.
+  linked_channel_id?: number;
+  // Resolved display info for a `channel` column's linked channel (title,
+  // description, owner handle for the link target, block count). Filled by
+  // getChannelColumns.
+  linked_channel?: { title: string; description?: string; handle: string; count: number };
   tags: string[];
 };
 
 type ColumnRow = typeof column.$inferSelect;
-function toColumn(row: ColumnRow): Column {
+export function toColumn(row: ColumnRow): Column {
   return {
     id: row.id,
     created_at: row.created_at.toISOString(),
@@ -32,8 +38,55 @@ function toColumn(row: ColumnRow): Column {
     image: row.image ?? undefined,
     created_by: row.created_by,
     channel_id: row.channel_id,
+    linked_channel_id: row.linked_channel_id ?? undefined,
     tags: row.tags,
   };
+}
+
+// Resolve display info for `channel` columns: the linked channel's title, its
+// owner's handle (the link target is /handle/id), and its block count. Batched
+// so a board with several channel columns still runs two queries, not 2N.
+export async function withLinkedChannels(cols: Column[]): Promise<Column[]> {
+  const linkedIds = [
+    ...new Set(cols.map((c) => c.linked_channel_id).filter((id): id is number => id != null)),
+  ];
+  if (linkedIds.length === 0) return cols;
+
+  const [meta, counts] = await Promise.all([
+    db
+      .select({
+        id: channel.id,
+        title: channel.title,
+        description: channel.description,
+        handle: userProfile.handle,
+      })
+      .from(channel)
+      .innerJoin(userProfile, eq(userProfile.user_id, channel.owner_id))
+      .where(inArray(channel.id, linkedIds)),
+    db
+      .select({ channel_id: column.channel_id, n: sql<number>`count(*)::int` })
+      .from(column)
+      .where(inArray(column.channel_id, linkedIds))
+      .groupBy(column.channel_id),
+  ]);
+
+  const metaById = new Map(meta.map((m) => [m.id, m]));
+  const countById = new Map(counts.map((c) => [c.channel_id, c.n]));
+
+  return cols.map((c) => {
+    if (c.linked_channel_id == null) return c;
+    const m = metaById.get(c.linked_channel_id);
+    if (!m) return c;
+    return {
+      ...c,
+      linked_channel: {
+        title: m.title,
+        description: m.description ?? undefined,
+        handle: m.handle,
+        count: countById.get(m.id) ?? 0,
+      },
+    };
+  });
 }
 
 // Fetch a single block by id. Returns null when it doesn't exist. Visibility is
@@ -117,7 +170,7 @@ export async function getChannelColumns(
     .limit(limit ?? Number.MAX_SAFE_INTEGER)
     .offset(offset);
 
-  return rows.map(toColumn);
+  return withLinkedChannels(rows.map(toColumn));
 }
 
 // Blocks the user created whose title/description/text/url or a tag match
@@ -202,6 +255,26 @@ export async function uploadImageColumn(input: {
   return toColumn(row);
 }
 
+// Add a channel as a column inside another channel (Are.na-style). The column
+// carries no content of its own — it links to `linked_channel_id`. Auth (owning
+// the host, the linked channel being public) is enforced by the action.
+export async function addChannelColumn(input: {
+  created_by: string;
+  channel_id: number;
+  linked_channel_id: number;
+}): Promise<Column> {
+  const [row] = await db
+    .insert(column)
+    .values({
+      type: "channel",
+      channel_id: input.channel_id,
+      linked_channel_id: input.linked_channel_id,
+      created_by: input.created_by,
+    })
+    .returning();
+  return toColumn(row);
+}
+
 export async function updateColumnTitle(column_id: number, title: string): Promise<void> {
   await db.update(column).set({ title }).where(eq(column.id, column_id));
 }
@@ -215,6 +288,13 @@ export async function updateColumnDescription(
 
 export async function updateColumnTags(column_id: number, tags: string[]): Promise<void> {
   await db.update(column).set({ tags }).where(eq(column.id, column_id));
+}
+
+// Move a block to another channel. Only the channel_id changes, so the block
+// keeps its title, description, tags, and content. Authorization (owning both
+// channels) is enforced by the action.
+export async function moveColumn(column_id: number, channel_id: number): Promise<void> {
+  await db.update(column).set({ channel_id }).where(eq(column.id, column_id));
 }
 
 // Set title and/or description in one update — used to pre-fill a URL block

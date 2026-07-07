@@ -1,0 +1,21 @@
+"use server";
+
+import type { ReactNode } from "react";
+
+import { ACTIVITY_PAGE, getActivityFeed } from "@/lib/colosseum/activity";
+import { ActivityRow, activityKey } from "@/components/explore-view";
+
+// Load-more for the Explore feed: fetches the next page (older than `before`)
+// and returns it already rendered as server components, so URL screenshots and
+// other server-only previews render exactly like the initial page. Public
+// content only — the same filtering as getActivityFeed applies.
+export async function loadMoreActivity(
+  before: string,
+): Promise<{ rows: ReactNode; nextCursor: string | null; hasMore: boolean }> {
+  const items = await getActivityFeed(ACTIVITY_PAGE, before);
+  return {
+    rows: items.map((item) => <ActivityRow key={activityKey(item)} item={item} />),
+    nextCursor: items.length > 0 ? items[items.length - 1].at : null,
+    hasMore: items.length === ACTIVITY_PAGE,
+  };
+}

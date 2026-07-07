@@ -5,6 +5,21 @@ import ScreenShotPreview from "./screenshot-preview";
 export default async function ColumnPreview({ column }: { column: Column }) {
   // return the preview based on the column type
 
+  if (column.type === "channel") {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center">
+        <span className="max-w-full font-serif text-lg font-medium">
+          {column.linked_channel?.title ?? "Channel"}
+        </span>
+        {column.linked_channel?.description ? (
+          <p className="line-clamp-4 break-words text-sm text-muted-foreground">
+            {column.linked_channel.description}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
   if (column.type === "text") {
     return (
       <div className="p-3">
@@ -16,7 +31,7 @@ export default async function ColumnPreview({ column }: { column: Column }) {
   if (column.type === "image") {
     return (
       <img
-        src={column.image}
+        src={`${column.image}?thumb`}
         alt={column.title ?? "Image block"}
         className="w-full h-full object-cover rounded-md"
       />

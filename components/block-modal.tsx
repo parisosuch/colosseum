@@ -3,20 +3,29 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, GlobeIcon, LinkIcon } from "lucide-react";
+import { ChevronLeft, ChevronRight, GlobeIcon, LayersIcon, LinkIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import type { Column } from "@/lib/colosseum/column";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import {
   deleteColumnAction,
+  moveColumnAction,
   updateColumnDescriptionAction,
   updateColumnTagsAction,
   updateColumnTextAction,
   updateColumnTitleAction,
 } from "@/lib/colosseum/actions";
+import type { PickableChannel } from "@/components/add-block-drawer";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import {
+  CommandDialog,
+  CommandEmpty,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import TagInput from "@/components/tag-input";
@@ -29,6 +38,8 @@ type BlockModalProps = {
   isOwner: boolean;
   handle: string;
   setColumns: Dispatch<SetStateAction<Column[]>>;
+  // The owner's channels, for the "Move" picker. Empty for non-owners.
+  channels: PickableChannel[];
   screenshot?: ColumnScreenshot;
   onPrev: () => void;
   onNext: () => void;
@@ -47,6 +58,7 @@ export default function BlockModal({
   isOwner,
   handle,
   setColumns,
+  channels,
   screenshot,
   onPrev,
   onNext,
@@ -85,6 +97,7 @@ export default function BlockModal({
             isOwner={isOwner}
             handle={handle}
             setColumns={setColumns}
+            channels={channels}
             screenshot={screenshot}
             onPrev={onPrev}
             onNext={onNext}
@@ -104,6 +117,7 @@ function BlockModalBody({
   isOwner,
   handle,
   setColumns,
+  channels,
   screenshot,
   onPrev,
   onNext,
@@ -114,6 +128,7 @@ function BlockModalBody({
   isOwner: boolean;
   handle: string;
   setColumns: Dispatch<SetStateAction<Column[]>>;
+  channels: PickableChannel[];
   screenshot?: ColumnScreenshot;
   onPrev: () => void;
   onNext: () => void;
@@ -205,6 +220,28 @@ function BlockModalBody({
       setColumns((cols) => cols.filter((c) => c.id !== column.id));
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  // Channels the block can move to: the owner's, minus the one it's already in.
+  const moveTargets = channels.filter((c) => c.id !== column.channel_id);
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [moving, setMoving] = useState(false);
+
+  const handleMove = async (targetChannelId: number) => {
+    if (moving) return;
+    setMoving(true);
+    try {
+      await moveColumnAction(column.id, targetChannelId);
+      setMoveOpen(false);
+      // The block no longer belongs to this channel: drop it, which clears the
+      // open id in the parent and closes the modal (same path as delete).
+      setColumns((cols) => cols.filter((c) => c.id !== column.id));
+      toast.success("Moved.");
+    } catch (e) {
+      console.error(e);
+      toast.error("Couldn't move that block. Please try again.");
+      setMoving(false);
     }
   };
 
@@ -347,6 +384,47 @@ function BlockModalBody({
               <Button size="sm" onClick={handleSave}>
                 Save
               </Button>
+            ) : null}
+            {isOwner && moveTargets.length > 0 ? (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={moving}
+                  onClick={() => setMoveOpen(true)}
+                >
+                  Move
+                </Button>
+                {/* Searchable picker so it scales past a handful of channels. */}
+                <CommandDialog
+                  open={moveOpen}
+                  onOpenChange={setMoveOpen}
+                  title="Move to channel"
+                  description="Search your channels and move this block to one of them."
+                >
+                  <CommandInput placeholder="Search channels…" />
+                  <CommandList>
+                    <CommandEmpty>No channels found.</CommandEmpty>
+                    {moveTargets.map((c) => (
+                      <CommandItem
+                        key={c.id}
+                        value={`channel-${c.id}`}
+                        keywords={[c.title]}
+                        disabled={moving}
+                        onSelect={() => handleMove(c.id)}
+                      >
+                        <LayersIcon />
+                        <span className="truncate">{c.title}</span>
+                        {c.private ? (
+                          <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                            private
+                          </span>
+                        ) : null}
+                      </CommandItem>
+                    ))}
+                  </CommandList>
+                </CommandDialog>
+              </>
             ) : null}
             {isOwner ? (
               <Button

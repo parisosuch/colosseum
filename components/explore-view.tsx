@@ -22,39 +22,44 @@ function ChannelFocal({ title }: { title: string }) {
 // screenshot fetch) lives in the nested ColumnPreview, which is fine.
 function ActivityRow({ item }: { item: ActivityItem }) {
   const isBlock = item.kind === "block";
-  const href = isBlock
-    ? `/${item.handle}/${item.channelId}/${item.column!.id}`
-    : `/${item.handle}/${item.channelId}`;
-  const aria = isBlock
-    ? `@${item.handle} added ${item.label} to ${item.channelTitle}`
-    : `@${item.handle} created a channel, ${item.channelTitle}`;
+  const userHref = `/${item.handle}`;
+  const channelHref = `/${item.handle}/${item.channelId}`;
+  const focalHref = isBlock ? `/${item.handle}/${item.channelId}/${item.column!.id}` : channelHref;
+  const focalAria = isBlock
+    ? `${item.label} in ${item.channelTitle}`
+    : `Channel ${item.channelTitle}`;
 
+  // Separate links (no single parent anchor — nested <a> is invalid): the
+  // handle goes to the profile, the channel title to the channel, and the
+  // focal preview to the block (or channel).
   return (
-    <Link
-      href={href}
-      aria-label={aria}
-      className="group mx-auto flex w-full max-w-md flex-col gap-4"
-    >
+    <div className="mx-auto flex w-full max-w-md flex-col gap-4">
       {/* Attribution leads, in the serif section-title style. */}
       <div className="flex flex-col items-center gap-1 text-center">
         <p className="text-title">
-          <span>@{item.handle}</span>{" "}
+          <Link href={userHref} className="hover:underline">
+            @{item.handle}
+          </Link>{" "}
           <span className="font-normal text-muted-foreground">
             {isBlock ? "added to" : "created"}
           </span>{" "}
-          <span>{item.channelTitle}</span>
+          <Link href={channelHref} className="hover:underline">
+            {item.channelTitle}
+          </Link>
         </p>
         <p className="text-caption">{timeAgo(new Date(item.at))}</p>
       </div>
       {/* The block/channel itself is the focal point: large, centered. */}
-      <div className="aspect-square w-full overflow-hidden rounded-lg border bg-card transition-colors group-hover:border-foreground/30">
-        {isBlock ? (
-          <ColumnPreview column={item.column!} />
-        ) : (
-          <ChannelFocal title={item.channelTitle} />
-        )}
-      </div>
-    </Link>
+      <Link href={focalHref} aria-label={focalAria} className="group block w-full">
+        <div className="aspect-square w-full overflow-hidden rounded-lg border bg-card transition-colors group-hover:border-foreground/30">
+          {isBlock ? (
+            <ColumnPreview column={item.column!} />
+          ) : (
+            <ChannelFocal title={item.channelTitle} />
+          )}
+        </div>
+      </Link>
+    </div>
   );
 }
 

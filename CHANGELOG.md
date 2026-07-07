@@ -20,6 +20,13 @@ release.
 - Move a block to a different channel from the block modal, keeping its title,
   description, and tags.
 
+## [1.1.2] - 2026-07-07
+
+### Fixed
+
+- Buttons and other interactive controls now show a pointer cursor, so they read
+  as clickable.
+
 ## [1.1.1] - 2026-07-06
 
 ### Fixed

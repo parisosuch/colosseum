@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { LayersIcon } from "lucide-react";
 
 import type { ActivityItem } from "@/lib/colosseum/activity";
 import { timeAgo } from "@/lib/utils";
@@ -8,13 +7,15 @@ import PageHeader from "@/components/page-header";
 import ColumnPreview from "@/components/column-preview";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
-// A big centered channel card, for a "created a channel" item.
-function ChannelFocal({ title }: { title: string }) {
+// The focal card for a "created a channel" item: the channel's title and
+// description, shown the way a channel normally is (title heading + muted blurb).
+function ChannelFocal({ title, description }: { title: string; description?: string }) {
   return (
     <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-6 text-center">
-      <LayersIcon className="size-8 text-muted-foreground" />
-      <span className="font-medium">{title}</span>
-      <span className="text-caption">new channel</span>
+      <h2 className="text-heading">{title}</h2>
+      {description ? (
+        <p className="line-clamp-6 break-words text-sm text-muted-foreground">{description}</p>
+      ) : null}
     </div>
   );
 }
@@ -57,7 +58,7 @@ function ActivityRow({ item }: { item: ActivityItem }) {
     verb = "created";
     focalHref = channelHref;
     focalAria = `Channel ${item.channelTitle}`;
-    focal = <ChannelFocal title={item.channelTitle!} />;
+    focal = <ChannelFocal title={item.channelTitle!} description={item.channelDescription} />;
   }
 
   // Separate links (no single parent anchor — nested <a> is invalid): the

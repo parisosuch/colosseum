@@ -19,6 +19,8 @@ export type ActivityItem = {
   // block / channel only.
   channelId?: number;
   channelTitle?: string;
+  // channel (created) only — shown on the focal card like a normal channel.
+  channelDescription?: string;
   label?: string;
   // The block itself, for a `block` item — so the feed can render its preview
   // as the focal point (image, screenshot, or text) rather than just naming it.
@@ -61,6 +63,7 @@ export async function getActivityFeed(limit = 24): Promise<ActivityItem[]> {
         handle: userProfile.handle,
         channelId: channel.id,
         channelTitle: channel.title,
+        channelDescription: channel.description,
       })
       .from(channel)
       .innerJoin(userProfile, eq(userProfile.user_id, channel.owner_id))
@@ -95,6 +98,7 @@ export async function getActivityFeed(limit = 24): Promise<ActivityItem[]> {
       handle: c.handle,
       channelId: c.channelId,
       channelTitle: c.channelTitle,
+      channelDescription: c.channelDescription ?? undefined,
     })),
     ...joins.map((u) => ({
       kind: "user" as const,

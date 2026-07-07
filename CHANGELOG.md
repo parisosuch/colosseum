@@ -8,6 +8,8 @@ release.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-07
+
 ### Added
 
 - An Explore page (`/explore`, where signed-in users land from `/`) with a feed
@@ -21,6 +23,11 @@ release.
   description, and tags.
 - Add a public channel as a column inside one of your own channels (Are.na-style
   nesting); the column links straight to that channel.
+
+### Changed
+
+- Image column previews load faster: the grid serves generated thumbnails
+  instead of the full-resolution image.
 
 ## [1.1.2] - 2026-07-07
 

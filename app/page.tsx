@@ -8,7 +8,7 @@ import { getSessionUser } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { inviteRequired } from "@/lib/colosseum/invite";
 import { getUserProfile } from "@/lib/colosseum/user";
-import { getSocialGraph } from "@/lib/colosseum/social";
+import { getActivityFeed } from "@/lib/colosseum/activity";
 import { signupsDisabled } from "@/lib/colosseum/config";
 import ExploreView from "@/components/explore-view";
 
@@ -64,9 +64,8 @@ export default async function Home() {
     redirect("/auth/onboarding");
   }
 
-  // Home is the explore page: since the app is invite-only, every member is
-  // reachable through invites, so this shows the whole network (direct friends
-  // leading).
-  const { friends, everyoneElse } = await getSocialGraph(user.id);
-  return <ExploreView friends={friends} everyoneElse={everyoneElse} />;
+  // Home is the explore page: a feed of recent public activity from across the
+  // (invite-connected) network.
+  const activity = await getActivityFeed();
+  return <ExploreView activity={activity} />;
 }

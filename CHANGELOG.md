@@ -10,9 +10,8 @@ release.
 
 ### Added
 
-- An Explore home page (`/`) showing everyone on Colosseum — the whole
-  invite-connected network, with the people you invited (or who invited you)
-  leading as friends.
+- An Explore home page (`/`) with a feed of recent public activity — new blocks
+  and channels — from across the invite-connected network.
 - A search box on the profile page to filter channels by title or description,
   in both grid and list views.
 - Rich link previews (Open Graph / Twitter card) for shared public channel URLs,

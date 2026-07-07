@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import ChannelBoard from "@/components/channel-board";
-import { getChannel } from "@/lib/colosseum/channel";
+import { getChannel, getUserChannels } from "@/lib/colosseum/channel";
 import { channelPreviewMeta } from "@/lib/colosseum/channel-meta";
 import { getChannelColumnCount, getChannelColumns } from "@/lib/colosseum/column";
 import { getSessionUser } from "@/lib/auth";
@@ -49,6 +49,16 @@ export default async function ChannelPage({ params }: ChannelPageParams) {
     year: "numeric",
   });
 
+  // The owner's channels back the block modal's "Move" picker. Only owners can
+  // move, so skip the query for everyone else.
+  const ownerChannels = isOwner
+    ? (await getUserChannels(user!.id)).map((c) => ({
+        id: c.id,
+        title: c.title,
+        private: c.private,
+      }))
+    : [];
+
   return (
     <ChannelBoard
       channel={channel}
@@ -58,6 +68,7 @@ export default async function ChannelPage({ params }: ChannelPageParams) {
       initialCount={totalCount}
       newestAt={newest[0]?.created_at ?? null}
       createdOnLabel={createdOnLabel}
+      channels={ownerChannels}
     />
   );
 }

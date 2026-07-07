@@ -217,6 +217,13 @@ export async function updateColumnTags(column_id: number, tags: string[]): Promi
   await db.update(column).set({ tags }).where(eq(column.id, column_id));
 }
 
+// Move a block to another channel. Only the channel_id changes, so the block
+// keeps its title, description, tags, and content. Authorization (owning both
+// channels) is enforced by the action.
+export async function moveColumn(column_id: number, channel_id: number): Promise<void> {
+  await db.update(column).set({ channel_id }).where(eq(column.id, column_id));
+}
+
 // Set title and/or description in one update — used to pre-fill a URL block
 // from its page metadata after capture.
 export async function updateColumnMeta(

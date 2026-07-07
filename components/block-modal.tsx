@@ -10,13 +10,21 @@ import type { Column } from "@/lib/colosseum/column";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import {
   deleteColumnAction,
+  moveColumnAction,
   updateColumnDescriptionAction,
   updateColumnTagsAction,
   updateColumnTextAction,
   updateColumnTitleAction,
 } from "@/lib/colosseum/actions";
+import type { PickableChannel } from "@/components/add-block-drawer";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import TagInput from "@/components/tag-input";
@@ -29,6 +37,8 @@ type BlockModalProps = {
   isOwner: boolean;
   handle: string;
   setColumns: Dispatch<SetStateAction<Column[]>>;
+  // The owner's channels, for the "Move" picker. Empty for non-owners.
+  channels: PickableChannel[];
   screenshot?: ColumnScreenshot;
   onPrev: () => void;
   onNext: () => void;
@@ -47,6 +57,7 @@ export default function BlockModal({
   isOwner,
   handle,
   setColumns,
+  channels,
   screenshot,
   onPrev,
   onNext,
@@ -85,6 +96,7 @@ export default function BlockModal({
             isOwner={isOwner}
             handle={handle}
             setColumns={setColumns}
+            channels={channels}
             screenshot={screenshot}
             onPrev={onPrev}
             onNext={onNext}
@@ -104,6 +116,7 @@ function BlockModalBody({
   isOwner,
   handle,
   setColumns,
+  channels,
   screenshot,
   onPrev,
   onNext,
@@ -114,6 +127,7 @@ function BlockModalBody({
   isOwner: boolean;
   handle: string;
   setColumns: Dispatch<SetStateAction<Column[]>>;
+  channels: PickableChannel[];
   screenshot?: ColumnScreenshot;
   onPrev: () => void;
   onNext: () => void;
@@ -205,6 +219,26 @@ function BlockModalBody({
       setColumns((cols) => cols.filter((c) => c.id !== column.id));
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  // Channels the block can move to: the owner's, minus the one it's already in.
+  const moveTargets = channels.filter((c) => c.id !== column.channel_id);
+  const [moving, setMoving] = useState(false);
+
+  const handleMove = async (targetChannelId: number) => {
+    if (moving) return;
+    setMoving(true);
+    try {
+      await moveColumnAction(column.id, targetChannelId);
+      // The block no longer belongs to this channel: drop it, which clears the
+      // open id in the parent and closes the modal (same path as delete).
+      setColumns((cols) => cols.filter((c) => c.id !== column.id));
+      toast.success("Moved.");
+    } catch (e) {
+      console.error(e);
+      toast.error("Couldn't move that block. Please try again.");
+      setMoving(false);
     }
   };
 
@@ -347,6 +381,32 @@ function BlockModalBody({
               <Button size="sm" onClick={handleSave}>
                 Save
               </Button>
+            ) : null}
+            {isOwner && moveTargets.length > 0 ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" disabled={moving}>
+                    Move
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="max-h-[50dvh] overflow-y-auto">
+                  {moveTargets.map((c) => (
+                    <DropdownMenuItem
+                      key={c.id}
+                      disabled={moving}
+                      onSelect={() => handleMove(c.id)}
+                      className="gap-2"
+                    >
+                      <span className="truncate">{c.title}</span>
+                      {c.private ? (
+                        <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                          private
+                        </span>
+                      ) : null}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
             ) : null}
             {isOwner ? (
               <Button

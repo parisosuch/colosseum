@@ -30,8 +30,19 @@ async function ActivityRow({ item }: { item: ActivityItem }) {
     <Link
       href={href}
       aria-label={aria}
-      className="group mx-auto flex w-full max-w-md flex-col gap-3"
+      className="group mx-auto flex w-full max-w-md flex-col gap-4"
     >
+      {/* Attribution leads, in the serif section-title style. */}
+      <div className="flex flex-col items-center gap-1 text-center">
+        <p className="text-title">
+          <span>@{item.handle}</span>{" "}
+          <span className="font-normal text-muted-foreground">
+            {isBlock ? "added to" : "created"}
+          </span>{" "}
+          <span>{item.channelTitle}</span>
+        </p>
+        <p className="text-caption">{timeAgo(new Date(item.at))}</p>
+      </div>
       {/* The block/channel itself is the focal point: large, centered. */}
       <div className="aspect-square w-full overflow-hidden rounded-lg border bg-card transition-colors group-hover:border-foreground/30">
         {isBlock ? (
@@ -40,12 +51,6 @@ async function ActivityRow({ item }: { item: ActivityItem }) {
           <ChannelFocal title={item.channelTitle} />
         )}
       </div>
-      <p className="text-center text-caption">
-        <span className="font-medium text-foreground">@{item.handle}</span>{" "}
-        {isBlock ? "added to" : "created"}{" "}
-        <span className="font-medium text-foreground">{item.channelTitle}</span> ·{" "}
-        {timeAgo(new Date(item.at))}
-      </p>
     </Link>
   );
 }
@@ -57,14 +62,15 @@ export default function ExploreView({ activity }: { activity: ActivityItem[] }) 
     <div className="w-full flex-1 min-h-0 overflow-y-auto p-6 sm:p-12 space-y-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <PageHeader crumbs={[{ label: "Explore" }]} />
       <div className="space-y-1">
-        <h1 className="text-display">Explore</h1>
         <p className="text-muted-foreground">Recent activity from across Colosseum.</p>
       </div>
 
       {activity.length === 0 ? (
         <p className="text-muted-foreground">No activity yet.</p>
       ) : (
-        <div className="flex flex-col items-center gap-10">
+        // gap on the flex container spaces the items reliably (margins on the
+        // children don't in a centered column).
+        <div className="flex flex-col items-center gap-16">
           {activity.map((item) => (
             <ActivityRow
               key={`${item.kind}-${item.channelId}-${item.column?.id ?? "c"}`}

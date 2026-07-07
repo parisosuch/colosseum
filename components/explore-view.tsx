@@ -17,7 +17,10 @@ function ChannelFocal({ title }: { title: string }) {
   );
 }
 
-async function ActivityRow({ item }: { item: ActivityItem }) {
+// Sync on purpose: an async component here renders through an async boundary,
+// and flex `gap` won't apply between such siblings. The async work (the URL
+// screenshot fetch) lives in the nested ColumnPreview, which is fine.
+function ActivityRow({ item }: { item: ActivityItem }) {
   const isBlock = item.kind === "block";
   const href = isBlock
     ? `/${item.handle}/${item.channelId}/${item.column!.id}`

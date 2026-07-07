@@ -2,7 +2,6 @@
 
 import { memo } from "react";
 import Link from "next/link";
-import { LayersIcon } from "lucide-react";
 import type { Column } from "@/lib/colosseum/column";
 import { timeAgo } from "@/lib/utils";
 import ScreenShotPreview from "./screenshot-preview";
@@ -60,12 +59,15 @@ const ColumnComponent = memo(function ColumnComponent({
 
   const thumbnail =
     column.type === "channel" ? (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-1 p-3 text-center">
-        <LayersIcon className="size-6 text-muted-foreground" />
-        <span className="max-w-full truncate text-sm font-medium">
+      <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center">
+        <span className="max-w-full font-serif text-lg font-medium">
           {column.linked_channel?.title ?? "Channel"}
         </span>
-        <span className="text-caption">{column.linked_channel?.count ?? 0} blocks</span>
+        {column.linked_channel?.description ? (
+          <p className="line-clamp-4 break-words text-sm text-muted-foreground">
+            {column.linked_channel.description}
+          </p>
+        ) : null}
       </div>
     ) : column.type === "text" ? (
       <p className="text-sm line-clamp-[10] p-2">{column.text}</p>
@@ -102,8 +104,8 @@ const ColumnComponent = memo(function ColumnComponent({
         <div className="flex min-w-0 items-center gap-2">
           <div className="size-10 shrink-0 overflow-hidden rounded-md border">
             {column.type === "channel" ? (
-              <div className="grid size-full place-items-center text-muted-foreground">
-                <LayersIcon className="size-4" />
+              <div className="grid size-full place-items-center bg-muted text-xs font-medium text-muted-foreground">
+                {(column.linked_channel?.title ?? "Ch").slice(0, 2).toUpperCase()}
               </div>
             ) : (
               thumbnail

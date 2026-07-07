@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { channel, column, userProfile } from "@/lib/db/schema";
 
 import { toColumn, type Column } from "./column";
+import { getScreenshotsForUrls, type ColumnScreenshot } from "./screenshot-data";
 
 // Feed page size, shared by the page, the load-more action, and the has-more
 // check (a full page returned ⇒ there may be more).
@@ -29,6 +30,9 @@ export type ActivityItem = {
   // The block itself, for a `block` item — so the feed can render its preview
   // as the focal point (image, screenshot, or text) rather than just naming it.
   column?: Column;
+  // Cached website screenshot for a `url` block, so its modal shows the capture
+  // the way the channel view does.
+  screenshot?: ColumnScreenshot;
   // user (join) only — the avatar shown as the focal point.
   avatarUrl?: string;
 };
@@ -93,6 +97,12 @@ export async function getActivityFeed(
       .limit(limit),
   ]);
 
+  // Cached screenshots for the url blocks, so their modals show the capture.
+  const urls = blocks.filter((b) => b.col.type === "url" && b.col.url).map((b) => b.col.url!);
+  const shots = urls.length
+    ? await getScreenshotsForUrls(urls)
+    : new Map<string, ColumnScreenshot>();
+
   const items: ActivityItem[] = [
     ...blocks.map(({ col, handle, channelTitle }) => ({
       kind: "block" as const,
@@ -102,6 +112,7 @@ export async function getActivityFeed(
       channelTitle,
       label: blockLabel(col),
       column: toColumn(col),
+      screenshot: col.type === "url" && col.url ? shots.get(col.url) : undefined,
     })),
     ...channels.map((c) => ({
       kind: "channel" as const,

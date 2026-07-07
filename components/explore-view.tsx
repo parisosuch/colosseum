@@ -7,6 +7,11 @@ import PageHeader from "@/components/page-header";
 import ColumnPreview from "@/components/column-preview";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ExploreLoadMore } from "@/components/explore-load-more";
+import { FeedBlockModal } from "@/components/feed-block-modal";
+
+// The focal card: a large square framing the block/channel/avatar.
+const FOCAL_CARD =
+  "aspect-square w-full overflow-hidden rounded-lg border bg-card transition-colors group-hover:border-foreground/30";
 
 // Stable, unique key for a feed item (used by the initial list and the
 // appended load-more pages).
@@ -91,12 +96,23 @@ export function ActivityRow({ item }: { item: ActivityItem }) {
         </p>
         <p className="text-caption">{timeAgo(new Date(item.at))}</p>
       </div>
-      {/* The block / channel / profile is the focal point: large, centered. */}
-      <Link href={focalHref} aria-label={focalAria} className="group block w-full">
-        <div className="aspect-square w-full overflow-hidden rounded-lg border bg-card transition-colors group-hover:border-foreground/30">
-          {focal}
-        </div>
-      </Link>
+      {/* The block / channel / profile is the focal point: large, centered.
+          A block opens the shared modal (like the channel view); a channel or
+          member navigates to its page. */}
+      {item.kind === "block" ? (
+        <FeedBlockModal
+          column={item.column!}
+          handle={item.handle}
+          screenshot={item.screenshot}
+          aria={focalAria}
+        >
+          <div className={FOCAL_CARD}>{focal}</div>
+        </FeedBlockModal>
+      ) : (
+        <Link href={focalHref} aria-label={focalAria} className="group block w-full">
+          <div className={FOCAL_CARD}>{focal}</div>
+        </Link>
+      )}
     </div>
   );
 }

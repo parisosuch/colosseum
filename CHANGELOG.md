@@ -12,6 +12,8 @@ release.
 
 - A search box on the profile page to filter channels by title or description,
   in both grid and list views.
+- Rich link previews (Open Graph / Twitter card) for shared public channel URLs,
+  showing the channel name, description, and owner.
 
 ## [1.1.1] - 2026-07-06
 

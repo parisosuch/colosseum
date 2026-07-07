@@ -1,13 +1,24 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import ChannelBoard from "@/components/channel-board";
 import { getChannel } from "@/lib/colosseum/channel";
+import { channelPreviewMeta } from "@/lib/colosseum/channel-meta";
 import { getChannelColumnCount, getChannelColumns } from "@/lib/colosseum/column";
 import { getSessionUser } from "@/lib/auth";
 
 type ChannelPageParams = {
   params: Promise<{ handle: string; channel_id: string }>;
 };
+
+// Rich link preview for a shared channel URL. Public channels only; the helper
+// returns generic metadata for private/missing ones so nothing leaks.
+export async function generateMetadata({ params }: ChannelPageParams): Promise<Metadata> {
+  const { handle, channel_id } = await params;
+  const id = parseInt(channel_id, 10);
+  const channel = Number.isNaN(id) ? null : await getChannel(id);
+  return channelPreviewMeta(channel, handle);
+}
 
 export default async function ChannelPage({ params }: ChannelPageParams) {
   const { handle, channel_id } = await params;

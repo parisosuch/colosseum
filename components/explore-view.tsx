@@ -1,11 +1,18 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 
-import type { ActivityItem } from "@/lib/colosseum/activity";
+import { ACTIVITY_PAGE, type ActivityItem } from "@/lib/colosseum/activity";
 import { timeAgo } from "@/lib/utils";
 import PageHeader from "@/components/page-header";
 import ColumnPreview from "@/components/column-preview";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { ExploreLoadMore } from "@/components/explore-load-more";
+
+// Stable, unique key for a feed item (used by the initial list and the
+// appended load-more pages).
+export function activityKey(item: ActivityItem): string {
+  return `${item.kind}-${item.handle}-${item.column?.id ?? item.channelId ?? ""}`;
+}
 
 // The focal card for a "created a channel" item: the channel's title and
 // description, shown the way a channel normally is (title heading + muted blurb).
@@ -35,7 +42,7 @@ function UserFocal({ handle, avatarUrl }: { handle: string; avatarUrl?: string }
 // Sync on purpose: an async component here renders through an async boundary,
 // and flex `gap` won't apply between such siblings. The async work (the URL
 // screenshot fetch) lives in the nested ColumnPreview, which is fine.
-function ActivityRow({ item }: { item: ActivityItem }) {
+export function ActivityRow({ item }: { item: ActivityItem }) {
   const userHref = `/${item.handle}`;
   const channelHref = `/${item.handle}/${item.channelId}`;
 
@@ -108,14 +115,16 @@ export default function ExploreView({ activity }: { activity: ActivityItem[] }) 
         <p className="text-muted-foreground">No activity yet.</p>
       ) : (
         // gap on the flex container spaces the items reliably (margins on the
-        // children don't in a centered column).
+        // children don't in a centered column). Load-more appends its pages as
+        // further siblings so they share the same spacing.
         <div className="flex flex-col items-center gap-16">
           {activity.map((item) => (
-            <ActivityRow
-              key={`${item.kind}-${item.handle}-${item.column?.id ?? item.channelId ?? ""}`}
-              item={item}
-            />
+            <ActivityRow key={activityKey(item)} item={item} />
           ))}
+          <ExploreLoadMore
+            initialCursor={activity[activity.length - 1].at}
+            initialHasMore={activity.length >= ACTIVITY_PAGE}
+          />
         </div>
       )}
     </div>

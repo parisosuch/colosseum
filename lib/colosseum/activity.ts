@@ -1,11 +1,15 @@
 import "server-only";
 
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, lt } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { channel, column, userProfile } from "@/lib/db/schema";
 
 import { toColumn, type Column } from "./column";
+
+// Feed page size, shared by the page, the load-more action, and the has-more
+// check (a full page returned ⇒ there may be more).
+export const ACTIVITY_PAGE = 24;
 
 // The Explore feed: recent public activity across the whole network. Colosseum
 // is invite-only, so every member is connected — the network is everyone, and
@@ -46,15 +50,21 @@ export function blockLabel(b: {
 }
 
 // Recent public blocks, channels, and new members, merged newest-first. Capped
-// queries, then merge + slice in memory.
-export async function getActivityFeed(limit = 24): Promise<ActivityItem[]> {
+// queries (indexed on created_at), then merge + slice in memory. `before` is a
+// cursor — the `at` of the last item seen — so each source returns only older
+// rows for the next page.
+export async function getActivityFeed(
+  limit = ACTIVITY_PAGE,
+  before?: string,
+): Promise<ActivityItem[]> {
+  const cursor = before ? new Date(before) : null;
   const [blocks, channels, joins] = await Promise.all([
     db
       .select({ col: column, handle: userProfile.handle, channelTitle: channel.title })
       .from(column)
       .innerJoin(channel, eq(channel.id, column.channel_id))
       .innerJoin(userProfile, eq(userProfile.user_id, column.created_by))
-      .where(eq(channel.private, false))
+      .where(and(eq(channel.private, false), cursor ? lt(column.created_at, cursor) : undefined))
       .orderBy(desc(column.created_at))
       .limit(limit),
     db
@@ -67,7 +77,7 @@ export async function getActivityFeed(limit = 24): Promise<ActivityItem[]> {
       })
       .from(channel)
       .innerJoin(userProfile, eq(userProfile.user_id, channel.owner_id))
-      .where(eq(channel.private, false))
+      .where(and(eq(channel.private, false), cursor ? lt(channel.created_at, cursor) : undefined))
       .orderBy(desc(channel.created_at))
       .limit(limit),
     // A member "joins" the network when they get a handle (onboard).
@@ -78,6 +88,7 @@ export async function getActivityFeed(limit = 24): Promise<ActivityItem[]> {
         avatar: userProfile.avatar_url,
       })
       .from(userProfile)
+      .where(cursor ? lt(userProfile.created_at, cursor) : undefined)
       .orderBy(desc(userProfile.created_at))
       .limit(limit),
   ]);

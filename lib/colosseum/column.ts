@@ -20,7 +20,7 @@ export type Column = {
 };
 
 type ColumnRow = typeof column.$inferSelect;
-function toColumn(row: ColumnRow): Column {
+export function toColumn(row: ColumnRow): Column {
   return {
     id: row.id,
     created_at: row.created_at.toISOString(),

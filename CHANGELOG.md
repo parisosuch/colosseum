@@ -8,6 +8,11 @@ release.
 
 ## [Unreleased]
 
+### Added
+
+- A search box on the profile page to filter channels by title or description,
+  in both grid and list views.
+
 ## [1.1.1] - 2026-07-06
 
 ### Fixed

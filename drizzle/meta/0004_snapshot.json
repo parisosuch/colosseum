@@ -1,5 +1,5 @@
 {
-  "id": "d6938b46-6326-4d65-9483-8a215cba3a88",
+  "id": "ee6f23a3-d81d-4c86-aefc-83285ddfcf9e",
   "prevId": "545916f0-f28d-465c-be70-91e0bf6df102",
   "version": "7",
   "dialect": "postgresql",
@@ -302,7 +302,23 @@
           "default": "'{}'"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "channel_created_at_idx": {
+          "name": "channel_created_at_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "channel_owner_id_user_id_fk": {
           "name": "channel_owner_id_user_id_fk",
@@ -396,12 +412,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "linked_channel_id": {
-          "name": "linked_channel_id",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
-        },
         "tags": {
           "name": "tags",
           "type": "text[]",
@@ -410,7 +420,23 @@
           "default": "'{}'"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "column_created_at_idx": {
+          "name": "column_created_at_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "column_created_by_user_id_fk": {
           "name": "column_created_by_user_id_fk",
@@ -426,15 +452,6 @@
           "tableFrom": "column",
           "tableTo": "channel",
           "columnsFrom": ["channel_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "column_linked_channel_id_channel_id_fk": {
-          "name": "column_linked_channel_id_channel_id_fk",
-          "tableFrom": "column",
-          "tableTo": "channel",
-          "columnsFrom": ["linked_channel_id"],
           "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
@@ -901,7 +918,23 @@
           "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "user_profile_created_at_idx": {
+          "name": "user_profile_created_at_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "user_profile_user_id_user_id_fk": {
           "name": "user_profile_user_id_user_id_fk",

@@ -55,8 +55,6 @@ export default async function Home() {
     );
   }
 
-  // get the user handle and redirect to the user's profile
-
   const userProfile = await getUserProfile(user.id);
 
   // a freshly signed-up user has no profile yet — send them to onboarding
@@ -64,5 +62,7 @@ export default async function Home() {
     redirect("/auth/onboarding");
   }
 
-  redirect(`/${userProfile.handle}`);
+  // `/` is the full-bleed hero landing (signed-out); a signed-in user goes to
+  // Explore, which lives on its own route so it renders inside the app chrome.
+  redirect("/explore");
 }

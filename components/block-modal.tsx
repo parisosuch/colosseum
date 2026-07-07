@@ -3,7 +3,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, GlobeIcon, LinkIcon } from "lucide-react";
+import { ChevronLeft, ChevronRight, GlobeIcon, LayersIcon, LinkIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import type { Column } from "@/lib/colosseum/column";
@@ -20,11 +20,12 @@ import type { PickableChannel } from "@/components/add-block-drawer";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  CommandDialog,
+  CommandEmpty,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import TagInput from "@/components/tag-input";
@@ -224,6 +225,7 @@ function BlockModalBody({
 
   // Channels the block can move to: the owner's, minus the one it's already in.
   const moveTargets = channels.filter((c) => c.id !== column.channel_id);
+  const [moveOpen, setMoveOpen] = useState(false);
   const [moving, setMoving] = useState(false);
 
   const handleMove = async (targetChannelId: number) => {
@@ -231,6 +233,7 @@ function BlockModalBody({
     setMoving(true);
     try {
       await moveColumnAction(column.id, targetChannelId);
+      setMoveOpen(false);
       // The block no longer belongs to this channel: drop it, which clears the
       // open id in the parent and closes the modal (same path as delete).
       setColumns((cols) => cols.filter((c) => c.id !== column.id));
@@ -383,30 +386,45 @@ function BlockModalBody({
               </Button>
             ) : null}
             {isOwner && moveTargets.length > 0 ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" disabled={moving}>
-                    Move
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="max-h-[50dvh] overflow-y-auto">
-                  {moveTargets.map((c) => (
-                    <DropdownMenuItem
-                      key={c.id}
-                      disabled={moving}
-                      onSelect={() => handleMove(c.id)}
-                      className="gap-2"
-                    >
-                      <span className="truncate">{c.title}</span>
-                      {c.private ? (
-                        <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-                          private
-                        </span>
-                      ) : null}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={moving}
+                  onClick={() => setMoveOpen(true)}
+                >
+                  Move
+                </Button>
+                {/* Searchable picker so it scales past a handful of channels. */}
+                <CommandDialog
+                  open={moveOpen}
+                  onOpenChange={setMoveOpen}
+                  title="Move to channel"
+                  description="Search your channels and move this block to one of them."
+                >
+                  <CommandInput placeholder="Search channels…" />
+                  <CommandList>
+                    <CommandEmpty>No channels found.</CommandEmpty>
+                    {moveTargets.map((c) => (
+                      <CommandItem
+                        key={c.id}
+                        value={`channel-${c.id}`}
+                        keywords={[c.title]}
+                        disabled={moving}
+                        onSelect={() => handleMove(c.id)}
+                      >
+                        <LayersIcon />
+                        <span className="truncate">{c.title}</span>
+                        {c.private ? (
+                          <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                            private
+                          </span>
+                        ) : null}
+                      </CommandItem>
+                    ))}
+                  </CommandList>
+                </CommandDialog>
+              </>
             ) : null}
             {isOwner ? (
               <Button

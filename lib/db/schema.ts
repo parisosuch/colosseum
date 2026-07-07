@@ -135,9 +135,12 @@ export const column = pgTable(
       .references(() => channel.id, { onDelete: "cascade" }),
     // Set only for `channel` columns: the channel this column links to. Cascades,
     // so the column disappears if the linked channel is deleted.
-    linked_channel_id: bigint("linked_channel_id", { mode: "number" }).references(() => channel.id, {
-      onDelete: "cascade",
-    }),
+    linked_channel_id: bigint("linked_channel_id", { mode: "number" }).references(
+      () => channel.id,
+      {
+        onDelete: "cascade",
+      },
+    ),
     tags: text("tags").array().notNull().default([]),
   },
   (t) => [

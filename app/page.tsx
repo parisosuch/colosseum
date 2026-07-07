@@ -8,9 +8,7 @@ import { getSessionUser } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { inviteRequired } from "@/lib/colosseum/invite";
 import { getUserProfile } from "@/lib/colosseum/user";
-import { getActivityFeed } from "@/lib/colosseum/activity";
 import { signupsDisabled } from "@/lib/colosseum/config";
-import ExploreView from "@/components/explore-view";
 
 export default async function Home() {
   const user = await getSessionUser();
@@ -64,8 +62,7 @@ export default async function Home() {
     redirect("/auth/onboarding");
   }
 
-  // Home is the explore page: a feed of recent public activity from across the
-  // (invite-connected) network.
-  const activity = await getActivityFeed();
-  return <ExploreView activity={activity} />;
+  // `/` is the full-bleed hero landing (signed-out); a signed-in user goes to
+  // Explore, which lives on its own route so it renders inside the app chrome.
+  redirect("/explore");
 }

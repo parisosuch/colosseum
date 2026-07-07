@@ -14,6 +14,8 @@ release.
   in both grid and list views.
 - Rich link previews (Open Graph / Twitter card) for shared public channel URLs,
   showing the channel name, description, and owner.
+- Move a block to a different channel from the block modal, keeping its title,
+  description, and tags.
 
 ## [1.1.1] - 2026-07-06
 

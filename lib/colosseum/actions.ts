@@ -20,6 +20,7 @@ import {
   deleteColumn,
   getChannelColumns,
   getColumn,
+  moveColumn,
   searchUserColumns,
   updateColumnDescription,
   updateColumnMeta,
@@ -221,6 +222,16 @@ export async function deleteColumnAction(columnId: number): Promise<void> {
   const userId = await requireUserId();
   await requireOwnedBlock(columnId, userId);
   await deleteColumn(columnId);
+}
+
+// Move a block to another channel. The caller must own both the block's current
+// channel and the target — this connection bypasses RLS, so both checks live
+// here. requireOwnedBlock already authorizes the current side.
+export async function moveColumnAction(columnId: number, targetChannelId: number): Promise<void> {
+  const userId = await requireUserId();
+  await requireOwnedBlock(columnId, userId);
+  await requireOwnedChannel(targetChannelId, userId);
+  await moveColumn(columnId, targetChannelId);
 }
 
 // ---------------------------------------------------------------------------

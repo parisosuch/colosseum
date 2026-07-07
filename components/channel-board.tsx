@@ -3,6 +3,7 @@
 import PageHeader from "@/components/page-header";
 import ColumnComponent, { LIST_GRID } from "@/components/column";
 import BlockModal from "@/components/block-modal";
+import type { PickableChannel } from "@/components/add-block-drawer";
 import ManageChannelButton from "@/components/manage-channel-button";
 import ExportChannelButton from "@/components/export-channel-button";
 import ColumnInput from "@/components/column-input";
@@ -65,6 +66,9 @@ type ChannelBoardProps = {
   // Created-on formatted on the server, so the absolute date can't shift with
   // the client timezone and cause a hydration mismatch.
   createdOnLabel: string;
+  // The owner's channels, for the block modal's "Move" picker. Empty for
+  // non-owners (who can't move blocks).
+  channels: PickableChannel[];
 };
 
 export default function ChannelBoard({
@@ -75,6 +79,7 @@ export default function ChannelBoard({
   initialCount,
   newestAt: initialNewestAt,
   createdOnLabel,
+  channels,
 }: ChannelBoardProps) {
   const [channel, setChannel] = useState<Channel>(initialChannel);
   const [columns, setColumns] = useState<Column[]>([]);
@@ -518,6 +523,7 @@ export default function ChannelBoard({
         isOwner={isOwner}
         handle={handle}
         setColumns={setColumns}
+        channels={channels}
         screenshot={openColumn?.url ? screenshots.get(openColumn.url) : undefined}
         onPrev={() => navigate(-1)}
         onNext={() => navigate(1)}

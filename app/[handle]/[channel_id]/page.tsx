@@ -49,10 +49,11 @@ export default async function ChannelPage({ params }: ChannelPageParams) {
     year: "numeric",
   });
 
-  // The owner's channels back the block modal's "Move" picker. Only owners can
-  // move, so skip the query for everyone else.
-  const ownerChannels = isOwner
-    ? (await getUserChannels(user!.id)).map((c) => ({
+  // The logged-in user's own channels back two pickers: the block modal's
+  // "Move" (owner only) and "Add to channel" (any viewer can nest this channel
+  // into one of theirs). Skip the query when signed out.
+  const myChannels = user
+    ? (await getUserChannels(user.id)).map((c) => ({
         id: c.id,
         title: c.title,
         private: c.private,
@@ -68,7 +69,7 @@ export default async function ChannelPage({ params }: ChannelPageParams) {
       initialCount={totalCount}
       newestAt={newest[0]?.created_at ?? null}
       createdOnLabel={createdOnLabel}
-      channels={ownerChannels}
+      channels={myChannels}
     />
   );
 }

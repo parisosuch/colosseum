@@ -121,7 +121,7 @@ export const column = pgTable(
   {
     id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    type: text("type", { enum: ["url", "text", "image"] }).notNull(),
+    type: text("type", { enum: ["url", "text", "image", "channel"] }).notNull(),
     title: text("title"),
     description: text("description"),
     url: text("url"),
@@ -133,6 +133,14 @@ export const column = pgTable(
     channel_id: bigint("channel_id", { mode: "number" })
       .notNull()
       .references(() => channel.id, { onDelete: "cascade" }),
+    // Set only for `channel` columns: the channel this column links to. Cascades,
+    // so the column disappears if the linked channel is deleted.
+    linked_channel_id: bigint("linked_channel_id", { mode: "number" }).references(
+      () => channel.id,
+      {
+        onDelete: "cascade",
+      },
+    ),
     tags: text("tags").array().notNull().default([]),
   },
   (t) => [

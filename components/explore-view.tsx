@@ -44,62 +44,93 @@ function UserFocal({ handle, avatarUrl }: { handle: string; avatarUrl?: string }
   );
 }
 
+// A hover-underlined link and a muted connective word, for the attribution line.
+const A = ({ href, children }: { href: string; children: ReactNode }) => (
+  <Link href={href} className="hover:underline">
+    {children}
+  </Link>
+);
+const Muted = ({ children }: { children: ReactNode }) => (
+  <span className="font-normal text-muted-foreground">{children}</span>
+);
+
 // Sync on purpose: an async component here renders through an async boundary,
 // and flex `gap` won't apply between such siblings. The async work (the URL
 // screenshot fetch) lives in the nested ColumnPreview, which is fine.
 export function ActivityRow({ item }: { item: ActivityItem }) {
-  const userHref = `/${item.handle}`;
-  const channelHref = `/${item.handle}/${item.channelId}`;
+  const isChannelColumn = item.kind === "block" && item.column?.type === "channel";
+  const linked = item.column?.linked_channel;
 
-  // Per-kind: the verb, where the focal preview links, and what it shows.
-  let verb: string;
+  const userHref = `/${item.handle}`;
+  const hostHref = `/${item.handle}/${item.channelId}`; // the channel it was added to / created
+  const linkedHref = linked ? `/${linked.handle}/${item.column!.linked_channel_id}` : hostHref;
+
+  // Focal element, where it links, and its aria.
+  let focal: ReactNode;
   let focalHref: string;
   let focalAria: string;
-  let focal: ReactNode;
   if (item.kind === "user") {
-    verb = "joined";
+    focal = <UserFocal handle={item.handle} avatarUrl={item.avatarUrl} />;
     focalHref = userHref;
     focalAria = `@${item.handle}'s profile`;
-    focal = <UserFocal handle={item.handle} avatarUrl={item.avatarUrl} />;
+  } else if (isChannelColumn) {
+    focal = <ChannelFocal title={linked?.title ?? "Channel"} description={linked?.description} />;
+    focalHref = linkedHref;
+    focalAria = `Channel ${linked?.title ?? ""}`;
   } else if (item.kind === "block") {
-    verb = "added to";
+    focal = <ColumnPreview column={item.column!} />;
     focalHref = `/${item.handle}/${item.channelId}/${item.column!.id}`;
     focalAria = `${item.label} in ${item.channelTitle}`;
-    focal = <ColumnPreview column={item.column!} />;
   } else {
-    verb = "created";
-    focalHref = channelHref;
-    focalAria = `Channel ${item.channelTitle}`;
     focal = <ChannelFocal title={item.channelTitle!} description={item.channelDescription} />;
+    focalHref = hostHref;
+    focalAria = `Channel ${item.channelTitle}`;
   }
 
-  // Separate links (no single parent anchor — nested <a> is invalid): the
-  // handle goes to the profile, the channel title to the channel, and the
-  // focal preview to the block/channel/profile.
+  // Only a plain block opens the modal; everything else navigates.
+  const opensModal = item.kind === "block" && !isChannelColumn;
+
+  // Attribution, with every named channel/user resolving as its own link.
+  const handleLink = <A href={userHref}>@{item.handle}</A>;
+  let attribution: ReactNode;
+  if (item.kind === "user") {
+    attribution = (
+      <>
+        {handleLink} <Muted>joined</Muted>
+      </>
+    );
+  } else if (isChannelColumn) {
+    attribution = (
+      <>
+        {handleLink} <Muted>connected</Muted>{" "}
+        <A href={linkedHref}>{linked?.title ?? "a channel"}</A> <Muted>to</Muted>{" "}
+        <A href={hostHref}>{item.channelTitle}</A>
+      </>
+    );
+  } else if (item.kind === "block") {
+    attribution = (
+      <>
+        {handleLink} <Muted>added to</Muted> <A href={hostHref}>{item.channelTitle}</A>
+      </>
+    );
+  } else {
+    attribution = (
+      <>
+        {handleLink} <Muted>created</Muted> <A href={hostHref}>{item.channelTitle}</A>
+      </>
+    );
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-4">
       {/* Attribution leads, in the serif section-title style. */}
       <div className="flex flex-col items-center gap-1 text-center">
-        <p className="text-title">
-          <Link href={userHref} className="hover:underline">
-            @{item.handle}
-          </Link>{" "}
-          <span className="font-normal text-muted-foreground">{verb}</span>
-          {item.kind !== "user" ? (
-            <>
-              {" "}
-              <Link href={channelHref} className="hover:underline">
-                {item.channelTitle}
-              </Link>
-            </>
-          ) : null}
-        </p>
+        <p className="text-title">{attribution}</p>
         <p className="text-caption">{timeAgo(new Date(item.at))}</p>
       </div>
-      {/* The block / channel / profile is the focal point: large, centered.
-          A block opens the shared modal (like the channel view); a channel or
-          member navigates to its page. */}
-      {item.kind === "block" ? (
+      {/* The focal point: a plain block opens the shared modal (like the channel
+          view); a channel-column, created channel, or member navigates. */}
+      {opensModal ? (
         <FeedBlockModal
           column={item.column!}
           handle={item.handle}

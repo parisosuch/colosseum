@@ -3,6 +3,7 @@
 import PageHeader from "@/components/page-header";
 import ColumnComponent, { LIST_GRID } from "@/components/column";
 import BlockModal from "@/components/block-modal";
+import AddChannelToChannelButton from "@/components/add-channel-to-channel-button";
 import type { PickableChannel } from "@/components/add-block-drawer";
 import ManageChannelButton from "@/components/manage-channel-button";
 import ExportChannelButton from "@/components/export-channel-button";
@@ -66,8 +67,8 @@ type ChannelBoardProps = {
   // Created-on formatted on the server, so the absolute date can't shift with
   // the client timezone and cause a hydration mismatch.
   createdOnLabel: string;
-  // The owner's channels, for the block modal's "Move" picker. Empty for
-  // non-owners (who can't move blocks).
+  // The viewer's own channels, for the block modal's "Move" picker (owner only)
+  // and the "Add to channel" button (any viewer). Empty when signed out.
   channels: PickableChannel[];
 };
 
@@ -379,6 +380,10 @@ export default function ChannelBoard({
       <div className="flex items-center gap-2">
         {isOwner ? (
           <ManageChannelButton channel={channel} handle={handle} onUpdated={setChannel} />
+        ) : null}
+        {/* Any signed-in viewer can nest a public channel into one of their own. */}
+        {!channel.private ? (
+          <AddChannelToChannelButton channelId={channel.id} channels={channels} />
         ) : null}
         <ExportChannelButton channel={channel} />
         <Button

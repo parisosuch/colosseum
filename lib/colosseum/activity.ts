@@ -5,7 +5,7 @@ import { and, desc, eq, lt } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { channel, column, userProfile } from "@/lib/db/schema";
 
-import { toColumn, type Column } from "./column";
+import { toColumn, withLinkedChannels, type Column } from "./column";
 import { getScreenshotsForUrls, type ColumnScreenshot } from "./screenshot-data";
 
 // Feed page size, shared by the page, the load-more action, and the has-more
@@ -97,21 +97,26 @@ export async function getActivityFeed(
       .limit(limit),
   ]);
 
-  // Cached screenshots for the url blocks, so their modals show the capture.
   const urls = blocks.filter((b) => b.col.type === "url" && b.col.url).map((b) => b.col.url!);
-  const shots = urls.length
-    ? await getScreenshotsForUrls(urls)
-    : new Map<string, ColumnScreenshot>();
+  const [blockColumns, shots] = await Promise.all([
+    // Enrich channel-columns with their linked channel (title/handle/count) so
+    // the feed can render and link them like the channel grid does.
+    withLinkedChannels(blocks.map((b) => toColumn(b.col))),
+    // Cached screenshots for the url blocks, so their modals show the capture.
+    urls.length
+      ? getScreenshotsForUrls(urls)
+      : Promise.resolve(new Map<string, ColumnScreenshot>()),
+  ]);
 
   const items: ActivityItem[] = [
-    ...blocks.map(({ col, handle, channelTitle }) => ({
+    ...blocks.map(({ col, handle, channelTitle }, i) => ({
       kind: "block" as const,
       at: col.created_at.toISOString(),
       handle,
       channelId: col.channel_id,
       channelTitle,
       label: blockLabel(col),
-      column: toColumn(col),
+      column: blockColumns[i],
       screenshot: col.type === "url" && col.url ? shots.get(col.url) : undefined,
     })),
     ...channels.map((c) => ({

@@ -1,6 +1,7 @@
 "use client";
 
 import { memo } from "react";
+import Link from "next/link";
 import type { Column } from "@/lib/colosseum/column";
 import { timeAgo } from "@/lib/utils";
 import ScreenShotPreview from "./screenshot-preview";
@@ -49,8 +50,26 @@ const ColumnComponent = memo(function ColumnComponent({
   // A URL column is still loading until the parent resolves its screenshot.
   const loading = column.type === "url" && screenshot === undefined;
 
+  // A channel column links to another channel; the whole card is a link to it,
+  // not a modal opener. `linked_channel` is resolved by getChannelColumns.
+  const linkedHref =
+    column.type === "channel" && column.linked_channel
+      ? `/${column.linked_channel.handle}/${column.linked_channel_id}`
+      : null;
+
   const thumbnail =
-    column.type === "text" ? (
+    column.type === "channel" ? (
+      <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center">
+        <span className="max-w-full font-serif text-lg font-medium">
+          {column.linked_channel?.title ?? "Channel"}
+        </span>
+        {column.linked_channel?.description ? (
+          <p className="line-clamp-4 break-words text-sm text-muted-foreground">
+            {column.linked_channel.description}
+          </p>
+        ) : null}
+      </div>
+    ) : column.type === "text" ? (
       <p className="text-sm line-clamp-[10] p-2">{column.text}</p>
     ) : column.type === "image" ? (
       <img
@@ -68,24 +87,30 @@ const ColumnComponent = memo(function ColumnComponent({
 
   if (view === "list") {
     // Content column: the domain/path for a link, the text itself for a text
-    // block, the title (or a fallback) for an image.
+    // block, the linked channel's name for a channel, the title for an image.
     const content =
       column.type === "url"
         ? (column.url ?? "").replace(/^https?:\/\//, "")
         : column.type === "text"
           ? (column.text ?? "")
-          : column.title || "Image";
+          : column.type === "channel"
+            ? (column.linked_channel?.title ?? "Channel")
+            : column.title || "Image";
     const title = column.title || urlTitle || "";
 
-    return (
-      <button
-        type="button"
-        aria-label="Open block"
-        onClick={() => onOpen(column.id)}
-        className={`w-full border-b px-2 py-2 text-left hover:bg-muted/50 ${LIST_GRID}`}
-      >
+    const rowClass = `w-full border-b px-2 py-2 text-left hover:bg-muted/50 ${LIST_GRID}`;
+    const rowInner = (
+      <>
         <div className="flex min-w-0 items-center gap-2">
-          <div className="size-10 shrink-0 overflow-hidden rounded-md border">{thumbnail}</div>
+          <div className="size-10 shrink-0 overflow-hidden rounded-md border">
+            {column.type === "channel" ? (
+              <div className="grid size-full place-items-center bg-muted text-xs font-medium text-muted-foreground">
+                {(column.linked_channel?.title ?? "Ch").slice(0, 2).toUpperCase()}
+              </div>
+            ) : (
+              thumbnail
+            )}
+          </div>
           <span className="truncate text-sm">{content}</span>
         </div>
         <span className="truncate text-sm">{title}</span>
@@ -93,26 +118,61 @@ const ColumnComponent = memo(function ColumnComponent({
         <span className="hidden truncate text-caption sm:block">
           {timeAgo(new Date(column.created_at))}
         </span>
+      </>
+    );
+
+    if (column.type === "channel") {
+      return linkedHref ? (
+        <Link href={linkedHref} className={rowClass}>
+          {rowInner}
+        </Link>
+      ) : (
+        <div className={rowClass}>{rowInner}</div>
+      );
+    }
+
+    return (
+      <button
+        type="button"
+        aria-label="Open block"
+        onClick={() => onOpen(column.id)}
+        className={rowClass}
+      >
+        {rowInner}
       </button>
+    );
+  }
+
+  const gridInner = (
+    <div className="group relative w-full">
+      <div className="w-full aspect-square border rounded-lg text-left">{thumbnail}</div>
+      {column.type === "url" ? (
+        // Reserve one caption line even when the URL has no title — otherwise
+        // an untitled block is a line shorter than its siblings (and its own
+        // hover state, which shows the timestamp) and visibly shifts.
+        <p className="group-hover:hidden truncate pt-1 text-caption">{urlTitle || " "}</p>
+      ) : (
+        <p className="pt-1 text-caption opacity-0 group-hover:hidden select-none">placeholder</p>
+      )}
+      <p className="hidden group-hover:block pt-1 text-caption">
+        {timeAgo(new Date(column.created_at))}
+      </p>
+    </div>
+  );
+
+  if (column.type === "channel") {
+    return linkedHref ? (
+      <Link href={linkedHref} className="cv-card block w-full text-left">
+        {gridInner}
+      </Link>
+    ) : (
+      <div className="cv-card w-full text-left">{gridInner}</div>
     );
   }
 
   return (
     <button type="button" onClick={() => onOpen(column.id)} className="cv-card w-full text-left">
-      <div className="group relative w-full">
-        <div className="w-full aspect-square border rounded-lg text-left">{thumbnail}</div>
-        {column.type === "url" ? (
-          // Reserve one caption line even when the URL has no title — otherwise
-          // an untitled block is a line shorter than its siblings (and its own
-          // hover state, which shows the timestamp) and visibly shifts.
-          <p className="group-hover:hidden truncate pt-1 text-caption">{urlTitle || " "}</p>
-        ) : (
-          <p className="pt-1 text-caption opacity-0 group-hover:hidden select-none">placeholder</p>
-        )}
-        <p className="hidden group-hover:block pt-1 text-caption">
-          {timeAgo(new Date(column.created_at))}
-        </p>
-      </div>
+      {gridInner}
     </button>
   );
 });

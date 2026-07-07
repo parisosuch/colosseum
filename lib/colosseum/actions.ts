@@ -17,6 +17,7 @@ import {
 import {
   Column,
   ColumnQuery,
+  addChannelColumn,
   deleteColumn,
   getChannelColumns,
   getColumn,
@@ -232,6 +233,30 @@ export async function moveColumnAction(columnId: number, targetChannelId: number
   await requireOwnedBlock(columnId, userId);
   await requireOwnedChannel(targetChannelId, userId);
   await moveColumn(columnId, targetChannelId);
+}
+
+// Add a channel as a column inside one of the caller's channels (Are.na-style).
+// The caller must own the host; the linked channel must exist and be public
+// (you can't nest a private channel, so nothing private ever leaks through the
+// link). A channel can't be added to itself.
+export async function addChannelColumnAction(
+  linkedChannelId: number,
+  hostChannelId: number,
+): Promise<void> {
+  const userId = await requireUserId();
+  await requireOwnedChannel(hostChannelId, userId);
+  const linked = await getChannel(linkedChannelId);
+  if (!linked || linked.private) {
+    throw new Error("Not found.");
+  }
+  if (linkedChannelId === hostChannelId) {
+    throw new Error("A channel can't be added to itself.");
+  }
+  await addChannelColumn({
+    created_by: userId,
+    channel_id: hostChannelId,
+    linked_channel_id: linkedChannelId,
+  });
 }
 
 // ---------------------------------------------------------------------------

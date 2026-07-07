@@ -1,0 +1,2 @@
+ALTER TABLE "column" ADD COLUMN "linked_channel_id" bigint;--> statement-breakpoint
+ALTER TABLE "column" ADD CONSTRAINT "column_linked_channel_id_channel_id_fk" FOREIGN KEY ("linked_channel_id") REFERENCES "public"."channel"("id") ON DELETE cascade ON UPDATE no action;

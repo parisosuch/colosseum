@@ -18,9 +18,10 @@ export type Column = {
   channel_id: number;
   // Set for `channel` columns: the channel this column links to.
   linked_channel_id?: number;
-  // Resolved display info for a `channel` column's linked channel (title, owner
-  // handle for the link target, block count). Filled by getChannelColumns.
-  linked_channel?: { title: string; handle: string; count: number };
+  // Resolved display info for a `channel` column's linked channel (title,
+  // description, owner handle for the link target, block count). Filled by
+  // getChannelColumns.
+  linked_channel?: { title: string; description?: string; handle: string; count: number };
   tags: string[];
 };
 
@@ -53,7 +54,12 @@ export async function withLinkedChannels(cols: Column[]): Promise<Column[]> {
 
   const [meta, counts] = await Promise.all([
     db
-      .select({ id: channel.id, title: channel.title, handle: userProfile.handle })
+      .select({
+        id: channel.id,
+        title: channel.title,
+        description: channel.description,
+        handle: userProfile.handle,
+      })
       .from(channel)
       .innerJoin(userProfile, eq(userProfile.user_id, channel.owner_id))
       .where(inArray(channel.id, linkedIds)),
@@ -73,7 +79,12 @@ export async function withLinkedChannels(cols: Column[]): Promise<Column[]> {
     if (!m) return c;
     return {
       ...c,
-      linked_channel: { title: m.title, handle: m.handle, count: countById.get(m.id) ?? 0 },
+      linked_channel: {
+        title: m.title,
+        description: m.description ?? undefined,
+        handle: m.handle,
+        count: countById.get(m.id) ?? 0,
+      },
     };
   });
 }

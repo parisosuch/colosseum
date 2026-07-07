@@ -63,9 +63,14 @@ export function ActivityRow({ item }: { item: ActivityItem }) {
     focal = <UserFocal handle={item.handle} avatarUrl={item.avatarUrl} />;
   } else if (item.kind === "block") {
     verb = "added to";
-    focalHref = `/${item.handle}/${item.channelId}/${item.column!.id}`;
     focalAria = `${item.label} in ${item.channelTitle}`;
     focal = <ColumnPreview column={item.column!} />;
+    // A channel-column links straight to the linked channel; every other block
+    // opens the shared modal (so focalHref is only used for the channel-column).
+    focalHref =
+      item.column!.type === "channel" && item.column!.linked_channel
+        ? `/${item.column!.linked_channel.handle}/${item.column!.linked_channel_id}`
+        : `/${item.handle}/${item.channelId}/${item.column!.id}`;
   } else {
     verb = "created";
     focalHref = channelHref;
@@ -96,10 +101,10 @@ export function ActivityRow({ item }: { item: ActivityItem }) {
         </p>
         <p className="text-caption">{timeAgo(new Date(item.at))}</p>
       </div>
-      {/* The block / channel / profile is the focal point: large, centered.
-          A block opens the shared modal (like the channel view); a channel or
-          member navigates to its page. */}
-      {item.kind === "block" ? (
+      {/* The focal point: a normal block opens the shared modal (like the
+          channel view); a channel-column, a created channel, or a member all
+          navigate to their page. */}
+      {item.kind === "block" && item.column!.type !== "channel" ? (
         <FeedBlockModal
           column={item.column!}
           handle={item.handle}

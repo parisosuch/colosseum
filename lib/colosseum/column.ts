@@ -45,7 +45,7 @@ export function toColumn(row: ColumnRow): Column {
 // Resolve display info for `channel` columns: the linked channel's title, its
 // owner's handle (the link target is /handle/id), and its block count. Batched
 // so a board with several channel columns still runs two queries, not 2N.
-async function withLinkedChannels(cols: Column[]): Promise<Column[]> {
+export async function withLinkedChannels(cols: Column[]): Promise<Column[]> {
   const linkedIds = [
     ...new Set(cols.map((c) => c.linked_channel_id).filter((id): id is number => id != null)),
   ];

@@ -69,6 +69,18 @@
     /* App-like: no double-tap-to-zoom (pan/scroll still work). */
     touch-action: manipulation;
   }
+  /* Native <button> defaults to the arrow cursor (only links get a pointer), so
+     buttons and role-based controls read as non-clickable. Restore a pointer on
+     anything interactive; disabled controls keep the default. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="menuitem"],
+  [role="menuitemradio"],
+  [role="option"],
+  [role="tab"],
+  label:has(> input[type="checkbox"], > input[type="radio"]) {
+    cursor: pointer;
+  }
 }
 
 /* Design system: typographic scale + shared text affordances. See DESIGN.md. */

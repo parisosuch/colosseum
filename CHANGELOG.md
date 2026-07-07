@@ -19,6 +19,13 @@ release.
 - Add a public channel as a column inside one of your own channels (Are.na-style
   nesting); the column links straight to that channel.
 
+## [1.1.2] - 2026-07-07
+
+### Fixed
+
+- Buttons and other interactive controls now show a pointer cursor, so they read
+  as clickable.
+
 ## [1.1.1] - 2026-07-06
 
 ### Fixed

@@ -64,8 +64,9 @@ export default async function Home() {
     redirect("/auth/onboarding");
   }
 
-  // Home is the explore page: the friend + friends-of-friends graph, which —
-  // since the app is invite-only — is the whole social network.
-  const { friends, friendsOfFriends } = await getSocialGraph(user.id);
-  return <ExploreView friends={friends} friendsOfFriends={friendsOfFriends} />;
+  // Home is the explore page: since the app is invite-only, every member is
+  // reachable through invites, so this shows the whole network (direct friends
+  // leading).
+  const { friends, everyoneElse } = await getSocialGraph(user.id);
+  return <ExploreView friends={friends} everyoneElse={everyoneElse} />;
 }

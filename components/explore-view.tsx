@@ -32,17 +32,18 @@ function UserGrid({ users }: { users: UserProfile[] }) {
   );
 }
 
-// The explore page (the app's home for signed-in users): the people you're
-// connected to through invites. Colosseum is invite-only, so this friend +
-// friends-of-friends graph is the whole social network.
+// The explore page (the app's home for signed-in users). Colosseum is invite-
+// only, so everyone traces back to the same root through invites — the whole
+// membership is one network. Explore shows everyone, with the people you
+// invited (or who invited you) leading as "Friends".
 export default function ExploreView({
   friends,
-  friendsOfFriends,
+  everyoneElse,
 }: {
   friends: UserProfile[];
-  friendsOfFriends: UserProfile[];
+  everyoneElse: UserProfile[];
 }) {
-  const empty = friends.length === 0 && friendsOfFriends.length === 0;
+  const empty = friends.length === 0 && everyoneElse.length === 0;
 
   return (
     <div className="w-full flex-1 min-h-0 overflow-y-auto p-6 sm:p-12 space-y-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -50,14 +51,12 @@ export default function ExploreView({
       <div className="space-y-1">
         <h1 className="text-display">Explore</h1>
         <p className="text-muted-foreground">
-          The people you&apos;re connected to through invites.
+          Everyone on Colosseum — you&apos;re all connected through invites.
         </p>
       </div>
 
       {empty ? (
-        <p className="text-muted-foreground">
-          Your network is empty for now. Invite people from Settings and they&apos;ll show up here.
-        </p>
+        <p className="text-muted-foreground">No one else is here yet.</p>
       ) : (
         <>
           {friends.length > 0 ? (
@@ -66,10 +65,10 @@ export default function ExploreView({
               <UserGrid users={friends} />
             </section>
           ) : null}
-          {friendsOfFriends.length > 0 ? (
+          {everyoneElse.length > 0 ? (
             <section className="space-y-3">
-              <h2 className="text-label">Friends of friends</h2>
-              <UserGrid users={friendsOfFriends} />
+              <h2 className="text-label">{friends.length > 0 ? "Everyone else" : "Everyone"}</h2>
+              <UserGrid users={everyoneElse} />
             </section>
           ) : null}
         </>

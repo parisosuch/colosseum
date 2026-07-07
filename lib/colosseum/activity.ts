@@ -13,15 +13,18 @@ import { toColumn, type Column } from "./column";
 // filtered out, so nothing private ever surfaces here.
 
 export type ActivityItem = {
-  kind: "block" | "channel";
+  kind: "block" | "channel" | "user";
   at: string;
   handle: string;
-  channelId: number;
-  channelTitle: string;
+  // block / channel only.
+  channelId?: number;
+  channelTitle?: string;
   label?: string;
   // The block itself, for a `block` item — so the feed can render its preview
   // as the focal point (image, screenshot, or text) rather than just naming it.
   column?: Column;
+  // user (join) only — the avatar shown as the focal point.
+  avatarUrl?: string;
 };
 
 // A short human label for a block, used for the feed caption / aria. Pure so
@@ -40,10 +43,10 @@ export function blockLabel(b: {
   return "a block";
 }
 
-// Recent public blocks and channels, merged newest-first. Two capped queries,
-// then merge + slice in memory.
+// Recent public blocks, channels, and new members, merged newest-first. Capped
+// queries, then merge + slice in memory.
 export async function getActivityFeed(limit = 24): Promise<ActivityItem[]> {
-  const [blocks, channels] = await Promise.all([
+  const [blocks, channels, joins] = await Promise.all([
     db
       .select({ col: column, handle: userProfile.handle, channelTitle: channel.title })
       .from(column)
@@ -64,6 +67,16 @@ export async function getActivityFeed(limit = 24): Promise<ActivityItem[]> {
       .where(eq(channel.private, false))
       .orderBy(desc(channel.created_at))
       .limit(limit),
+    // A member "joins" the network when they get a handle (onboard).
+    db
+      .select({
+        at: userProfile.created_at,
+        handle: userProfile.handle,
+        avatar: userProfile.avatar_url,
+      })
+      .from(userProfile)
+      .orderBy(desc(userProfile.created_at))
+      .limit(limit),
   ]);
 
   const items: ActivityItem[] = [
@@ -82,6 +95,12 @@ export async function getActivityFeed(limit = 24): Promise<ActivityItem[]> {
       handle: c.handle,
       channelId: c.channelId,
       channelTitle: c.channelTitle,
+    })),
+    ...joins.map((u) => ({
+      kind: "user" as const,
+      at: u.at.toISOString(),
+      handle: u.handle,
+      avatarUrl: u.avatar ?? undefined,
     })),
   ];
 

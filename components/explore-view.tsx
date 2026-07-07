@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { LayersIcon } from "lucide-react";
 
@@ -5,6 +6,7 @@ import type { ActivityItem } from "@/lib/colosseum/activity";
 import { timeAgo } from "@/lib/utils";
 import PageHeader from "@/components/page-header";
 import ColumnPreview from "@/components/column-preview";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 // A big centered channel card, for a "created a channel" item.
 function ChannelFocal({ title }: { title: string }) {
@@ -17,21 +19,50 @@ function ChannelFocal({ title }: { title: string }) {
   );
 }
 
+// A big centered avatar, for a "user joined" item.
+function UserFocal({ handle, avatarUrl }: { handle: string; avatarUrl?: string }) {
+  return (
+    <div className="flex h-full w-full items-center justify-center p-6">
+      <Avatar className="size-40">
+        <AvatarImage src={avatarUrl} alt={`@${handle}`} />
+        <AvatarFallback className="text-4xl">{handle.slice(0, 2).toUpperCase()}</AvatarFallback>
+      </Avatar>
+    </div>
+  );
+}
+
 // Sync on purpose: an async component here renders through an async boundary,
 // and flex `gap` won't apply between such siblings. The async work (the URL
 // screenshot fetch) lives in the nested ColumnPreview, which is fine.
 function ActivityRow({ item }: { item: ActivityItem }) {
-  const isBlock = item.kind === "block";
   const userHref = `/${item.handle}`;
   const channelHref = `/${item.handle}/${item.channelId}`;
-  const focalHref = isBlock ? `/${item.handle}/${item.channelId}/${item.column!.id}` : channelHref;
-  const focalAria = isBlock
-    ? `${item.label} in ${item.channelTitle}`
-    : `Channel ${item.channelTitle}`;
+
+  // Per-kind: the verb, where the focal preview links, and what it shows.
+  let verb: string;
+  let focalHref: string;
+  let focalAria: string;
+  let focal: ReactNode;
+  if (item.kind === "user") {
+    verb = "joined";
+    focalHref = userHref;
+    focalAria = `@${item.handle}'s profile`;
+    focal = <UserFocal handle={item.handle} avatarUrl={item.avatarUrl} />;
+  } else if (item.kind === "block") {
+    verb = "added to";
+    focalHref = `/${item.handle}/${item.channelId}/${item.column!.id}`;
+    focalAria = `${item.label} in ${item.channelTitle}`;
+    focal = <ColumnPreview column={item.column!} />;
+  } else {
+    verb = "created";
+    focalHref = channelHref;
+    focalAria = `Channel ${item.channelTitle}`;
+    focal = <ChannelFocal title={item.channelTitle!} />;
+  }
 
   // Separate links (no single parent anchor — nested <a> is invalid): the
   // handle goes to the profile, the channel title to the channel, and the
-  // focal preview to the block (or channel).
+  // focal preview to the block/channel/profile.
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-4">
       {/* Attribution leads, in the serif section-title style. */}
@@ -40,23 +71,22 @@ function ActivityRow({ item }: { item: ActivityItem }) {
           <Link href={userHref} className="hover:underline">
             @{item.handle}
           </Link>{" "}
-          <span className="font-normal text-muted-foreground">
-            {isBlock ? "added to" : "created"}
-          </span>{" "}
-          <Link href={channelHref} className="hover:underline">
-            {item.channelTitle}
-          </Link>
+          <span className="font-normal text-muted-foreground">{verb}</span>
+          {item.kind !== "user" ? (
+            <>
+              {" "}
+              <Link href={channelHref} className="hover:underline">
+                {item.channelTitle}
+              </Link>
+            </>
+          ) : null}
         </p>
         <p className="text-caption">{timeAgo(new Date(item.at))}</p>
       </div>
-      {/* The block/channel itself is the focal point: large, centered. */}
+      {/* The block / channel / profile is the focal point: large, centered. */}
       <Link href={focalHref} aria-label={focalAria} className="group block w-full">
         <div className="aspect-square w-full overflow-hidden rounded-lg border bg-card transition-colors group-hover:border-foreground/30">
-          {isBlock ? (
-            <ColumnPreview column={item.column!} />
-          ) : (
-            <ChannelFocal title={item.channelTitle} />
-          )}
+          {focal}
         </div>
       </Link>
     </div>
@@ -81,7 +111,7 @@ export default function ExploreView({ activity }: { activity: ActivityItem[] }) 
         <div className="flex flex-col items-center gap-16">
           {activity.map((item) => (
             <ActivityRow
-              key={`${item.kind}-${item.channelId}-${item.column?.id ?? "c"}`}
+              key={`${item.kind}-${item.handle}-${item.column?.id ?? item.channelId ?? ""}`}
               item={item}
             />
           ))}

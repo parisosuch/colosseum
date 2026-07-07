@@ -5,6 +5,8 @@ import { desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { channel, column, userProfile } from "@/lib/db/schema";
 
+import { toColumn, type Column } from "./column";
+
 // The Explore feed: recent public activity across the whole network. Colosseum
 // is invite-only, so every member is connected — the network is everyone, and
 // this is what they've been up to. Private channels (and their blocks) are
@@ -16,11 +18,14 @@ export type ActivityItem = {
   handle: string;
   channelId: number;
   channelTitle: string;
-  blockId?: number;
   label?: string;
+  // The block itself, for a `block` item — so the feed can render its preview
+  // as the focal point (image, screenshot, or text) rather than just naming it.
+  column?: Column;
 };
 
-// A short human label for a block in the feed. Pure so it's unit-testable.
+// A short human label for a block, used for the feed caption / aria. Pure so
+// it's unit-testable.
 export function blockLabel(b: {
   type: string;
   title: string | null;
@@ -37,20 +42,10 @@ export function blockLabel(b: {
 
 // Recent public blocks and channels, merged newest-first. Two capped queries,
 // then merge + slice in memory.
-export async function getActivityFeed(limit = 40): Promise<ActivityItem[]> {
+export async function getActivityFeed(limit = 24): Promise<ActivityItem[]> {
   const [blocks, channels] = await Promise.all([
     db
-      .select({
-        at: column.created_at,
-        handle: userProfile.handle,
-        channelId: channel.id,
-        channelTitle: channel.title,
-        blockId: column.id,
-        type: column.type,
-        title: column.title,
-        url: column.url,
-        text: column.text,
-      })
+      .select({ col: column, handle: userProfile.handle, channelTitle: channel.title })
       .from(column)
       .innerJoin(channel, eq(channel.id, column.channel_id))
       .innerJoin(userProfile, eq(userProfile.user_id, column.created_by))
@@ -72,14 +67,14 @@ export async function getActivityFeed(limit = 40): Promise<ActivityItem[]> {
   ]);
 
   const items: ActivityItem[] = [
-    ...blocks.map((b) => ({
+    ...blocks.map(({ col, handle, channelTitle }) => ({
       kind: "block" as const,
-      at: b.at.toISOString(),
-      handle: b.handle,
-      channelId: b.channelId,
-      channelTitle: b.channelTitle,
-      blockId: b.blockId,
-      label: blockLabel(b),
+      at: col.created_at.toISOString(),
+      handle,
+      channelId: col.channel_id,
+      channelTitle,
+      label: blockLabel(col),
+      column: toColumn(col),
     })),
     ...channels.map((c) => ({
       kind: "channel" as const,

@@ -1,50 +1,57 @@
 import Link from "next/link";
-import { LayersIcon, PlusIcon } from "lucide-react";
+import { LayersIcon } from "lucide-react";
 
 import type { ActivityItem } from "@/lib/colosseum/activity";
 import { timeAgo } from "@/lib/utils";
 import PageHeader from "@/components/page-header";
+import ColumnPreview from "@/components/column-preview";
 
-function ActivityRow({ item }: { item: ActivityItem }) {
-  const href =
-    item.kind === "block"
-      ? `/${item.handle}/${item.channelId}/${item.blockId}`
-      : `/${item.handle}/${item.channelId}`;
+// A big centered channel card, for a "created a channel" item.
+function ChannelFocal({ title }: { title: string }) {
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-6 text-center">
+      <LayersIcon className="size-8 text-muted-foreground" />
+      <span className="font-medium">{title}</span>
+      <span className="text-caption">new channel</span>
+    </div>
+  );
+}
+
+async function ActivityRow({ item }: { item: ActivityItem }) {
+  const isBlock = item.kind === "block";
+  const href = isBlock
+    ? `/${item.handle}/${item.channelId}/${item.column!.id}`
+    : `/${item.handle}/${item.channelId}`;
+  const aria = isBlock
+    ? `@${item.handle} added ${item.label} to ${item.channelTitle}`
+    : `@${item.handle} created a channel, ${item.channelTitle}`;
 
   return (
     <Link
       href={href}
-      className="flex items-start gap-3 rounded-lg border p-4 transition-colors hover:bg-muted/50"
+      aria-label={aria}
+      className="group mx-auto flex w-full max-w-md flex-col gap-3"
     >
-      <div className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-md border text-muted-foreground">
-        {item.kind === "block" ? (
-          <PlusIcon className="size-4" />
+      {/* The block/channel itself is the focal point: large, centered. */}
+      <div className="aspect-square w-full overflow-hidden rounded-lg border bg-card transition-colors group-hover:border-foreground/30">
+        {isBlock ? (
+          <ColumnPreview column={item.column!} />
         ) : (
-          <LayersIcon className="size-4" />
+          <ChannelFocal title={item.channelTitle} />
         )}
       </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm">
-          <span className="font-medium">@{item.handle}</span>{" "}
-          {item.kind === "block" ? (
-            <>
-              added <span className="text-muted-foreground">{item.label}</span> to{" "}
-              <span className="font-medium">{item.channelTitle}</span>
-            </>
-          ) : (
-            <>
-              created <span className="font-medium">{item.channelTitle}</span>
-            </>
-          )}
-        </p>
-      </div>
-      <span className="shrink-0 text-caption">{timeAgo(new Date(item.at))}</span>
+      <p className="text-center text-caption">
+        <span className="font-medium text-foreground">@{item.handle}</span>{" "}
+        {isBlock ? "added to" : "created"}{" "}
+        <span className="font-medium text-foreground">{item.channelTitle}</span> ·{" "}
+        {timeAgo(new Date(item.at))}
+      </p>
     </Link>
   );
 }
 
-// The Explore page (the app's home for signed-in users): a feed of recent
-// public activity across the whole invite-connected network.
+// The Explore page: a feed of recent public activity across the whole invite-
+// connected network, each item showing the block or channel as the focal point.
 export default function ExploreView({ activity }: { activity: ActivityItem[] }) {
   return (
     <div className="w-full flex-1 min-h-0 overflow-y-auto p-6 sm:p-12 space-y-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -57,10 +64,10 @@ export default function ExploreView({ activity }: { activity: ActivityItem[] }) 
       {activity.length === 0 ? (
         <p className="text-muted-foreground">No activity yet.</p>
       ) : (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col items-center gap-10">
           {activity.map((item) => (
             <ActivityRow
-              key={`${item.kind}-${item.channelId}-${item.blockId ?? "c"}`}
+              key={`${item.kind}-${item.channelId}-${item.column?.id ?? "c"}`}
               item={item}
             />
           ))}

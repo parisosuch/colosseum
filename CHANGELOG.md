@@ -10,6 +10,8 @@ release.
 
 ### Added
 
+- An Explore home page (`/`) showing your social network — the friends and
+  friends-of-friends you're connected to through invites.
 - A search box on the profile page to filter channels by title or description,
   in both grid and list views.
 - Rich link previews (Open Graph / Twitter card) for shared public channel URLs,

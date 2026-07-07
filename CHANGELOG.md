@@ -16,6 +16,8 @@ release.
   showing the channel name, description, and owner.
 - Move a block to a different channel from the block modal, keeping its title,
   description, and tags.
+- Add a public channel as a column inside one of your own channels (Are.na-style
+  nesting); the column links straight to that channel.
 
 ## [1.1.1] - 2026-07-06
 

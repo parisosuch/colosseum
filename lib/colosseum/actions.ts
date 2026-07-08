@@ -34,7 +34,8 @@ import {
   uploadTextColumn,
   uploadURLColumn,
 } from "./column";
-import { deleteMediaByUrl, putImageBlob } from "./blob";
+import { deleteMediaByUrl, MAX_IMAGE_BYTES, putImageBlob } from "./blob";
+import { DESKTOP_UA } from "./og-meta";
 import { createInviteCode, InviteCode, revokeInviteCode } from "./invite";
 import { revokeApiToken } from "./api-token";
 import { getScreenshotsForUrls, ColumnScreenshot } from "./screenshot-data";
@@ -186,6 +187,47 @@ export async function uploadImageColumnAction(formData: FormData): Promise<Colum
   const channel = await requireOwnedChannel(channelId, userId);
   // The media reference inherits the channel's privacy; updateChannel keeps it
   // in sync if the channel flips later.
+  const image = await putImageBlob(file, userId, channel.private ? "private" : "public");
+  return uploadImageColumn({ created_by: userId, channel_id: channelId, image });
+}
+
+// Create an image column from a remote image URL. Used by the paste flow: a
+// browser "copy image" puts a flattened PNG snapshot in the clipboard (losing
+// GIF animation), while the original image lives at the <img> src — fetching
+// that keeps the real bytes. Fetches server-side because CORS blocks reading
+// cross-origin image bytes on the client.
+export async function uploadImageColumnFromUrlAction(
+  channelId: number,
+  imageUrl: string,
+): Promise<Column> {
+  const userId = await requireUserId();
+  if (!Number.isInteger(channelId)) {
+    throw new Error("Bad request.");
+  }
+  let url: URL;
+  try {
+    url = new URL(imageUrl);
+  } catch {
+    throw new Error("Bad image URL.");
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("Unsupported image URL.");
+  }
+  const channel = await requireOwnedChannel(channelId, userId);
+
+  // Same posture as the screenshot capture, which already fetches arbitrary
+  // user-supplied URLs. ponytail: no SSRF allowlist here to match that existing
+  // behavior — tighten both together if the threat model ever changes.
+  const res = await fetch(url, { headers: { "User-Agent": DESKTOP_UA, Accept: "image/*" } });
+  if (!res.ok) {
+    throw new Error("Couldn't fetch that image.");
+  }
+  if (Number(res.headers.get("content-length")) > MAX_IMAGE_BYTES) {
+    throw new Error("That image is too large (max 10MB).");
+  }
+  const type = (res.headers.get("content-type") ?? "").split(";")[0].trim();
+  const file = new File([await res.arrayBuffer()], "pasted-image", { type });
+  // putImageBlob re-validates the type and size against ALLOWED_IMAGE_TYPES/MAX.
   const image = await putImageBlob(file, userId, channel.private ? "private" : "public");
   return uploadImageColumn({ created_by: userId, channel_id: channelId, image });
 }

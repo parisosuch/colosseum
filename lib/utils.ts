@@ -39,6 +39,16 @@ export function isURL(text: string): boolean {
   return true;
 }
 
+// A browser "copy image" also drops an HTML fragment on the clipboard whose
+// <img> src points at the original image. Returns that http(s) source (so a
+// pasted GIF can be fetched at full fidelity instead of the flattened PNG
+// snapshot the browser also puts in clipboardData.files), or null when the
+// fragment has no usable absolute image URL.
+export function imageSrcFromHtml(html: string): string | null {
+  const src = /<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/i.exec(html)?.[1];
+  return src && /^https?:\/\//i.test(src) ? src : null;
+}
+
 // Escapes ilike wildcards so a literal `%`/`_` in a search term isn't treated
 // as one, and strips the characters PostgREST uses to delimit an `.or(...)`
 // filter so a search term can't break out of it.

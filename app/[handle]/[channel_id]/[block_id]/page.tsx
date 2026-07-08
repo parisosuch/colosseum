@@ -15,8 +15,8 @@ type BlockPageParams = {
 function blockLabel(column: Column): string {
   if (column.title) return column.title;
   if (column.type === "url") return column.url ?? "Link";
-  if (column.type === "text") return "Text block";
-  return "Block";
+  if (column.type === "text") return "Text column";
+  return "Column";
 }
 
 // Resolve the block and its channel, enforcing visibility in app code (this
@@ -49,7 +49,7 @@ export async function generateMetadata({ params }: BlockPageParams): Promise<Met
   const { channel_id, block_id } = await params;
   const found = await loadVisibleBlock(parseInt(channel_id, 10), parseInt(block_id, 10));
   if (!found) {
-    return { title: "Block not found · Colosseum" };
+    return { title: "Column not found · Colosseum" };
   }
   return { title: `${blockLabel(found.column)} · Colosseum` };
 }
@@ -63,8 +63,8 @@ export default async function BlockPage({ params }: BlockPageParams) {
   if (!found) {
     return (
       <div className="w-full p-6 sm:p-12 space-y-8">
-        <PageHeader crumbs={[{ label: "block" }]} />
-        <p className="text-muted-foreground">This block doesn&apos;t exist.</p>
+        <PageHeader crumbs={[{ label: "column" }]} />
+        <p className="text-muted-foreground">This column doesn&apos;t exist.</p>
       </div>
     );
   }
@@ -96,7 +96,7 @@ export default async function BlockPage({ params }: BlockPageParams) {
           ) : column.type === "image" && column.image ? (
             <img
               src={column.image}
-              alt={column.title ?? "Block image"}
+              alt={column.title ?? "Column image"}
               className="w-full rounded-lg"
             />
           ) : (

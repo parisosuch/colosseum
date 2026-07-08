@@ -55,8 +55,8 @@ export default function ChannelControls({
           type="search"
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Search blocks"
-          aria-label="Search blocks"
+          placeholder="Search columns"
+          aria-label="Search columns"
           className="pl-8"
         />
       </div>

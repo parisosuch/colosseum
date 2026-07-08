@@ -36,6 +36,12 @@ export const CHANNELS = {
   bobPhoto: { title: "Photography", tags: ["photo"] },
 };
 
+// Distinctive block titles so a search term matches exactly one seed block.
+export const BLOCKS = {
+  alicePublic: "Quokka sketch",
+  alicePrivate: "Quokka secret",
+};
+
 export const INVITE_CODES = {
   unused: "SEEDAAAA",
   used: "SEEDBBBB",
@@ -91,26 +97,29 @@ export async function seed(): Promise<void> {
       tags: CHANNELS.aliceDesign.tags,
     })
     .returning();
-  await db.insert(channel).values([
-    {
+  const [alicePrivate] = await db
+    .insert(channel)
+    .values({
       title: CHANNELS.alicePrivate.title,
       owner_id: USERS.alice.id,
       private: true,
       tags: CHANNELS.alicePrivate.tags,
-    },
-    {
-      title: CHANNELS.bobPhoto.title,
-      owner_id: USERS.bob.id,
-      private: false,
-      tags: CHANNELS.bobPhoto.tags,
-    },
-  ]);
+    })
+    .returning();
+  await db.insert(channel).values({
+    title: CHANNELS.bobPhoto.title,
+    owner_id: USERS.bob.id,
+    private: false,
+    tags: CHANNELS.bobPhoto.tags,
+  });
 
-  // A couple of blocks in Alice's public channel.
+  // Blocks in Alice's public channel, plus one in her private channel so tests
+  // can assert cross-user search never surfaces private blocks. The titles use
+  // distinctive tokens (BLOCKS) so a search matches exactly one.
   await db.insert(column).values([
     {
       type: "text",
-      title: "A note",
+      title: BLOCKS.alicePublic,
       text: "Something worth keeping.",
       created_by: USERS.alice.id,
       channel_id: aliceDesign.id,
@@ -123,6 +132,14 @@ export async function seed(): Promise<void> {
       created_by: USERS.alice.id,
       channel_id: aliceDesign.id,
       tags: ["ref"],
+    },
+    {
+      type: "text",
+      title: BLOCKS.alicePrivate,
+      text: "For my eyes only.",
+      created_by: USERS.alice.id,
+      channel_id: alicePrivate.id,
+      tags: [],
     },
   ]);
 }

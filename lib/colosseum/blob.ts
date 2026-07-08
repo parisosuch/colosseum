@@ -56,7 +56,10 @@ export async function ensureThumbnail(sha256: string): Promise<string> {
     return dest;
   }
   const tmp = `${dest}.tmp-${randomUUID()}`;
-  await sharp(blobDiskPath(sha256))
+  // `animated: true` reads every frame so an animated GIF/WebP thumbnails to an
+  // animated webp instead of a frozen first frame. Harmless for static images
+  // (a single page).
+  await sharp(blobDiskPath(sha256), { animated: true })
     .resize({ width: THUMB_MAX_WIDTH, withoutEnlargement: true })
     .webp({ quality: 72 })
     .toFile(tmp);

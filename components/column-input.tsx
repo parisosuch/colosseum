@@ -5,10 +5,11 @@ import {
   uploadURLColumnAction,
   uploadTextColumnAction,
   uploadImageColumnAction,
+  uploadImageColumnFromUrlAction,
   updateColumnMetaAction,
 } from "@/lib/colosseum/actions";
 import type { Column } from "@/lib/colosseum/column";
-import { isURL } from "@/lib/utils";
+import { imageSrcFromHtml, isURL } from "@/lib/utils";
 import type { SessionUser } from "@/components/channel-board";
 import type { Channel } from "@/lib/colosseum/channel";
 import { Spinner } from "./ui/spinner";
@@ -67,10 +68,33 @@ export default function ColumnInput({
   // Enter), so only swallow the event when there's actually an image.
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const images = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith("image/"));
-    if (images.length > 0) {
-      e.preventDefault();
-      handleFilesUpload(images);
+    if (images.length === 0) return;
+    e.preventDefault();
+    // A web-copied image also carries its source URL; prefer that so a pasted
+    // GIF stays animated (the clipboard file is a flattened snapshot). A plain
+    // clipboard screenshot has no such URL and uses the file directly.
+    uploadPastedImages(imageSrcFromHtml(e.clipboardData.getData("text/html")), images);
+  };
+
+  // Prefer the copied image's source URL (fetched server-side into an image
+  // column) and fall back to the clipboard's rasterized file if that fetch
+  // fails — a relative/blob src, a private image, a dead link, etc.
+  const uploadPastedImages = async (sourceUrl: string | null, files: File[]) => {
+    if (!user?.id || !channel) return;
+    if (sourceUrl) {
+      setUploading(1);
+      try {
+        const column = await uploadImageColumnFromUrlAction(channel.id, sourceUrl);
+        setColumns((prev) => [column, ...prev]);
+        onBlockAdded();
+        return;
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setUploading(0);
+      }
     }
+    await handleFilesUpload(files);
   };
 
   // Upload one or more image files, creating an image column per file. Bytes go

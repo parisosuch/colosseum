@@ -8,6 +8,19 @@ release.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-08
+
+### Added
+
+- Animated GIFs: GIF blocks now animate everywhere, including grid thumbnails
+  (profile pictures already animated).
+- A link to your own profile in the nav avatar menu.
+
+### Changed
+
+- Global search now spans every public profile, channel, and block across
+  Colosseum, not just your own.
+
 ## [1.2.1] - 2026-07-08
 
 ### Fixed

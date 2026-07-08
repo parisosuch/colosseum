@@ -8,6 +8,16 @@ release.
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-07-08
+
+### Fixed
+
+- Signed-out visitors can now view the Explore page instead of being redirected
+  to the landing page.
+- URL blocks whose screenshot can't be captured now show the link's address
+  instead of loading forever, and settle immediately rather than retrying for
+  minutes.
+
 ## [1.2.0] - 2026-07-07
 
 ### Added

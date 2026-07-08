@@ -69,7 +69,7 @@ export function MobileSearch({ onClose }: { onClose: () => void }) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search Colosseum"
-          aria-label="Search profiles, channels, and blocks"
+          aria-label="Search profiles, channels, and columns"
           // text-base (16px) so iOS doesn't zoom on focus.
           className="pl-8 text-base"
         />
@@ -112,7 +112,7 @@ export function MobileSearch({ onClose }: { onClose: () => void }) {
             className="truncate px-2 py-2.5 text-sm hover:bg-accent border-b"
           >
             {blockLabel(column)}
-            <span className="ml-2 text-xs text-muted-foreground">block</span>
+            <span className="ml-2 text-xs text-muted-foreground">column</span>
           </Link>
         ))}
       </div>

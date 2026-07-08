@@ -170,7 +170,7 @@ export default function ChannelBoard({
         setHasMore(first.length === PAGE_SIZE);
       } catch (e) {
         console.error(e);
-        if (!cancelled) toast.error("Failed to load blocks.");
+        if (!cancelled) toast.error("Failed to load columns.");
       } finally {
         if (!cancelled) setLoadingPage(false);
       }
@@ -440,7 +440,7 @@ export default function ChannelBoard({
       ) : null}
 
       {!isOwner && totalCount === 0 ? (
-        <p className="text-muted-foreground">No blocks yet.</p>
+        <p className="text-muted-foreground">No columns yet.</p>
       ) : (
         <>
           {view === "list" ? (
@@ -455,7 +455,7 @@ export default function ChannelBoard({
                   onClick={() => setAdding(true)}
                 >
                   <Plus />
-                  Add block
+                  Add column
                 </Button>
               ) : null}
               <div>
@@ -540,7 +540,7 @@ export default function ChannelBoard({
       <Dialog open={adding} onOpenChange={setAdding}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Add block</DialogTitle>
+            <DialogTitle>Add column</DialogTitle>
           </DialogHeader>
           <ColumnInput
             user={user}

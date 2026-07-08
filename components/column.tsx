@@ -74,7 +74,7 @@ const ColumnComponent = memo(function ColumnComponent({
     ) : column.type === "image" ? (
       <img
         src={`${column.image}?thumb`}
-        alt={column.title ?? "Image block"}
+        alt={column.title ?? "Image column"}
         className="w-full h-full object-cover rounded-lg"
       />
     ) : loading ? (
@@ -134,7 +134,7 @@ const ColumnComponent = memo(function ColumnComponent({
     return (
       <button
         type="button"
-        aria-label="Open block"
+        aria-label="Open column"
         onClick={() => onOpen(column.id)}
         className={rowClass}
       >

@@ -75,11 +75,11 @@ export function AddBlockDrawer({ channels }: { channels: PickableChannel[] }) {
       } else {
         await uploadTextColumnAction({ channelId, text });
       }
-      toast.success("Block added.");
+      toast.success("Column added.");
       onOpenChange(false);
     } catch (e) {
       console.error(e);
-      toast.error("Couldn't add that block. Please try again.");
+      toast.error("Couldn't add that column. Please try again.");
       setSubmitting(false);
     }
   };
@@ -87,14 +87,14 @@ export function AddBlockDrawer({ channels }: { channels: PickableChannel[] }) {
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerTrigger
-        aria-label="Add block"
+        aria-label="Add column"
         className="flex size-10 items-center justify-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <PlusIcon />
       </DrawerTrigger>
       <DrawerContent>
         <DrawerHeader>
-          <DrawerTitle>{step === "content" ? "Add a block" : "Add to which channel?"}</DrawerTitle>
+          <DrawerTitle>{step === "content" ? "Add a column" : "Add to which channel?"}</DrawerTitle>
         </DrawerHeader>
 
         {step === "content" ? (

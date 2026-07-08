@@ -240,7 +240,7 @@ function BlockModalBody({
       toast.success("Moved.");
     } catch (e) {
       console.error(e);
-      toast.error("Couldn't move that block. Please try again.");
+      toast.error("Couldn't move that column. Please try again.");
       setMoving(false);
     }
   };
@@ -277,7 +277,7 @@ function BlockModalBody({
         ) : column.type === "image" ? (
           <img
             src={column.image}
-            alt={column.title ?? "Image block"}
+            alt={column.title ?? "Image column"}
             className="max-h-[70vh] md:max-h-full max-w-full object-contain rounded-md"
           />
         ) : (
@@ -312,7 +312,7 @@ function BlockModalBody({
           <Button
             variant="ghost"
             size="icon"
-            aria-label="Previous block"
+            aria-label="Previous column"
             disabled={!hasPrev}
             onClick={onPrev}
           >
@@ -321,7 +321,7 @@ function BlockModalBody({
           <Button
             variant="ghost"
             size="icon"
-            aria-label="Next block"
+            aria-label="Next column"
             disabled={!hasNext}
             onClick={onNext}
           >
@@ -400,7 +400,7 @@ function BlockModalBody({
                   open={moveOpen}
                   onOpenChange={setMoveOpen}
                   title="Move to channel"
-                  description="Search your channels and move this block to one of them."
+                  description="Search your channels and move this column to one of them."
                 >
                   <CommandInput placeholder="Search channels…" />
                   <CommandList>

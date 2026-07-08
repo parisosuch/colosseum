@@ -82,7 +82,7 @@ const ColumnComponent = memo(function ColumnComponent({
         <Spinner variant="circle" className="size-6 text-muted-foreground" />
       </div>
     ) : (
-      <ScreenShotPreview image_url={imageURL} version={screenshotVersion} />
+      <ScreenShotPreview image_url={imageURL} version={screenshotVersion} url={column.url} />
     );
 
   if (view === "list") {

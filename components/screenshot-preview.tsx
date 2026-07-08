@@ -5,12 +5,16 @@ import { useEffect, useState } from "react";
 export default function ScreenShotPreview({
   image_url,
   version,
+  url,
 }: {
   image_url: string | null;
   // Cache-busting token (the screenshot's captured_at). The storage object is
   // overwritten in place on refresh, so without this the browser keeps serving
   // the stale cached image.
   version?: string | number | null;
+  // The block's URL, shown as the fallback when no screenshot could be captured
+  // — the site may still resolve, so the block stays identifiable and usable.
+  url?: string | null;
 }) {
   const src =
     image_url && version != null
@@ -32,6 +36,10 @@ export default function ScreenShotPreview({
           onError={() => setErrored(true)}
           className="w-full h-full object-top object-cover rounded-lg"
         />
+      ) : url ? (
+        <p className="px-4 text-center font-mono text-sm text-muted-foreground line-clamp-4 break-all">
+          {url.replace(/^https?:\/\//, "")}
+        </p>
       ) : (
         <p className="px-4 text-center text-sm text-muted-foreground">Website does not exist.</p>
       )}

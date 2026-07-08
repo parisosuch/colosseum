@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { deleteMediaByUrl } from "@/lib/colosseum/blob";
 import { captureAndCacheScreenshot } from "@/lib/colosseum/screenshot";
-import { getScreenshot } from "@/lib/colosseum/screenshot-data";
+import { getScreenshot, upsertScreenshot } from "@/lib/colosseum/screenshot-data";
 import { logError, logInfo } from "@/lib/log";
 
 export const runtime = "nodejs"; // puppeteer is going to require nodejs runtime for browsing
@@ -76,6 +76,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ image_url: publicUrl, title, description });
   } catch (error) {
     logError("screenshot.interactive", `failed after ${Date.now() - startedAt}ms: ${url}`, error);
+    // Record a null-image row so pollers settle immediately instead of spinning
+    // for minutes on a URL that can't be captured (mirrors the background
+    // capture path). Guard on `existing?.image_url` so a failed *refresh* of a
+    // still-usable stale screenshot doesn't wipe it.
+    if (!existing?.image_url) {
+      try {
+        await upsertScreenshot({ url, image_url: null, title: "", description: "" });
+      } catch (upsertError) {
+        logError(
+          "screenshot.interactive",
+          `failed to record capture failure for ${url}`,
+          upsertError,
+        );
+      }
+    }
     return NextResponse.json({ error: error }, { status: 500 });
   }
 }

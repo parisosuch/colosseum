@@ -173,10 +173,18 @@ export async function getChannelColumns(
   return withLinkedChannels(rows.map(toColumn));
 }
 
-// Blocks the user created whose title/description/text/url or a tag match
-// `query`. Used by the nav search box, so capped to a handful of results.
-// Returns [] for an empty/whitespace-only query rather than the whole list.
-export async function searchUserColumns(user_id: string, query: string): Promise<Column[]> {
+// A block search hit, carrying the owning channel's handle so callers can build
+// the `/{handle}/{channel_id}/{id}` link without a second lookup.
+export type ColumnSearchResult = Column & { handle: string };
+
+// Blocks whose title/description/text/url or a tag match `query`, across
+// everyone: every block in a public channel plus those in the viewer's own
+// channels (including private ones). Used by the nav search box, so capped to a
+// handful of results. Returns [] for an empty/whitespace-only query.
+export async function searchColumns(
+  viewer_id: string,
+  query: string,
+): Promise<ColumnSearchResult[]> {
   const term = sanitizeSearch(query);
   if (!term) {
     return [];
@@ -185,11 +193,13 @@ export async function searchUserColumns(user_id: string, query: string): Promise
   const pattern = `%${term}%`;
   const tag = term.replace(/["\\]/g, "");
   const rows = await db
-    .select()
+    .select({ col: column, handle: userProfile.handle })
     .from(column)
+    .innerJoin(channel, eq(channel.id, column.channel_id))
+    .innerJoin(userProfile, eq(userProfile.user_id, channel.owner_id))
     .where(
       and(
-        eq(column.created_by, user_id),
+        or(eq(channel.private, false), eq(channel.owner_id, viewer_id)),
         or(
           ilike(column.title, pattern),
           ilike(column.description, pattern),
@@ -200,7 +210,7 @@ export async function searchUserColumns(user_id: string, query: string): Promise
       ),
     )
     .limit(10);
-  return rows.map(toColumn);
+  return rows.map(({ col, handle }) => ({ ...toColumn(col), handle }));
 }
 
 export async function uploadURLColumn(input: {

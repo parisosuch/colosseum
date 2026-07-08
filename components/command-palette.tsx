@@ -12,12 +12,14 @@ import {
   Moon,
   SettingsIcon,
   Sun,
+  UserIcon,
 } from "lucide-react";
 
 import { authClient } from "@/lib/auth-client";
 import { searchAction } from "@/lib/colosseum/actions";
-import type { Channel } from "@/lib/colosseum/channel";
-import type { Column } from "@/lib/colosseum/column";
+import type { ChannelSearchResult } from "@/lib/colosseum/channel";
+import type { Column, ColumnSearchResult } from "@/lib/colosseum/column";
+import type { ProfileSearchResult } from "@/lib/colosseum/user";
 import {
   CommandDialog,
   CommandEmpty,
@@ -33,18 +35,19 @@ function blockLabel(column: Column): string {
 }
 
 // Cmd/Ctrl+K palette for common navigation and flows: jump to a page, search
-// your channels/blocks, switch theme, or log out. Mounted in the nav for
-// onboarded users (needs `handle` to build channel/block links). Filtering is
-// driven manually (shouldFilter={false}) so server search results are never
-// hidden by cmdk's client-side text match.
+// across everyone's public profiles/channels/blocks (plus your own), switch
+// theme, or log out. Mounted in the nav for onboarded users (needs `handle` for
+// the page-jump links). Filtering is driven manually (shouldFilter={false}) so
+// server search results are never hidden by cmdk's client-side text match.
 export default function CommandPalette({ handle }: { handle: string }) {
   const router = useRouter();
   const { setTheme } = useTheme();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [channels, setChannels] = useState<Channel[]>([]);
-  const [columns, setColumns] = useState<Column[]>([]);
+  const [profiles, setProfiles] = useState<ProfileSearchResult[]>([]);
+  const [channels, setChannels] = useState<ChannelSearchResult[]>([]);
+  const [columns, setColumns] = useState<ColumnSearchResult[]>([]);
 
   // Global Cmd+K / Ctrl+K to toggle the palette.
   useEffect(() => {
@@ -65,16 +68,18 @@ export default function CommandPalette({ handle }: { handle: string }) {
 
   useEffect(() => {
     if (!debouncedQuery.trim()) {
+      setProfiles([]);
       setChannels([]);
       setColumns([]);
       return;
     }
     let cancelled = false;
     (async () => {
-      const { channels: c, columns: cols } = await searchAction(debouncedQuery);
+      const results = await searchAction(debouncedQuery);
       if (cancelled) return;
-      setChannels(c);
-      setColumns(cols);
+      setProfiles(results.profiles);
+      setChannels(results.channels);
+      setColumns(results.columns);
     })();
     return () => {
       cancelled = true;
@@ -126,13 +131,27 @@ export default function CommandPalette({ handle }: { handle: string }) {
       <CommandList>
         <CommandEmpty>No results.</CommandEmpty>
 
+        {profiles.length > 0 ? (
+          <CommandGroup heading="People">
+            {profiles.map((profile) => (
+              <CommandItem
+                key={`profile-${profile.handle}`}
+                value={`profile-${profile.handle}`}
+                onSelect={() => runCommand(() => router.push(`/${profile.handle}`))}
+              >
+                <UserIcon />@{profile.handle}
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        ) : null}
+
         {channels.length > 0 ? (
           <CommandGroup heading="Channels">
             {channels.map((channel) => (
               <CommandItem
                 key={`channel-${channel.id}`}
                 value={`channel-${channel.id}`}
-                onSelect={() => runCommand(() => router.push(`/${handle}/${channel.id}`))}
+                onSelect={() => runCommand(() => router.push(`/${channel.handle}/${channel.id}`))}
               >
                 <LayersIcon />
                 {channel.title}
@@ -148,7 +167,9 @@ export default function CommandPalette({ handle }: { handle: string }) {
                 key={`block-${column.id}`}
                 value={`block-${column.id}`}
                 onSelect={() =>
-                  runCommand(() => router.push(`/${handle}/${column.channel_id}/${column.id}`))
+                  runCommand(() =>
+                    router.push(`/${column.handle}/${column.channel_id}/${column.id}`),
+                  )
                 }
               >
                 {blockLabel(column)}

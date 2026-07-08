@@ -53,7 +53,7 @@ export function MobileBottomBar({
           <DrawerHeader>
             <DrawerTitle>Search</DrawerTitle>
           </DrawerHeader>
-          <MobileSearch handle={handle} onClose={() => setSearchOpen(false)} />
+          <MobileSearch onClose={() => setSearchOpen(false)} />
         </DrawerContent>
       </Drawer>
     </nav>

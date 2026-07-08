@@ -1,7 +1,7 @@
 import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { channel, column } from "@/lib/db/schema";
+import { channel, column, userProfile } from "@/lib/db/schema";
 import { sanitizeSearch } from "@/lib/utils";
 import { deleteMediaByUrl, setMediaVisibilityByUrls } from "./blob";
 
@@ -56,10 +56,18 @@ export async function getUserChannels(user_id: string): Promise<Channel[]> {
   return rows.map(toChannel);
 }
 
-// Channels the user owns whose title/description or a tag match `query`. Used by
-// the nav search box, so capped to a handful of results. Returns [] for an
-// empty/whitespace-only query rather than the user's whole channel list.
-export async function searchUserChannels(user_id: string, query: string): Promise<Channel[]> {
+// A channel search hit, carrying the owner's handle so callers can build the
+// `/{handle}/{id}` link without a second lookup.
+export type ChannelSearchResult = Channel & { handle: string };
+
+// Channels whose title/description or a tag match `query`, across everyone:
+// every public channel plus the viewer's own (including their private ones).
+// Used by the nav search box, so capped to a handful of results. Returns [] for
+// an empty/whitespace-only query.
+export async function searchChannels(
+  viewer_id: string,
+  query: string,
+): Promise<ChannelSearchResult[]> {
   const term = sanitizeSearch(query);
   if (!term) {
     return [];
@@ -68,11 +76,12 @@ export async function searchUserChannels(user_id: string, query: string): Promis
   const pattern = `%${term}%`;
   const tag = term.replace(/["\\]/g, "");
   const rows = await db
-    .select()
+    .select({ ch: channel, handle: userProfile.handle })
     .from(channel)
+    .innerJoin(userProfile, eq(userProfile.user_id, channel.owner_id))
     .where(
       and(
-        eq(channel.owner_id, user_id),
+        or(eq(channel.private, false), eq(channel.owner_id, viewer_id)),
         or(
           ilike(channel.title, pattern),
           ilike(channel.description, pattern),
@@ -81,7 +90,7 @@ export async function searchUserChannels(user_id: string, query: string): Promis
       ),
     )
     .limit(10);
-  return rows.map(toChannel);
+  return rows.map(({ ch, handle }) => ({ ...toChannel(ch), handle }));
 }
 
 export async function createChannel(input: {

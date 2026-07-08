@@ -5,23 +5,25 @@ import Link from "next/link";
 import { SearchIcon } from "lucide-react";
 
 import { Input } from "./ui/input";
-import type { Channel } from "@/lib/colosseum/channel";
-import type { Column } from "@/lib/colosseum/column";
+import type { ChannelSearchResult } from "@/lib/colosseum/channel";
+import type { Column, ColumnSearchResult } from "@/lib/colosseum/column";
+import type { ProfileSearchResult } from "@/lib/colosseum/user";
 import { searchAction } from "@/lib/colosseum/actions";
 
 function blockLabel(column: Column): string {
   return column.title || column.url || column.text || "Untitled";
 }
 
-// Nav search box, scoped to the signed-in user's own channels and blocks
-// (issue #31 — no cross-user search while single-user). Debounced like the
-// per-channel search box, with results in a dropdown under the input.
-export default function SearchBar({ userId, handle }: { userId: string; handle: string }) {
+// Nav search box over everyone's public content plus the viewer's own: profiles,
+// channels, and blocks. Debounced, with results in a dropdown under the input;
+// each result carries its owner's handle for the link.
+export default function SearchBar({ userId }: { userId: string }) {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [open, setOpen] = useState(false);
-  const [channels, setChannels] = useState<Channel[]>([]);
-  const [columns, setColumns] = useState<Column[]>([]);
+  const [profiles, setProfiles] = useState<ProfileSearchResult[]>([]);
+  const [channels, setChannels] = useState<ChannelSearchResult[]>([]);
+  const [columns, setColumns] = useState<ColumnSearchResult[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -31,6 +33,7 @@ export default function SearchBar({ userId, handle }: { userId: string; handle: 
 
   useEffect(() => {
     if (!debouncedQuery.trim()) {
+      setProfiles([]);
       setChannels([]);
       setColumns([]);
       return;
@@ -38,11 +41,11 @@ export default function SearchBar({ userId, handle }: { userId: string; handle: 
 
     let cancelled = false;
     (async () => {
-      const { channels: channelResults, columns: columnResults } =
-        await searchAction(debouncedQuery);
+      const results = await searchAction(debouncedQuery);
       if (cancelled) return;
-      setChannels(channelResults);
-      setColumns(columnResults);
+      setProfiles(results.profiles);
+      setChannels(results.channels);
+      setColumns(results.columns);
     })();
 
     return () => {
@@ -60,7 +63,7 @@ export default function SearchBar({ userId, handle }: { userId: string; handle: 
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const hasResults = channels.length > 0 || columns.length > 0;
+  const hasResults = profiles.length > 0 || channels.length > 0 || columns.length > 0;
 
   return (
     <div ref={containerRef} className="relative w-full max-w-xs">
@@ -73,8 +76,8 @@ export default function SearchBar({ userId, handle }: { userId: string; handle: 
           setOpen(true);
         }}
         onFocus={() => setOpen(true)}
-        placeholder="Search your channels and blocks"
-        aria-label="Search your channels and blocks"
+        placeholder="Search Colosseum"
+        aria-label="Search profiles, channels, and blocks"
         className="pl-8"
       />
       {open && debouncedQuery.trim() ? (
@@ -83,10 +86,21 @@ export default function SearchBar({ userId, handle }: { userId: string; handle: 
             <p className="px-2 py-1.5 text-sm text-muted-foreground">No results.</p>
           ) : (
             <>
+              {profiles.map((profile) => (
+                <Link
+                  key={`profile-${profile.handle}`}
+                  href={`/${profile.handle}`}
+                  className="block truncate rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                  onClick={() => setOpen(false)}
+                >
+                  @{profile.handle}
+                  <span className="ml-2 text-xs text-muted-foreground">user</span>
+                </Link>
+              ))}
               {channels.map((channel) => (
                 <Link
                   key={`channel-${channel.id}`}
-                  href={`/${handle}/${channel.id}`}
+                  href={`/${channel.handle}/${channel.id}`}
                   className="block rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
                   onClick={() => setOpen(false)}
                 >
@@ -97,7 +111,7 @@ export default function SearchBar({ userId, handle }: { userId: string; handle: 
               {columns.map((column) => (
                 <Link
                   key={`block-${column.id}`}
-                  href={`/${handle}/${column.channel_id}/${column.id}`}
+                  href={`/${column.handle}/${column.channel_id}/${column.id}`}
                   className="block truncate rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
                   onClick={() => setOpen(false)}
                 >

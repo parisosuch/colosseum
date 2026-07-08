@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { Laptop, LogOutIcon, MailIcon, Moon, SettingsIcon, Sun } from "lucide-react";
+import { Laptop, LogOutIcon, MailIcon, Moon, SettingsIcon, Sun, UserIcon } from "lucide-react";
 
 import { authClient } from "@/lib/auth-client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -26,10 +26,9 @@ function ThemeIcon({ theme }: { theme?: string }) {
   return <Icon size={ICON_SIZE} className="text-muted-foreground" />;
 }
 
-// The menu body shared by the desktop avatar menu and the mobile bottom nav's
-// profile button: Settings, Invites, a Theme submenu, and Logout. Each trigger
-// renders this inside its own DropdownMenuContent, so the two can't drift.
-export function UserMenuItems() {
+// The desktop avatar menu body: Profile, Settings, Invites, a Theme submenu,
+// and Logout. (The mobile bottom nav mirrors these in ProfileDrawer.)
+export function UserMenuItems({ handle }: { handle: string }) {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
 
@@ -42,6 +41,11 @@ export function UserMenuItems() {
 
   return (
     <>
+      <DropdownMenuItem onSelect={() => router.push(`/${handle}`)}>
+        <UserIcon />
+        Profile
+      </DropdownMenuItem>
+
       <DropdownMenuItem onSelect={() => router.push("/settings")}>
         <SettingsIcon />
         Settings
@@ -94,7 +98,7 @@ export function UserMenu({ avatarUrl, handle }: { avatarUrl?: string; handle: st
         </Avatar>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <UserMenuItems />
+        <UserMenuItems handle={handle} />
       </DropdownMenuContent>
     </DropdownMenu>
   );

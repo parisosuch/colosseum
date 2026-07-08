@@ -8,21 +8,23 @@
 import { getSessionUser } from "@/lib/auth";
 import {
   Channel,
+  ChannelSearchResult,
   createChannel,
   deleteChannel,
   getChannel,
-  searchUserChannels,
+  searchChannels,
   updateChannel,
 } from "./channel";
 import {
   Column,
   ColumnQuery,
+  ColumnSearchResult,
   addChannelColumn,
   deleteColumn,
   getChannelColumns,
   getColumn,
   moveColumn,
-  searchUserColumns,
+  searchColumns,
   updateColumnDescription,
   updateColumnMeta,
   updateColumnTags,
@@ -41,6 +43,8 @@ import {
   getUserProfile,
   HandleTakenError,
   normalizeHandle,
+  ProfileSearchResult,
+  searchProfiles,
   updateUserProfile,
   UserProfile,
   validateHandle,
@@ -97,18 +101,21 @@ async function requireReadableChannel(channelId: number): Promise<Channel> {
 // ---------------------------------------------------------------------------
 // Search (nav box) — scoped to the caller's own channels and blocks.
 // ---------------------------------------------------------------------------
-export async function searchAction(
-  query: string,
-): Promise<{ channels: Channel[]; columns: Column[] }> {
+export async function searchAction(query: string): Promise<{
+  profiles: ProfileSearchResult[];
+  channels: ChannelSearchResult[];
+  columns: ColumnSearchResult[];
+}> {
   const userId = await currentUserId();
   if (!userId) {
-    return { channels: [], columns: [] };
+    return { profiles: [], channels: [], columns: [] };
   }
-  const [channels, columns] = await Promise.all([
-    searchUserChannels(userId, query),
-    searchUserColumns(userId, query),
+  const [profiles, channels, columns] = await Promise.all([
+    searchProfiles(query),
+    searchChannels(userId, query),
+    searchColumns(userId, query),
   ]);
-  return { channels, columns };
+  return { profiles, channels, columns };
 }
 
 // ---------------------------------------------------------------------------

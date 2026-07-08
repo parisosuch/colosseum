@@ -1,7 +1,8 @@
-import { eq } from "drizzle-orm";
+import { eq, ilike, or } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { userProfile } from "@/lib/db/schema";
+import { sanitizeSearch } from "@/lib/utils";
 
 // Re-exported for server-side callers; client components import these directly
 // from ./handle to avoid pulling the server-only db client into their bundle.
@@ -14,6 +15,33 @@ export type UserProfile = {
   avatar_url?: string;
   about?: string;
 };
+
+// A profile search hit. Profiles are public, so no viewer scoping is needed.
+export type ProfileSearchResult = { handle: string; avatar_url?: string; about?: string };
+
+// Profiles whose handle or about text matches `query`. Used by the nav search
+// box, so capped to a handful of results. Returns [] for an empty query.
+export async function searchProfiles(query: string): Promise<ProfileSearchResult[]> {
+  const term = sanitizeSearch(query);
+  if (!term) {
+    return [];
+  }
+  const pattern = `%${term}%`;
+  const rows = await db
+    .select({
+      handle: userProfile.handle,
+      avatar_url: userProfile.avatar_url,
+      about: userProfile.about,
+    })
+    .from(userProfile)
+    .where(or(ilike(userProfile.handle, pattern), ilike(userProfile.about, pattern)))
+    .limit(10);
+  return rows.map((r) => ({
+    handle: r.handle,
+    avatar_url: r.avatar_url ?? undefined,
+    about: r.about ?? undefined,
+  }));
+}
 
 export class HandleTakenError extends Error {
   constructor(handle: string) {

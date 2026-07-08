@@ -38,7 +38,7 @@ export default async function NavBar() {
       {userProfile ? (
         <>
           <div className="hidden sm:block flex-1 max-w-xs">
-            <SearchBar userId={user.id} handle={userProfile.handle} />
+            <SearchBar userId={user.id} />
           </div>
           <CommandPalette handle={userProfile.handle} />
         </>

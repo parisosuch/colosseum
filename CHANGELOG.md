@@ -8,6 +8,13 @@ release.
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-07-08
+
+### Fixed
+
+- Copy that called a column a "block" (toasts, dialog titles, labels,
+  placeholders) now consistently says "column".
+
 ## [1.3.1] - 2026-07-08
 
 ### Fixed

@@ -50,6 +50,7 @@ Use `bun`, never `npm`. A `Makefile` wraps the common ones:
   `package.json` for a release (the PR that ships to `main`), stamp a matching
   `## [X.Y.Z] - YYYY-MM-DD` section in `CHANGELOG.md` in the same commit,
   moving the accumulated `Unreleased` notes under it. The two never move apart.
+- PRs that are hotfixes should target `main` and others should target `next`.
 
 ## Conventions
 

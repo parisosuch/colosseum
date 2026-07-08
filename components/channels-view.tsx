@@ -90,7 +90,7 @@ export function ChannelsView({
           <div className={`border-b px-2 py-2 text-label ${LIST_GRID}`}>
             <span>Channel</span>
             <span>Description</span>
-            <span className="hidden sm:block">Blocks</span>
+            <span className="hidden sm:block">Columns</span>
             <span className="hidden sm:block">Created</span>
           </div>
           {visibleChannels.map((channel) => (

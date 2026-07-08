@@ -121,7 +121,7 @@ export default function CommandPalette({ handle }: { handle: string }) {
       onOpenChange={setOpen}
       commandProps={{ shouldFilter: false }}
       title="Command palette"
-      description="Search your channels and blocks, or jump to a page."
+      description="Search your channels and columns, or jump to a page."
     >
       <CommandInput
         placeholder="Type a command or search…"
@@ -161,7 +161,7 @@ export default function CommandPalette({ handle }: { handle: string }) {
         ) : null}
 
         {columns.length > 0 ? (
-          <CommandGroup heading="Blocks">
+          <CommandGroup heading="Columns">
             {columns.map((column) => (
               <CommandItem
                 key={`block-${column.id}`}

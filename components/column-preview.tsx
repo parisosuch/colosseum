@@ -32,7 +32,7 @@ export default async function ColumnPreview({ column }: { column: Column }) {
     return (
       <img
         src={`${column.image}?thumb`}
-        alt={column.title ?? "Image block"}
+        alt={column.title ?? "Image column"}
         className="w-full h-full object-cover rounded-md"
       />
     );

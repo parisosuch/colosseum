@@ -77,7 +77,7 @@ export default function SearchBar({ userId }: { userId: string }) {
         }}
         onFocus={() => setOpen(true)}
         placeholder="Search Colosseum"
-        aria-label="Search profiles, channels, and blocks"
+        aria-label="Search profiles, channels, and columns"
         className="pl-8"
       />
       {open && debouncedQuery.trim() ? (
@@ -116,7 +116,7 @@ export default function SearchBar({ userId }: { userId: string }) {
                   onClick={() => setOpen(false)}
                 >
                   {blockLabel(column)}
-                  <span className="ml-2 text-xs text-muted-foreground">block</span>
+                  <span className="ml-2 text-xs text-muted-foreground">column</span>
                 </Link>
               ))}
             </>

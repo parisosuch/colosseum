@@ -184,7 +184,7 @@ export default function ColumnInput({
       }
     } catch (e) {
       console.error(e);
-      toast.error("Couldn't add that block. Please try again.");
+      toast.error("Couldn't add that column. Please try again.");
       return;
     }
 
@@ -195,7 +195,7 @@ export default function ColumnInput({
     onBlockAdded();
 
     if (!isUrlInput) {
-      toast.success("Block added.");
+      toast.success("Column added.");
       return;
     }
 
@@ -222,7 +222,7 @@ export default function ColumnInput({
         }
       } catch (e) {
         console.error(e);
-        toast.warning("Block added, but the screenshot for that link couldn't be captured.");
+        toast.warning("Column added, but the screenshot for that link couldn't be captured.");
       } finally {
         // Always clear the capturing state — on failure this refetches to a
         // null preview (so the spinner stops); on success, the real shot.

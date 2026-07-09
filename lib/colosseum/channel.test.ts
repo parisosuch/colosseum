@@ -1,11 +1,38 @@
 import { beforeAll, expect, test } from "bun:test";
 
 import { BLOCKS, CHANNELS, seed, USERS } from "@/scripts/seed";
-import { getUserChannels, getUserPublicChannels, searchChannels } from "./channel";
-import { searchColumns } from "./column";
+import { createMedia, putBlob } from "./blob";
+import {
+  createChannel,
+  deleteChannel,
+  getUserChannels,
+  getUserPublicChannels,
+  searchChannels,
+} from "./channel";
+import { searchColumns, uploadURLColumn } from "./column";
+import { getScreenshot, upsertScreenshot } from "./screenshot-data";
 
 beforeAll(async () => {
   await seed();
+});
+
+test("deleting a channel GCs a URL block's cached screenshot when nothing else links it", async () => {
+  const host = await createChannel({ title: "Doomed", private: false, owner_id: USERS.alice.id });
+  const url = "https://ponytail.example/channel-delete";
+  await uploadURLColumn({ created_by: USERS.alice.id, channel_id: host.id, text: url });
+
+  const sha = await putBlob(Buffer.from("fake-png-bytes"), "image/png", USERS.alice.id);
+  await upsertScreenshot({
+    url,
+    image_url: await createMedia(sha, USERS.alice.id, "public"),
+    title: "t",
+    description: "d",
+  });
+
+  // The cascade removes the URL column without calling deleteColumn; the shared
+  // screenshot must still be GC'd since no surviving column references the URL.
+  await deleteChannel(host.id);
+  expect(await getScreenshot(url)).toBeNull();
 });
 
 test("getUserPublicChannels excludes private channels", async () => {

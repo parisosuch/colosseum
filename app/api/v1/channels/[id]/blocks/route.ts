@@ -48,7 +48,7 @@ export async function GET(req: Request, { params }: Ctx) {
   }
 
   try {
-    const blocks = await getChannelColumns(channelId, { limit });
+    const blocks = await getChannelColumns(channelId, { limit }, auth.userId);
     return json({ blocks: await attachPreviews(blocks) });
   } catch (e) {
     logError("channels.id.blocks.GET", `failed to list blocks for channel ${channelId}`, e);

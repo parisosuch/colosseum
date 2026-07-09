@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 
 import { ACTIVITY_PAGE, getActivityFeed } from "@/lib/colosseum/activity";
+import { getSessionUser } from "@/lib/auth";
 import { ActivityRow, activityKey } from "@/components/explore-view";
 
 // Load-more for the Explore feed: fetches the next page (older than `before`)
@@ -12,7 +13,8 @@ import { ActivityRow, activityKey } from "@/components/explore-view";
 export async function loadMoreActivity(
   before: string,
 ): Promise<{ rows: ReactNode; nextCursor: string | null; hasMore: boolean }> {
-  const items = await getActivityFeed(ACTIVITY_PAGE, before);
+  const user = await getSessionUser();
+  const items = await getActivityFeed(user?.id ?? null, ACTIVITY_PAGE, before);
   return {
     rows: items.map((item) => <ActivityRow key={activityKey(item)} item={item} />),
     nextCursor: items.length > 0 ? items[items.length - 1].at : null,

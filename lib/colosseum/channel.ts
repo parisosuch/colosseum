@@ -1,3 +1,5 @@
+import { cache } from "react";
+
 import { and, desc, eq, ilike, ne, or, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
@@ -237,10 +239,12 @@ export async function updateChannel(
 // enforced here — callers authorize reads explicitly (authorizeChannelRead for
 // the API; an owner/private check for the channel page) so a private channel is
 // never leaked.
-export async function getChannel(channel_id: number): Promise<Channel | null> {
+// Wrapped in React cache() so generateMetadata and the page share one lookup
+// per request (they both resolve the same channel). cache() keys on the id.
+export const getChannel = cache(async (channel_id: number): Promise<Channel | null> => {
   if (!Number.isFinite(channel_id)) {
     return null;
   }
   const [row] = await db.select().from(channel).where(eq(channel.id, channel_id)).limit(1);
   return row ? toChannel(row) : null;
-}
+});

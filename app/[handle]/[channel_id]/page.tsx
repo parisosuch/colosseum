@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
-import ChannelBoard from "@/components/channel-board";
+import ChannelBoard, { PAGE_SIZE } from "@/components/channel-board";
 import {
   canContributeChannel,
   canReadChannel,
@@ -12,6 +12,7 @@ import { isChannelMember, listChannelMembers } from "@/lib/colosseum/member";
 import { getPublicUserProfile } from "@/lib/colosseum/user";
 import { channelPreviewMeta } from "@/lib/colosseum/channel-meta";
 import { getChannelColumnCount, getChannelColumns } from "@/lib/colosseum/column";
+import { getScreenshotsForUrls } from "@/lib/colosseum/screenshot-data";
 import { getSessionUser } from "@/lib/auth";
 
 type ChannelPageParams = {
@@ -51,12 +52,24 @@ export default async function ChannelPage({ params }: ChannelPageParams) {
   const isOwner = !!user && channel.owner_id === user.id;
   const canContribute = canContributeChannel(channel, user?.id ?? null, isMember);
 
-  // Cheap channel-wide stats so the shell (breadcrumb + meta) is accurate at
-  // first paint. The block grid is fetched client-side with skeletons.
-  const [totalCount, newest] = await Promise.all([
+  // Server-render the first page of blocks (plus channel-wide count for the
+  // meta panel) so the grid paints at first load instead of after a hydrate +
+  // server-action round-trip. The client takes over for filtering/paging.
+  const [totalCount, initialColumns] = await Promise.all([
     getChannelColumnCount(id),
-    getChannelColumns(id, { sort: "newest", limit: 1 }, user?.id ?? null),
+    getChannelColumns(id, { sort: "newest", limit: PAGE_SIZE }, user?.id ?? null),
   ]);
+
+  // Cached previews for the first page's URL blocks, so screenshots render at
+  // first paint too. URLs without a cached row are simply absent; the board's
+  // hydrate/poll effect fetches those.
+  const initialScreenshots = [
+    ...(
+      await getScreenshotsForUrls(
+        initialColumns.filter((c) => c.type === "url" && c.url).map((c) => c.url!),
+      )
+    ).entries(),
+  ];
 
   const createdOnLabel = new Date(channel.created_at).toLocaleString("default", {
     month: "long",
@@ -90,11 +103,13 @@ export default async function ChannelPage({ params }: ChannelPageParams) {
       canContribute={canContribute}
       user={user}
       initialCount={totalCount}
-      newestAt={newest[0]?.created_at ?? null}
+      newestAt={initialColumns[0]?.created_at ?? null}
       createdOnLabel={createdOnLabel}
       channels={myChannels}
       members={members}
       ownerAvatarUrl={ownerAvatarUrl}
+      initialColumns={initialColumns}
+      initialScreenshots={initialScreenshots}
     />
   );
 }

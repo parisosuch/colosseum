@@ -46,3 +46,6 @@ next-env.d.ts
 
 # retired Supabase local CLI scratch (the app migrated off Supabase)
 /supabase
+
+# Claude Code harness scratch (agent worktrees, transcripts)
+/.claude

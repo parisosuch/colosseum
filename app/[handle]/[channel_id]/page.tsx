@@ -2,7 +2,14 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import ChannelBoard from "@/components/channel-board";
-import { getChannel, getUserChannels } from "@/lib/colosseum/channel";
+import {
+  canContributeChannel,
+  canReadChannel,
+  getChannel,
+  getUserChannels,
+} from "@/lib/colosseum/channel";
+import { isChannelMember, listChannelMembers } from "@/lib/colosseum/member";
+import { getPublicUserProfile } from "@/lib/colosseum/user";
 import { channelPreviewMeta } from "@/lib/colosseum/channel-meta";
 import { getChannelColumnCount, getChannelColumns } from "@/lib/colosseum/column";
 import { getSessionUser } from "@/lib/auth";
@@ -32,9 +39,17 @@ export default async function ChannelPage({ params }: ChannelPageParams) {
 
   const user = await getSessionUser();
 
-  if (channel.private && (!user || user.id !== channel.owner_id)) redirect("/");
+  // Membership matters for reading a private channel and for adding to a public
+  // or private one; open channels never gate on it. Resolve it once for both the
+  // read gate and canContribute below.
+  const isMember =
+    channel.access !== "open" && user ? await isChannelMember(channel.id, user.id) : false;
+  // Private channels are visible only to the owner or a member; hide the rest
+  // (redirect, don't leak existence). Public/open are visible to all.
+  if (!canReadChannel(channel, user?.id ?? null, isMember)) redirect("/");
 
   const isOwner = !!user && channel.owner_id === user.id;
+  const canContribute = canContributeChannel(channel, user?.id ?? null, isMember);
 
   // Cheap channel-wide stats so the shell (breadcrumb + meta) is accurate at
   // first paint. The block grid is fetched client-side with skeletons.
@@ -60,16 +75,26 @@ export default async function ChannelPage({ params }: ChannelPageParams) {
       }))
     : [];
 
+  // Collaborators shown on the board itself (not just settings). Only public and
+  // private channels have a roster; open channels let anyone add. Skip the
+  // owner-avatar lookup when there are no members to show.
+  const members = channel.access !== "open" ? await listChannelMembers(id) : [];
+  const ownerAvatarUrl =
+    members.length > 0 ? ((await getPublicUserProfile(handle))?.avatar_url ?? null) : null;
+
   return (
     <ChannelBoard
       channel={channel}
       handle={handle}
       isOwner={isOwner}
+      canContribute={canContribute}
       user={user}
       initialCount={totalCount}
       newestAt={newest[0]?.created_at ?? null}
       createdOnLabel={createdOnLabel}
       channels={myChannels}
+      members={members}
+      ownerAvatarUrl={ownerAvatarUrl}
     />
   );
 }

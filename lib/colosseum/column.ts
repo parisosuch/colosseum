@@ -1,7 +1,7 @@
-import { and, asc, desc, eq, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, ne, or, sql, type SQL } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { channel, column, screenshot, userProfile } from "@/lib/db/schema";
+import { channel, channelMember, column, screenshot, userProfile } from "@/lib/db/schema";
 import { sanitizeSearch } from "@/lib/utils";
 import { deleteMediaByUrl } from "./blob";
 
@@ -72,7 +72,7 @@ export async function withLinkedChannels(
       .where(
         and(
           inArray(channel.id, linkedIds),
-          or(eq(channel.private, false), viewerId ? eq(channel.owner_id, viewerId) : undefined),
+          or(ne(channel.access, "private"), viewerId ? eq(channel.owner_id, viewerId) : undefined),
         ),
       ),
     db
@@ -212,7 +212,11 @@ export async function searchColumns(
     .innerJoin(userProfile, eq(userProfile.user_id, channel.owner_id))
     .where(
       and(
-        or(eq(channel.private, false), eq(channel.owner_id, viewer_id)),
+        or(
+          ne(channel.access, "private"),
+          eq(channel.owner_id, viewer_id),
+          sql`exists (select 1 from ${channelMember} where ${channelMember.channel_id} = ${channel.id} and ${channelMember.user_id} = ${viewer_id})`,
+        ),
         or(
           ilike(column.title, pattern),
           ilike(column.description, pattern),

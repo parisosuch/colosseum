@@ -13,20 +13,29 @@ import { Button } from "./ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Checkbox } from "./ui/checkbox";
 import { deleteChannelAction, updateChannelAction } from "@/lib/colosseum/actions";
-import type { Channel } from "@/lib/colosseum/channel";
+import type { Channel, ChannelAccess } from "@/lib/colosseum/channel";
+import type { ChannelMember } from "@/lib/colosseum/member";
+import AccessSelect from "./access-select";
+import ChannelMembers from "./channel-members";
 import TagInput from "./tag-input";
 import { Settings, Trash2 } from "lucide-react";
+import type { Dispatch, SetStateAction } from "react";
 
 export default function ManageChannelButton({
   channel,
   handle,
   onUpdated,
+  members,
+  setMembers,
 }: {
   channel: Channel;
   handle: string;
   onUpdated: (channel: Channel) => void;
+  // Roster state, owned by the board so the members bar and this editor stay in
+  // sync as the owner adds/removes people.
+  members: ChannelMember[];
+  setMembers: Dispatch<SetStateAction<ChannelMember[]>>;
 }) {
   const [open, setOpen] = useState(false);
   // Which panel the single dialog is showing.
@@ -34,7 +43,7 @@ export default function ManageChannelButton({
   const [title, setTitle] = useState(channel.title);
   const [description, setDescription] = useState(channel.description ?? "");
   const [tags, setTags] = useState<string[]>(channel.tags);
-  const [isPrivate, setPrivate] = useState(channel.private);
+  const [access, setAccess] = useState<ChannelAccess>(channel.access);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -48,7 +57,7 @@ export default function ManageChannelButton({
       setTitle(channel.title);
       setDescription(channel.description ?? "");
       setTags(channel.tags);
-      setPrivate(channel.private);
+      setAccess(channel.access);
       setError(null);
     }
     setOpen(next);
@@ -62,7 +71,7 @@ export default function ManageChannelButton({
       const updated = await updateChannelAction(channel.id, {
         title,
         description,
-        private: isPrivate,
+        access,
         tags,
       });
       onUpdated(updated);
@@ -125,13 +134,8 @@ export default function ManageChannelButton({
                 />
                 <Label>Tags</Label>
                 <TagInput tags={tags} onChange={setTags} />
-                <div className="flex items-center gap-2 pt-1">
-                  <Checkbox
-                    id="edit-private"
-                    checked={isPrivate}
-                    onCheckedChange={(state) => setPrivate(state === true)}
-                  />
-                  <Label htmlFor="edit-private">Private channel</Label>
+                <div className="pt-1">
+                  <AccessSelect value={access} onChange={setAccess} idPrefix="edit-access" />
                 </div>
               </div>
               {error && <p className="text-sm text-red-500">{error}</p>}
@@ -139,6 +143,19 @@ export default function ManageChannelButton({
                 {isLoading ? "Saving..." : "Save changes"}
               </Button>
             </form>
+
+            {/* Roster editor. Members can add to public and private channels
+                (open channels let anyone add, so the roster is moot there). Owner
+                only, which the whole dialog already is. Keyed off the saved
+                channel's access, not the unsaved `access` draft. */}
+            {channel.access !== "open" ? (
+              <ChannelMembers
+                channelId={channel.id}
+                access={channel.access}
+                members={members}
+                setMembers={setMembers}
+              />
+            ) : null}
 
             <div className="border-t pt-4">
               <Button

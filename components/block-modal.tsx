@@ -35,7 +35,10 @@ type BlockModalProps = {
   column: Column | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  // Channel owner: gates moderation (delete any comment) and the "Move" picker.
   isOwner: boolean;
+  // May edit/delete *this* block: the channel owner or the block's own creator.
+  canEdit: boolean;
   handle: string;
   // The signed-in viewer's id, or null when signed out. Drives commenting.
   viewerId: string | null;
@@ -58,6 +61,7 @@ export default function BlockModal({
   open,
   onOpenChange,
   isOwner,
+  canEdit,
   handle,
   viewerId,
   setColumns,
@@ -98,6 +102,7 @@ export default function BlockModal({
             key={displayColumn.id}
             column={displayColumn}
             isOwner={isOwner}
+            canEdit={canEdit}
             handle={handle}
             viewerId={viewerId}
             setColumns={setColumns}
@@ -119,6 +124,7 @@ export default function BlockModal({
 function BlockModalBody({
   column,
   isOwner,
+  canEdit,
   handle,
   viewerId,
   setColumns,
@@ -131,6 +137,7 @@ function BlockModalBody({
 }: {
   column: Column;
   isOwner: boolean;
+  canEdit: boolean;
   handle: string;
   viewerId: string | null;
   setColumns: Dispatch<SetStateAction<Column[]>>;
@@ -276,7 +283,7 @@ function BlockModalBody({
           <Textarea
             ref={textInputRef}
             value={text}
-            disabled={!isOwner}
+            disabled={!canEdit}
             className="min-h-[50vh]"
             onChange={(e) => setText(e.target.value)}
           />
@@ -339,7 +346,7 @@ function BlockModalBody({
             <Input
               ref={titleInputRef}
               placeholder="No title"
-              disabled={!isOwner}
+              disabled={!canEdit}
               value={title}
               className="border-none shadow-none"
               onChange={(e) => setTitle(e.target.value)}
@@ -355,7 +362,7 @@ function BlockModalBody({
             <Textarea
               ref={descriptionInputRef}
               placeholder="No description"
-              disabled={!isOwner}
+              disabled={!canEdit}
               value={description}
               rows={1}
               // field-sizing grows the box with its content; shift+Enter adds a
@@ -370,9 +377,9 @@ function BlockModalBody({
               }}
             />
           </DialogDescription>
-          {isOwner || column.tags.length > 0 ? (
+          {canEdit || column.tags.length > 0 ? (
             <div className="p-3">
-              <TagInput tags={column.tags} onChange={handleTagsChange} disabled={!isOwner} />
+              <TagInput tags={column.tags} onChange={handleTagsChange} disabled={!canEdit} />
             </div>
           ) : null}
           <div className="flex w-full justify-between text-xs p-3">
@@ -432,7 +439,7 @@ function BlockModalBody({
                 </CommandDialog>
               </>
             ) : null}
-            {isOwner ? (
+            {canEdit ? (
               <Button
                 variant="ghost"
                 size="sm"

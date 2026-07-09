@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, desc, eq, lt } from "drizzle-orm";
+import { and, desc, eq, lt, ne } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { channel, column, userProfile } from "@/lib/db/schema";
@@ -69,7 +69,7 @@ export async function getActivityFeed(
       .from(column)
       .innerJoin(channel, eq(channel.id, column.channel_id))
       .innerJoin(userProfile, eq(userProfile.user_id, column.created_by))
-      .where(and(eq(channel.private, false), cursor ? lt(column.created_at, cursor) : undefined))
+      .where(and(ne(channel.access, "private"), cursor ? lt(column.created_at, cursor) : undefined))
       .orderBy(desc(column.created_at))
       .limit(limit),
     db
@@ -82,7 +82,9 @@ export async function getActivityFeed(
       })
       .from(channel)
       .innerJoin(userProfile, eq(userProfile.user_id, channel.owner_id))
-      .where(and(eq(channel.private, false), cursor ? lt(channel.created_at, cursor) : undefined))
+      .where(
+        and(ne(channel.access, "private"), cursor ? lt(channel.created_at, cursor) : undefined),
+      )
       .orderBy(desc(channel.created_at))
       .limit(limit),
     // A member "joins" the network when they get a handle (onboard).

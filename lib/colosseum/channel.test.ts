@@ -3,12 +3,15 @@ import { beforeAll, expect, test } from "bun:test";
 import { BLOCKS, CHANNELS, seed, USERS } from "@/scripts/seed";
 import { createMedia, putBlob } from "./blob";
 import {
+  canContributeChannel,
   createChannel,
   deleteChannel,
   getUserChannels,
   getUserPublicChannels,
+  getVisibleUserChannels,
   searchChannels,
 } from "./channel";
+import { isChannelMember } from "./member";
 import { searchColumns, uploadURLColumn } from "./column";
 import { getScreenshot, upsertScreenshot } from "./screenshot-data";
 
@@ -17,7 +20,7 @@ beforeAll(async () => {
 });
 
 test("deleting a channel GCs a URL block's cached screenshot when nothing else links it", async () => {
-  const host = await createChannel({ title: "Doomed", private: false, owner_id: USERS.alice.id });
+  const host = await createChannel({ title: "Doomed", access: "public", owner_id: USERS.alice.id });
   const url = "https://ponytail.example/channel-delete";
   await uploadURLColumn({ created_by: USERS.alice.id, channel_id: host.id, text: url });
 
@@ -45,6 +48,58 @@ test("getUserChannels includes the owner's private channels", async () => {
   const titles = (await getUserChannels(USERS.alice.id)).map((c) => c.title);
   expect(titles).toContain(CHANNELS.aliceDesign.title);
   expect(titles).toContain(CHANNELS.alicePrivate.title);
+});
+
+test("getUserPublicChannels includes open channels (only private is hidden)", async () => {
+  const titles = (await getUserPublicChannels(USERS.alice.id)).map((c) => c.title);
+  expect(titles).toContain(CHANNELS.aliceOpen.title);
+});
+
+test("getVisibleUserChannels shows a private group to its members, not to outsiders", async () => {
+  // Alice is a member of bob's private group, so she sees it on his profile...
+  const asMember = (await getVisibleUserChannels(USERS.bob.id, USERS.alice.id)).map((c) => c.title);
+  expect(asMember).toContain(CHANNELS.bobGroup.title);
+  // ...a signed-out viewer sees only bob's public channels.
+  const anon = (await getVisibleUserChannels(USERS.bob.id, null)).map((c) => c.title);
+  expect(anon).toContain(CHANNELS.bobPhoto.title);
+  expect(anon).not.toContain(CHANNELS.bobGroup.title);
+});
+
+test("searchChannels surfaces a private group to its members", async () => {
+  // Alice (a member) finds bob's private group by title...
+  expect(
+    (await searchChannels(USERS.alice.id, CHANNELS.bobGroup.title)).map((c) => c.title),
+  ).toContain(CHANNELS.bobGroup.title);
+});
+
+test("open channels let anyone contribute", async () => {
+  const open = (await getUserPublicChannels(USERS.alice.id)).find(
+    (c) => c.title === CHANNELS.aliceOpen.title,
+  )!;
+  expect(canContributeChannel(open, USERS.bob.id, false)).toBe(true);
+});
+
+test("a public channel takes members: non-members can't add, invited members can", async () => {
+  const publicCh = (await getUserPublicChannels(USERS.alice.id)).find(
+    (c) => c.title === CHANNELS.aliceDesign.title,
+  )!;
+  // Anyone may read it, but a non-member (not the owner) may not add...
+  expect(canContributeChannel(publicCh, USERS.bob.id, false)).toBe(false);
+  // ...while an invited member may.
+  expect(canContributeChannel(publicCh, USERS.bob.id, true)).toBe(true);
+  // The owner always may.
+  expect(canContributeChannel(publicCh, USERS.alice.id, false)).toBe(true);
+});
+
+test("a private group member can read and contribute; the membership row backs it", async () => {
+  const [group] = await getVisibleUserChannels(USERS.bob.id, USERS.alice.id).then((cs) =>
+    cs.filter((c) => c.title === CHANNELS.bobGroup.title),
+  );
+  const aliceIsMember = await isChannelMember(group.id, USERS.alice.id);
+  expect(aliceIsMember).toBe(true);
+  expect(canContributeChannel(group, USERS.alice.id, aliceIsMember)).toBe(true);
+  // A non-member (no session / not invited) can neither read nor contribute.
+  expect(canContributeChannel(group, USERS.bob.id, false)).toBe(true); // owner
 });
 
 test("searchChannels matches by title and returns nothing for an empty query", async () => {
@@ -85,5 +140,12 @@ test("searchColumns surfaces other users' public blocks but never private ones",
   // ...but she can find it herself.
   expect((await searchColumns(USERS.alice.id, BLOCKS.alicePrivate)).map((c) => c.title)).toContain(
     BLOCKS.alicePrivate,
+  );
+});
+
+test("searchColumns surfaces a private group's blocks to its members", async () => {
+  // Alice is a member of bob's private group, so its blocks are searchable to her.
+  expect((await searchColumns(USERS.alice.id, BLOCKS.bobGroup)).map((c) => c.title)).toContain(
+    BLOCKS.bobGroup,
   );
 });

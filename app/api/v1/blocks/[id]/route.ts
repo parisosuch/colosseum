@@ -4,8 +4,8 @@ import {
   authenticateApiToken,
   apiError,
   attachPreview,
+  authorizeBlockWrite,
   authorizeChannelRead,
-  authorizeChannelWrite,
   json,
 } from "@/lib/colosseum/api-auth";
 import { getChannel } from "@/lib/colosseum/channel";
@@ -34,7 +34,7 @@ export async function GET(req: Request, { params }: Ctx) {
   if (!block) return apiError("Not found.", 404);
 
   const channel = await getChannel(block.channel_id);
-  const denied = authorizeChannelRead(channel, auth.userId);
+  const denied = await authorizeChannelRead(channel, auth.userId);
   if (denied) return denied;
 
   return json({ block: await attachPreview(block) });
@@ -47,8 +47,8 @@ const EDITABLE_BY_TYPE: Record<string, string[]> = {
   image: ["title", "description", "image"],
 };
 
-// PATCH /api/v1/blocks/:id — owner-only. Partial update of the block's editable
-// fields (only those valid for its type).
+// PATCH /api/v1/blocks/:id — channel owner or the block's creator. Partial
+// update of the block's editable fields (only those valid for its type).
 export async function PATCH(req: Request, { params }: Ctx) {
   const auth = await authenticateApiToken(req);
   if (auth instanceof NextResponse) return auth;
@@ -60,7 +60,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
   if (!block) return apiError("Not found.", 404);
 
   const channel = await getChannel(block.channel_id);
-  const denied = authorizeChannelWrite(channel, auth.userId);
+  const denied = await authorizeBlockWrite(channel, block, auth.userId);
   if (denied) return denied;
 
   let body: Record<string, unknown>;
@@ -94,7 +94,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
   }
 }
 
-// DELETE /api/v1/blocks/:id — owner-only.
+// DELETE /api/v1/blocks/:id — channel owner or the block's creator.
 export async function DELETE(req: Request, { params }: Ctx) {
   const auth = await authenticateApiToken(req);
   if (auth instanceof NextResponse) return auth;
@@ -106,7 +106,7 @@ export async function DELETE(req: Request, { params }: Ctx) {
   if (!block) return apiError("Not found.", 404);
 
   const channel = await getChannel(block.channel_id);
-  const denied = authorizeChannelWrite(channel, auth.userId);
+  const denied = await authorizeBlockWrite(channel, block, auth.userId);
   if (denied) return denied;
 
   try {

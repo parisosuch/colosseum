@@ -7,12 +7,13 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { PlusIcon } from "lucide-react";
 import { createChannelAction, getMyProfileAction } from "@/lib/colosseum/actions";
-import { Checkbox } from "./ui/checkbox";
+import type { ChannelAccess } from "@/lib/colosseum/channel";
+import AccessSelect from "./access-select";
 
 export default function CreateChannelForm() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [isPrivate, setPrivate] = useState<boolean>(false);
+  const [access, setAccess] = useState<ChannelAccess>("public");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
@@ -27,7 +28,7 @@ export default function CreateChannelForm() {
       const channel = await createChannelAction({
         title: title,
         description: description,
-        private: isPrivate,
+        access: access,
       });
       // reroute to channel that was just created
       const userProfile = await getMyProfileAction();
@@ -63,13 +64,8 @@ export default function CreateChannelForm() {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
-          <div className="mt-2 flex items-center gap-2">
-            <Checkbox
-              id="private"
-              checked={isPrivate}
-              onCheckedChange={(state) => setPrivate(state === true)}
-            />
-            <Label htmlFor="private">Private channel</Label>
+          <div className="mt-2">
+            <AccessSelect value={access} onChange={setAccess} idPrefix="create-access" />
           </div>
         </div>
         {error && <p className="text-sm text-red-500">{error}</p>}

@@ -14,6 +14,7 @@ import {
   index,
   integer,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -102,7 +103,11 @@ export const channel = pgTable(
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     title: text("title").notNull(),
     description: text("description"),
-    private: boolean("private").notNull().default(false),
+    // Access mode: `public` (all read, owner writes), `open` (all read, anyone
+    // writes), `private` (owner + channel_member rows read and write).
+    access: text("access", { enum: ["public", "open", "private"] })
+      .notNull()
+      .default("public"),
     owner_id: uuid("owner_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
@@ -113,6 +118,24 @@ export const channel = pgTable(
     // Explore feed orders newly created channels by time.
     index("channel_created_at_idx").on(t.created_at),
   ],
+);
+
+// Members of a `private` channel: everyone here (plus the owner, who is an
+// implicit member and never stored) may read and add to the channel. Meaningless
+// for public/open channels. Both FKs cascade, so a row vanishes with its channel
+// or its user.
+export const channelMember = pgTable(
+  "channel_member",
+  {
+    channel_id: bigint("channel_id", { mode: "number" })
+      .notNull()
+      .references(() => channel.id, { onDelete: "cascade" }),
+    user_id: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.channel_id, t.user_id] })],
 );
 
 // "column" is a reserved SQL keyword; Drizzle quotes the table name for us.

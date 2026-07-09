@@ -5,8 +5,8 @@ import {
   apiError,
   attachPreview,
   attachPreviews,
+  authorizeChannelContribute,
   authorizeChannelRead,
-  authorizeChannelWrite,
   json,
 } from "@/lib/colosseum/api-auth";
 import { getChannel } from "@/lib/colosseum/channel";
@@ -38,7 +38,7 @@ export async function GET(req: Request, { params }: Ctx) {
   if (channelId === null) return apiError("Invalid channel id.", 400);
 
   const channel = await getChannel(channelId);
-  const denied = authorizeChannelRead(channel, auth.userId);
+  const denied = await authorizeChannelRead(channel, auth.userId);
   if (denied) return denied;
 
   const limitParam = new URL(req.url).searchParams.get("limit");
@@ -56,7 +56,9 @@ export async function GET(req: Request, { params }: Ctx) {
   }
 }
 
-// POST /api/v1/channels/:id/blocks — add a block (owner-only). Body:
+// POST /api/v1/channels/:id/blocks — add a block. Who may add depends on the
+// channel's access mode (owner for public, anyone for open, owner/member for
+// private). Body:
 //   { "type": "text", "text": "..." }
 //   { "type": "url", "url": "https://..." }
 //   { "type": "image", "image": "https://...(public url)" }
@@ -70,7 +72,7 @@ export async function POST(req: Request, { params }: Ctx) {
   if (channelId === null) return apiError("Invalid channel id.", 400);
 
   const channel = await getChannel(channelId);
-  const denied = authorizeChannelWrite(channel, auth.userId);
+  const denied = await authorizeChannelContribute(channel, auth.userId);
   if (denied) return denied;
 
   let body: Record<string, unknown>;

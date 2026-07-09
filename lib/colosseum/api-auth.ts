@@ -8,7 +8,14 @@ import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db";
 import { apiToken } from "@/lib/db/schema";
-import { Channel } from "./channel";
+import {
+  Channel,
+  ChannelAccess,
+  canContributeChannel,
+  canManageChannel,
+  canReadChannel,
+} from "./channel";
+import { isChannelMember } from "./member";
 import { Column } from "./column";
 import { ApiToken } from "./api-token";
 import { getScreenshot, getScreenshotsForUrls } from "./screenshot-data";
@@ -38,6 +45,20 @@ export function json(data: unknown, status = 200): NextResponse {
 
 export function apiError(message: string, status: number): NextResponse {
   return NextResponse.json({ error: message }, { status });
+}
+
+// Resolve a channel's access mode from an API request body. Accepts the new
+// `access` enum, and still honors the legacy `private` boolean (true → private,
+// false → public) so existing clients keep working. Falls back to `fallback`
+// (the current value on PATCH, or "public" on create) when neither is given.
+export function parseAccess(body: Record<string, unknown>, fallback: ChannelAccess): ChannelAccess {
+  if (body.access === "public" || body.access === "open" || body.access === "private") {
+    return body.access;
+  }
+  if (typeof body.private === "boolean") {
+    return body.private ? "private" : "public";
+  }
+  return fallback;
 }
 
 // A bearer token has no user session, so API handlers resolve it to a user id
@@ -138,30 +159,75 @@ export async function createApiToken(params: {
   };
 }
 
-// Read authorization: a channel is visible when it's public or owned by the
-// caller. A missing OR hidden (private, not owned) channel both return 404 so we
-// never leak the existence of someone else's private channel.
-export function authorizeChannelRead(channel: Channel | null, userId: string): NextResponse | null {
-  if (!channel || (channel.private && channel.owner_id !== userId)) {
+// Whether the caller has a membership row. `open` channels never gate on it, so
+// skip the query there. Read only needs it for private channels; contribute
+// needs it for public ones too (members can add to a public channel), so callers
+// pass which modes matter.
+async function memberOf(
+  channel: Channel,
+  userId: string,
+  modes: readonly ChannelAccess[],
+): Promise<boolean> {
+  return modes.includes(channel.access) ? isChannelMember(channel.id, userId) : false;
+}
+
+// Read authorization: public/open channels are visible to anyone; a private one
+// only to its owner or a member. A missing OR hidden channel both return 404, so
+// we never leak the existence of someone else's private channel.
+export async function authorizeChannelRead(
+  channel: Channel | null,
+  userId: string,
+): Promise<NextResponse | null> {
+  if (!channel || !canReadChannel(channel, userId, await memberOf(channel, userId, ["private"]))) {
     return apiError("Not found.", 404);
   }
   return null;
 }
 
-// Write authorization: only the owner may mutate. A hidden channel still 404s
-// (don't leak); a visible-but-not-owned channel is 403.
-export function authorizeChannelWrite(
+// Manage authorization: settings, delete, and membership — owner only. A hidden
+// channel 404s (don't leak); a readable-but-not-owned channel is 403.
+export async function authorizeChannelManage(
   channel: Channel | null,
   userId: string,
-): NextResponse | null {
-  if (!channel || (channel.private && channel.owner_id !== userId)) {
-    return apiError("Not found.", 404);
-  }
-  if (channel.owner_id !== userId) {
+): Promise<NextResponse | null> {
+  const denied = await authorizeChannelRead(channel, userId);
+  if (denied) return denied;
+  if (!canManageChannel(channel!, userId)) {
     logInfo(
       "api-auth",
-      `user ${userId} denied write on channel ${channel.id} (owned by ${channel.owner_id})`,
+      `user ${userId} denied manage on channel ${channel!.id} (owned by ${channel!.owner_id})`,
     );
+    return apiError("You do not have permission to modify this resource.", 403);
+  }
+  return null;
+}
+
+// Contribute authorization (adding blocks): per the access matrix — open → any
+// signed-in user, public/private → owner or member. 404 for a hidden channel,
+// 403 for a readable one the caller may not add to.
+export async function authorizeChannelContribute(
+  channel: Channel | null,
+  userId: string,
+): Promise<NextResponse | null> {
+  if (!channel) return apiError("Not found.", 404);
+  const isMember = await memberOf(channel, userId, ["public", "private"]);
+  if (!canReadChannel(channel, userId, isMember)) return apiError("Not found.", 404);
+  if (!canContributeChannel(channel, userId, isMember)) {
+    return apiError("You do not have permission to modify this resource.", 403);
+  }
+  return null;
+}
+
+// Block edit/delete authorization: the caller must be able to read the block's
+// channel, and be either the channel owner or the block's own creator.
+export async function authorizeBlockWrite(
+  channel: Channel | null,
+  block: Column,
+  userId: string,
+): Promise<NextResponse | null> {
+  const denied = await authorizeChannelRead(channel, userId);
+  if (denied) return denied;
+  if (channel!.owner_id !== userId && block.created_by !== userId) {
     return apiError("You do not have permission to modify this resource.", 403);
   }
   return null;

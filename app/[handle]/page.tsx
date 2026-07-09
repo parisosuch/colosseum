@@ -2,11 +2,19 @@ import PageHeader from "@/components/page-header";
 import ColumnPreview from "@/components/column-preview";
 import CreateChannelButton from "@/components/create-channel-button";
 import { ChannelsView } from "@/components/channels-view";
-import { Channel, getUserChannels, getUserPublicChannels } from "@/lib/colosseum/channel";
+import { Channel, getUserChannels, getVisibleUserChannels } from "@/lib/colosseum/channel";
 import { getChannelColumnCount, getChannelColumns } from "@/lib/colosseum/column";
 import { getPublicUserProfile } from "@/lib/colosseum/user";
 import { getSessionUser } from "@/lib/auth";
 import Link from "next/link";
+
+// Grid-card border per access mode: private reads as "restricted" (red), open as
+// "collaborative" (emerald), public as neutral.
+const CHANNEL_CARD_CLASS = {
+  private: "bg-red-500/5 border-red-500/50 hover:border-red-500",
+  open: "bg-emerald-500/5 border-emerald-500/50 hover:border-emerald-500",
+  public: "border-gray-500/50 hover:border-gray-500",
+} as const;
 
 async function ChannelColumnsView({
   channel,
@@ -66,9 +74,11 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
 
   const match = !!user && userProfile.user_id === user.id;
 
+  // On your own profile you see all your channels; on someone else's you see
+  // their public/open channels plus any private group you've been invited to.
   const channels: Channel[] = match
     ? await getUserChannels(user!.id)
-    : await getUserPublicChannels(userProfile.user_id);
+    : await getVisibleUserChannels(userProfile.user_id, user?.id ?? null);
 
   // One count per channel, fetched once and shared by the grid cards and the
   // list rows so the two views don't each re-query.
@@ -82,7 +92,7 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
     node: (
       <Link key={channel.id} href={`/${handle}/${channel.id}`}>
         <div
-          className={`flex aspect-square items-center justify-center p-4 md:block md:aspect-auto md:p-8 border-2 rounded-lg transition-colors ${channel.private ? "bg-red-500/5 border-red-500/50 hover:border-red-500" : "border-gray-500/50 hover:border-gray-500"}`}
+          className={`flex aspect-square items-center justify-center p-4 md:block md:aspect-auto md:p-8 border-2 rounded-lg transition-colors ${CHANNEL_CARD_CLASS[channel.access]}`}
         >
           <ChannelColumnsView
             channel={channel}

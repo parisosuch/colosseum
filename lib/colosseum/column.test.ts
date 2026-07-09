@@ -12,8 +12,12 @@ beforeAll(async () => {
 
 test("withLinkedChannels re-checks privacy: a linked channel gone private hides from all but its owner", async () => {
   // Bob owns a public channel; Alice links it into one of hers.
-  const target = await createChannel({ title: "Linkable", private: false, owner_id: USERS.bob.id });
-  const host = await createChannel({ title: "Host", private: false, owner_id: USERS.alice.id });
+  const target = await createChannel({
+    title: "Linkable",
+    access: "public",
+    owner_id: USERS.bob.id,
+  });
+  const host = await createChannel({ title: "Host", access: "public", owner_id: USERS.alice.id });
   const link = await addChannelColumn({
     created_by: USERS.alice.id,
     channel_id: host.id,
@@ -26,7 +30,7 @@ test("withLinkedChannels re-checks privacy: a linked channel gone private hides 
   expect((await linked(USERS.alice.id))?.title).toBe("Linkable");
 
   // Bob flips it private.
-  await updateChannel(target.id, { title: "Linkable", private: true });
+  await updateChannel(target.id, { title: "Linkable", access: "private" });
 
   // Non-owner viewers (and signed-out) now get no resolved display data...
   expect(await linked(USERS.alice.id)).toBeUndefined();
@@ -36,7 +40,7 @@ test("withLinkedChannels re-checks privacy: a linked channel gone private hides 
 });
 
 test("deleting the last column for a URL GCs its cached screenshot; a shared one survives", async () => {
-  const host = await createChannel({ title: "Links", private: false, owner_id: USERS.alice.id });
+  const host = await createChannel({ title: "Links", access: "public", owner_id: USERS.alice.id });
   const url = "https://ponytail.example/gc-test";
 
   const a = await uploadURLColumn({ created_by: USERS.alice.id, channel_id: host.id, text: url });

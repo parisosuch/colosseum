@@ -1,21 +1,65 @@
-import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, ne, or, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { channel, column, userProfile } from "@/lib/db/schema";
+import { channel, channelMember, column, userProfile } from "@/lib/db/schema";
 import { sanitizeSearch } from "@/lib/utils";
 import { deleteMediaByUrl, setMediaVisibilityByUrls } from "./blob";
 import { deleteScreenshotIfUnreferenced } from "./column";
+
+// A channel's access mode. `public`: everyone reads, only the owner adds.
+// `open`: everyone reads, any signed-in user adds. `private`: only the owner and
+// channel_member rows read or add.
+export type ChannelAccess = "public" | "open" | "private";
 
 export type Channel = {
   id: number;
   created_at: string;
   title: string;
   description?: string;
+  access: ChannelAccess;
+  // ponytail: derived display shim (access === "private"). `access` is the
+  // source of truth; this keeps read-only "is it hidden?" call sites unchanged.
   private: boolean;
   owner_id: string;
   updated_at?: string;
   tags: string[];
 };
+
+// SQL predicate: does `user_id` have a channel_member row for `channel.id`?
+// Signed-out viewers (null) never match.
+function isMemberSql(user_id: string | null) {
+  if (!user_id) return sql`false`;
+  return sql`exists (select 1 from ${channelMember} where ${channelMember.channel_id} = ${channel.id} and ${channelMember.user_id} = ${user_id})`;
+}
+
+// ---------------------------------------------------------------------------
+// Access predicates — the single source of the authorization matrix. Callers
+// resolve `isMember` (see member.ts) and pass it in; public/open reads ignore it.
+// ---------------------------------------------------------------------------
+
+// Read: public/open are visible to anyone; private only to the owner or a member.
+export function canReadChannel(ch: Channel, userId: string | null, isMember: boolean): boolean {
+  if (ch.access !== "private") return true;
+  return userId === ch.owner_id || isMember;
+}
+
+// Add blocks: open → any signed-in user; public and private → the owner or an
+// invited member. (A public channel with no members is therefore owner-only; add
+// members to make it a publicly-readable, members-only-writable channel.)
+export function canContributeChannel(
+  ch: Channel,
+  userId: string | null,
+  isMember: boolean,
+): boolean {
+  if (!userId) return false;
+  if (ch.access === "open") return true;
+  return userId === ch.owner_id || isMember;
+}
+
+// Manage (settings, delete, members): owner only, whatever the access mode.
+export function canManageChannel(ch: Channel, userId: string | null): boolean {
+  return !!userId && userId === ch.owner_id;
+}
 
 // Drizzle returns Date objects for timestamptz and null for absent columns; the
 // app's Channel type uses ISO strings and optional fields. Normalize on the way
@@ -27,7 +71,8 @@ function toChannel(row: ChannelRow): Channel {
     created_at: row.created_at.toISOString(),
     title: row.title,
     description: row.description ?? undefined,
-    private: row.private,
+    access: row.access,
+    private: row.access === "private",
     owner_id: row.owner_id,
     updated_at: row.updated_at?.toISOString() ?? undefined,
     tags: row.tags,
@@ -43,7 +88,7 @@ export async function getUserPublicChannels(user_id: string): Promise<Channel[]>
   const rows = await db
     .select()
     .from(channel)
-    .where(and(eq(channel.owner_id, user_id), eq(channel.private, false)))
+    .where(and(eq(channel.owner_id, user_id), ne(channel.access, "private")))
     .orderBy(desc(lastBlockAddedAt));
   return rows.map(toChannel);
 }
@@ -57,14 +102,39 @@ export async function getUserChannels(user_id: string): Promise<Channel[]> {
   return rows.map(toChannel);
 }
 
+// The owner's channels as visible to `viewer_id`: every public/open one, plus
+// private ones the viewer owns or is a member of. Backs the profile grid so an
+// invited member sees the private group channels they belong to.
+export async function getVisibleUserChannels(
+  owner_id: string,
+  viewer_id: string | null,
+): Promise<Channel[]> {
+  const rows = await db
+    .select()
+    .from(channel)
+    .where(
+      and(
+        eq(channel.owner_id, owner_id),
+        or(
+          ne(channel.access, "private"),
+          // The owner sees their own private channels; members see theirs.
+          viewer_id ? eq(channel.owner_id, viewer_id) : undefined,
+          isMemberSql(viewer_id),
+        ),
+      ),
+    )
+    .orderBy(desc(lastBlockAddedAt));
+  return rows.map(toChannel);
+}
+
 // A channel search hit, carrying the owner's handle so callers can build the
 // `/{handle}/{id}` link without a second lookup.
 export type ChannelSearchResult = Channel & { handle: string };
 
 // Channels whose title/description or a tag match `query`, across everyone:
-// every public channel plus the viewer's own (including their private ones).
-// Used by the nav search box, so capped to a handful of results. Returns [] for
-// an empty/whitespace-only query.
+// every public/open channel, the viewer's own (including their private ones),
+// and private group channels the viewer belongs to. Used by the nav search box,
+// so capped to a handful of results. Returns [] for an empty/whitespace query.
 export async function searchChannels(
   viewer_id: string,
   query: string,
@@ -82,7 +152,7 @@ export async function searchChannels(
     .innerJoin(userProfile, eq(userProfile.user_id, channel.owner_id))
     .where(
       and(
-        or(eq(channel.private, false), eq(channel.owner_id, viewer_id)),
+        or(ne(channel.access, "private"), eq(channel.owner_id, viewer_id), isMemberSql(viewer_id)),
         or(
           ilike(channel.title, pattern),
           ilike(channel.description, pattern),
@@ -97,7 +167,7 @@ export async function searchChannels(
 export async function createChannel(input: {
   title: string;
   description?: string;
-  private: boolean;
+  access: ChannelAccess;
   owner_id: string;
 }): Promise<Channel> {
   const [row] = await db.insert(channel).values(input).returning();
@@ -143,7 +213,7 @@ async function channelLinkUrls(channel_id: number): Promise<string[]> {
 // ownership first. Throws if the channel no longer exists (no row returned).
 export async function updateChannel(
   channel_id: number,
-  updates: { title: string; description?: string; private: boolean; tags?: string[] },
+  updates: { title: string; description?: string; access: ChannelAccess; tags?: string[] },
 ): Promise<Channel> {
   const [row] = await db
     .update(channel)
@@ -155,9 +225,10 @@ export async function updateChannel(
   }
   // Keep image-block media in sync with the channel's privacy so a flipped
   // channel's images follow it (idempotent, so no need to diff the old value).
+  // Only `private` channels hide their images; open channels read publicly.
   await setMediaVisibilityByUrls(
     await channelImageUrls(channel_id),
-    row.private ? "private" : "public",
+    row.access === "private" ? "private" : "public",
   );
   return toChannel(row);
 }

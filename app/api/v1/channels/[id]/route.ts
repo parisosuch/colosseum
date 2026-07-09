@@ -3,9 +3,10 @@ import { NextResponse } from "next/server";
 import {
   authenticateApiToken,
   apiError,
+  authorizeChannelManage,
   authorizeChannelRead,
-  authorizeChannelWrite,
   json,
+  parseAccess,
 } from "@/lib/colosseum/api-auth";
 import { deleteChannel, getChannel, updateChannel } from "@/lib/colosseum/channel";
 import { logError, logInfo } from "@/lib/log";
@@ -28,7 +29,7 @@ export async function GET(req: Request, { params }: Ctx) {
   if (channelId === null) return apiError("Invalid channel id.", 400);
 
   const channel = await getChannel(channelId);
-  const denied = authorizeChannelRead(channel, auth.userId);
+  const denied = await authorizeChannelRead(channel, auth.userId);
   if (denied) return denied;
 
   return json({ channel });
@@ -44,7 +45,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
   if (channelId === null) return apiError("Invalid channel id.", 400);
 
   const channel = await getChannel(channelId);
-  const denied = authorizeChannelWrite(channel, auth.userId);
+  const denied = await authorizeChannelManage(channel, auth.userId);
   if (denied) return denied;
 
   let body: Record<string, unknown>;
@@ -58,13 +59,13 @@ export async function PATCH(req: Request, { params }: Ctx) {
   if (!title) return apiError("`title` cannot be empty.", 400);
   const description =
     typeof body.description === "string" ? body.description : channel!.description;
-  const isPrivate = typeof body.private === "boolean" ? body.private : channel!.private;
+  const access = parseAccess(body, channel!.access);
 
   try {
     const updated = await updateChannel(channelId, {
       title,
       description,
-      private: isPrivate,
+      access,
     });
     logInfo("channels.id.PATCH", `updated channel ${channelId} for user ${auth.userId}`);
     return json({ channel: updated });
@@ -83,7 +84,7 @@ export async function DELETE(req: Request, { params }: Ctx) {
   if (channelId === null) return apiError("Invalid channel id.", 400);
 
   const channel = await getChannel(channelId);
-  const denied = authorizeChannelWrite(channel, auth.userId);
+  const denied = await authorizeChannelManage(channel, auth.userId);
   if (denied) return denied;
 
   try {

@@ -8,6 +8,7 @@ const channel = (over: Partial<Channel>): Channel => ({
   created_at: "2026-01-01T00:00:00Z",
   title: "Design Inspiration",
   description: "moodboards and type",
+  access: "public",
   private: false,
   owner_id: "u1",
   tags: [],
@@ -29,7 +30,7 @@ test("channel without a description still names the owner", () => {
 });
 
 test("private channel does not leak its name/description/owner", () => {
-  const meta = channelPreviewMeta(channel({ private: true }), "paris");
+  const meta = channelPreviewMeta(channel({ access: "private", private: true }), "paris");
   expect(meta).toEqual({ title: "Colosseum" });
 });
 

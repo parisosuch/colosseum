@@ -152,7 +152,7 @@ export function ActivityRow({ item }: { item: ActivityItem }) {
 // connected network, each item showing the block or channel as the focal point.
 export default function ExploreView({ activity }: { activity: ActivityItem[] }) {
   return (
-    <div className="w-full flex-1 min-h-0 overflow-y-auto p-6 sm:p-12 space-y-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div className="w-full flex-1 p-6 sm:p-12 space-y-8">
       <PageHeader crumbs={[{ label: "Explore" }]} />
       <div className="space-y-1">
         <p className="text-muted-foreground">Recent activity from across Colosseum.</p>

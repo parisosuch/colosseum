@@ -114,7 +114,7 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
   }));
 
   return (
-    <div className="w-full flex-1 min-h-0 overflow-y-auto p-6 sm:p-12 space-y-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div className="w-full flex-1 p-6 sm:p-12 space-y-8">
       <PageHeader crumbs={[{ label: handle }]} />
       <div className="flex flex-col space-y-4">
         <div className="flex flex-col">

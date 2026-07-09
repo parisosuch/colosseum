@@ -6,6 +6,7 @@ import BlockModal from "@/components/block-modal";
 import AddChannelToChannelButton from "@/components/add-channel-to-channel-button";
 import type { PickableChannel } from "@/components/add-block-drawer";
 import ManageChannelButton from "@/components/manage-channel-button";
+import ChannelMembersBar from "@/components/channel-members-bar";
 import ExportChannelButton from "@/components/export-channel-button";
 import ColumnInput from "@/components/column-input";
 import ChannelControls from "@/components/channel-controls";
@@ -14,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import type { Channel } from "@/lib/colosseum/channel";
+import type { ChannelMember } from "@/lib/colosseum/member";
 import type { Column, ColumnFilter, ColumnSort } from "@/lib/colosseum/column";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import { getChannelColumnsAction, getScreenshotsForUrlsAction } from "@/lib/colosseum/actions";
@@ -21,8 +23,9 @@ import { LayoutGrid, List, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-// How many blocks to load per page (initial load and each load-more).
-const PAGE_SIZE = 50;
+// How many blocks to load per page (initial load and each load-more). Exported
+// so the channel page can server-render exactly the first page.
+export const PAGE_SIZE = 50;
 // Placeholder tiles shown while the first page loads — a few rows' worth.
 const SKELETON_COUNT = 18;
 
@@ -61,6 +64,9 @@ type ChannelBoardProps = {
   channel: Channel;
   handle: string;
   isOwner: boolean;
+  // Whether the viewer may add blocks: owner (public), anyone signed in (open),
+  // or owner/member (private). Gates every add-block affordance below.
+  canContribute: boolean;
   user: SessionUser | null;
   initialCount: number;
   newestAt: string | null;
@@ -70,21 +76,41 @@ type ChannelBoardProps = {
   // The viewer's own channels, for the block modal's "Move" picker (owner only)
   // and the "Add to channel" button (any viewer). Empty when signed out.
   channels: PickableChannel[];
+  // The channel's invited members (empty for open/solo channels), and the owner's
+  // avatar, for the collaborators bar. Held as state so the settings editor's
+  // add/remove updates the bar live.
+  members: ChannelMember[];
+  ownerAvatarUrl: string | null;
+  // The first page of blocks, server-rendered so the grid paints without a
+  // hydrate + server-action round-trip. Seeds `columns`; the mount fetch is
+  // skipped while the controls are still at their defaults.
+  initialColumns: Column[];
+  // Cached screenshots for the first page's URL blocks (entries, not a Map — a
+  // Map isn't needed on the wire), so previews paint without a second fetch.
+  initialScreenshots: [string, ColumnScreenshot][];
 };
 
 export default function ChannelBoard({
   channel: initialChannel,
   handle,
   isOwner,
+  canContribute,
   user,
   initialCount,
   newestAt: initialNewestAt,
   createdOnLabel,
   channels,
+  members: initialMembers,
+  ownerAvatarUrl,
+  initialColumns,
+  initialScreenshots,
 }: ChannelBoardProps) {
+  const [members, setMembers] = useState<ChannelMember[]>(initialMembers);
   const [channel, setChannel] = useState<Channel>(initialChannel);
-  const [columns, setColumns] = useState<Column[]>([]);
-  const [screenshots, setScreenshots] = useState<Map<string, ColumnScreenshot>>(new Map());
+  const [columns, setColumns] = useState<Column[]>(initialColumns);
+  const [screenshots, setScreenshots] = useState<Map<string, ColumnScreenshot>>(
+    () => new Map(initialScreenshots),
+  );
 
   // Channel-wide stats, kept independent of the paged/filtered `columns` list so
   // the meta panel always reflects the whole channel.
@@ -98,10 +124,11 @@ export default function ChannelBoard({
   const [typeFilter, setTypeFilter] = useState<ColumnFilter>("all");
   const [sort, setSort] = useState<ColumnSort>("newest");
 
-  // Paging state for the current control selection.
-  const [loadingPage, setLoadingPage] = useState(true);
+  // Paging state for the current control selection. Seeded from the
+  // server-rendered first page, so nothing loads on mount.
+  const [loadingPage, setLoadingPage] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(false);
+  const [hasMore, setHasMore] = useState(initialColumns.length === PAGE_SIZE);
 
   // Grid (square cards) vs list (Are.na-style table) layout for the block area.
   const [view, setView] = useState<"grid" | "list">("grid");
@@ -150,10 +177,20 @@ export default function ChannelBoard({
     return () => clearTimeout(t);
   }, [search]);
 
+  // Skip the first run of the effect below: it fires on mount with the controls
+  // at their defaults, which is exactly the page the server already rendered
+  // into `columns`. Any later control change still refetches.
+  const skipInitialFetch = useRef(true);
+
   // Load (or reload) the first page whenever the channel or any control changes.
   // The previous list stays on screen until the new one resolves, so changing a
   // control doesn't flash an empty grid.
   useEffect(() => {
+    if (skipInitialFetch.current) {
+      skipInitialFetch.current = false;
+      return;
+    }
+
     let cancelled = false;
     setLoadingPage(true);
     (async () => {
@@ -379,7 +416,13 @@ export default function ChannelBoard({
       <PageHeader crumbs={[{ label: handle, href: `/${handle}` }, { label: channel.title }]} />
       <div className="flex items-center gap-2">
         {isOwner ? (
-          <ManageChannelButton channel={channel} handle={handle} onUpdated={setChannel} />
+          <ManageChannelButton
+            channel={channel}
+            handle={handle}
+            onUpdated={setChannel}
+            members={members}
+            setMembers={setMembers}
+          />
         ) : null}
         {/* Any signed-in viewer can nest a public channel into one of their own. */}
         {!channel.private ? (
@@ -417,6 +460,7 @@ export default function ChannelBoard({
             ))}
           </div>
         ) : null}
+        <ChannelMembersBar ownerHandle={handle} ownerAvatarUrl={ownerAvatarUrl} members={members} />
         <div className="flex flex-col">
           <h2 className="text-label">Meta</h2>
           {metaData.map((meta, index) => (
@@ -439,7 +483,7 @@ export default function ChannelBoard({
         />
       ) : null}
 
-      {!isOwner && totalCount === 0 ? (
+      {!canContribute && totalCount === 0 ? (
         <p className="text-muted-foreground">No columns yet.</p>
       ) : (
         <>
@@ -447,7 +491,7 @@ export default function ChannelBoard({
             // Table view: the block input collapses behind an "Add block"
             // button, then a plain header + full-width rows (see column.tsx).
             <div className="flex flex-col gap-2">
-              {isOwner ? (
+              {canContribute ? (
                 <Button
                   variant="outline"
                   size="sm"
@@ -483,7 +527,7 @@ export default function ChannelBoard({
             </div>
           ) : (
             <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-              {isOwner ? (
+              {canContribute ? (
                 <ColumnInput
                   user={user}
                   columns={columns}
@@ -526,7 +570,9 @@ export default function ChannelBoard({
           if (!o) setOpenId(null);
         }}
         isOwner={isOwner}
+        canEdit={isOwner || (!!user && openColumn?.created_by === user.id)}
         handle={handle}
+        viewerId={user?.id ?? null}
         setColumns={setColumns}
         channels={channels}
         screenshot={openColumn?.url ? screenshots.get(openColumn.url) : undefined}

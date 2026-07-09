@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { authenticateApiToken, apiError, json } from "@/lib/colosseum/api-auth";
+import { authenticateApiToken, apiError, json, parseAccess } from "@/lib/colosseum/api-auth";
 import { createChannel, getUserChannels } from "@/lib/colosseum/channel";
 import { logError, logInfo } from "@/lib/log";
 
@@ -37,13 +37,13 @@ export async function POST(req: Request) {
     return apiError("`title` is required.", 400);
   }
   const description = typeof body.description === "string" ? body.description : undefined;
-  const isPrivate = body.private === true;
+  const access = parseAccess(body, "public");
 
   try {
     const channel = await createChannel({
       title,
       description,
-      private: isPrivate,
+      access,
       // owner is always the token user; any client-supplied owner is ignored.
       owner_id: auth.userId,
     });

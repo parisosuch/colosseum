@@ -10,8 +10,11 @@ import { z } from "zod";
 
 import {
   ApiAuth,
+  authorizeBlockWrite,
+  authorizeChannelContribute,
+  authorizeChannelManage,
   authorizeChannelRead,
-  authorizeChannelWrite,
+  parseAccess,
   resolveApiToken,
 } from "@/lib/colosseum/api-auth";
 import {
@@ -48,13 +51,15 @@ async function denialToError(denial: NextResponse): Promise<Error> {
 async function requireChannel(
   userId: string,
   channelId: number,
-  access: "read" | "write",
+  access: "read" | "contribute" | "manage",
 ): Promise<Channel> {
   const channel = await getChannel(channelId);
   const denial =
     access === "read"
-      ? authorizeChannelRead(channel, userId)
-      : authorizeChannelWrite(channel, userId);
+      ? await authorizeChannelRead(channel, userId)
+      : access === "contribute"
+        ? await authorizeChannelContribute(channel, userId)
+        : await authorizeChannelManage(channel, userId);
   if (denial) throw await denialToError(denial);
   return channel!;
 }
@@ -66,7 +71,12 @@ async function requireBlock(
 ): Promise<Column> {
   const block = await getColumn(blockId);
   if (!block) throw new Error("Not found.");
-  await requireChannel(userId, block.channel_id, access);
+  const channel = await getChannel(block.channel_id);
+  const denial =
+    access === "read"
+      ? await authorizeChannelRead(channel, userId)
+      : await authorizeBlockWrite(channel, block, userId);
+  if (denial) throw await denialToError(denial);
   return block;
 }
 
@@ -116,22 +126,34 @@ const handler = createMcpHandler(
     server.registerTool(
       "create_channel",
       {
-        description: "Create a Colosseum channel.",
+        description:
+          "Create a Colosseum channel. `access`: public (all read; you and " +
+          "invited members add), open (all read, anyone adds), private (only you " +
+          "and invited members read/add).",
         inputSchema: {
           title: z.string(),
           description: z.string().optional(),
+          access: z.enum(["public", "open", "private"]).optional(),
           private: z.boolean().optional(),
         },
       },
       asTool(
-        async (args: { title: string; description?: string; private?: boolean }, { userId }) => {
+        async (
+          args: {
+            title: string;
+            description?: string;
+            access?: "public" | "open" | "private";
+            private?: boolean;
+          },
+          { userId },
+        ) => {
           const title = args.title.trim();
           if (!title) throw new Error("`title` is required.");
           return {
             channel: await createChannel({
               title,
               description: args.description,
-              private: args.private ?? false,
+              access: parseAccess(args, "public"),
               owner_id: userId,
             }),
           };
@@ -158,22 +180,29 @@ const handler = createMcpHandler(
           id: z.number().int(),
           title: z.string().optional(),
           description: z.string().optional(),
+          access: z.enum(["public", "open", "private"]).optional(),
           private: z.boolean().optional(),
         },
       },
       asTool(
         async (
-          args: { id: number; title?: string; description?: string; private?: boolean },
+          args: {
+            id: number;
+            title?: string;
+            description?: string;
+            access?: "public" | "open" | "private";
+            private?: boolean;
+          },
           { userId },
         ) => {
-          const channel = await requireChannel(userId, args.id, "write");
+          const channel = await requireChannel(userId, args.id, "manage");
           const title = args.title !== undefined ? args.title.trim() : channel.title;
           if (!title) throw new Error("`title` cannot be empty.");
           return {
             channel: await updateChannel(args.id, {
               title,
               description: args.description ?? channel.description,
-              private: args.private ?? channel.private,
+              access: parseAccess(args, channel.access),
             }),
           };
         },
@@ -187,7 +216,7 @@ const handler = createMcpHandler(
         inputSchema: { id: z.number().int() },
       },
       asTool(async ({ id }: { id: number }, { userId }) => {
-        await requireChannel(userId, id, "write");
+        await requireChannel(userId, id, "manage");
         await deleteChannel(id);
         return { success: true };
       }),
@@ -209,8 +238,10 @@ const handler = createMcpHandler(
       "create_block",
       {
         description:
-          "Add a block to a channel you own. Exactly one of text/url/image must match `type`. " +
-          "URL blocks added this way are not screenshotted (that flow is web-only).",
+          "Add a block to a channel you can contribute to (one you own, any open " +
+          "channel, or a public/private channel you're a member of). Exactly one " +
+          "of text/url/image must match `type`. URL blocks added this way are not " +
+          "screenshotted (that flow is web-only).",
         inputSchema: {
           channelId: z.number().int(),
           type: z.enum(["text", "url", "image"]),
@@ -230,7 +261,7 @@ const handler = createMcpHandler(
           },
           { userId },
         ) => {
-          await requireChannel(userId, args.channelId, "write");
+          await requireChannel(userId, args.channelId, "contribute");
           const base = { created_by: userId, channel_id: args.channelId };
 
           if (args.type === "text") {

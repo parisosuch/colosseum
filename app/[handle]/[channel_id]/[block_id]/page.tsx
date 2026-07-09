@@ -3,7 +3,8 @@ import { Metadata } from "next";
 
 import PageHeader from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
-import { Channel, getChannel } from "@/lib/colosseum/channel";
+import { Channel, canReadChannel, getChannel } from "@/lib/colosseum/channel";
+import { isChannelMember } from "@/lib/colosseum/member";
 import { Column, getColumn } from "@/lib/colosseum/column";
 import { getScreenshot } from "@/lib/colosseum/screenshot-data";
 import { getSessionUser } from "@/lib/auth";
@@ -23,7 +24,8 @@ function blockLabel(column: Column): string {
 // connection bypasses RLS): a block is visible only when it belongs to the
 // channel in the URL and that channel is public or owned by the viewer. Returns
 // null for any not-found/hidden case so a private block is never leaked (not
-// even its title, via metadata).
+// even its title, via metadata). A private channel is visible to its owner or an
+// invited member; public/open channels to anyone.
 async function loadVisibleBlock(
   channelId: number,
   blockId: number,
@@ -36,11 +38,11 @@ async function loadVisibleBlock(
   if (!channel) {
     return null;
   }
-  if (channel.private) {
-    const user = await getSessionUser();
-    if (!user || user.id !== channel.owner_id) {
-      return null;
-    }
+  const user = channel.access === "private" ? await getSessionUser() : null;
+  const isMember =
+    channel.access === "private" && user ? await isChannelMember(channel.id, user.id) : false;
+  if (!canReadChannel(channel, user?.id ?? null, isMember)) {
+    return null;
   }
   return { column, channel };
 }

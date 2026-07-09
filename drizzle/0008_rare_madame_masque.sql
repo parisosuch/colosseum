@@ -1,0 +1,2 @@
+CREATE INDEX "channel_owner_id_idx" ON "channel" USING btree ("owner_id");--> statement-breakpoint
+CREATE INDEX "column_channel_id_created_at_idx" ON "column" USING btree ("channel_id","created_at" DESC NULLS LAST);

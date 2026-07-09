@@ -3,7 +3,17 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { Laptop, LogOutIcon, MailIcon, Moon, SettingsIcon, Sun, UserIcon } from "lucide-react";
+import {
+  Code,
+  Laptop,
+  LogOutIcon,
+  MailIcon,
+  Moon,
+  ScrollText,
+  SettingsIcon,
+  Sun,
+  UserIcon,
+} from "lucide-react";
 
 import { authClient } from "@/lib/auth-client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -16,8 +26,8 @@ import {
 } from "@/components/ui/drawer";
 
 // The mobile avatar opens a bottom drawer of nav links (Profile, Settings,
-// Invites), a theme picker, and Logout — the mobile counterpart to the desktop
-// avatar dropdown (UserMenu).
+// Invites, Developers, Changelog), a theme picker, and Logout — the mobile
+// counterpart to the desktop avatar dropdown (UserMenu).
 export function ProfileDrawer({ handle, avatarUrl }: { handle: string; avatarUrl?: string }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
@@ -59,6 +69,12 @@ export function ProfileDrawer({ handle, avatarUrl }: { handle: string; avatarUrl
             onClick={() => go("/settings")}
           />
           <NavRow icon={<MailIcon size={18} />} label="Invites" onClick={() => go("/invites")} />
+          <NavRow icon={<Code size={18} />} label="Developers" onClick={() => go("/developers")} />
+          <NavRow
+            icon={<ScrollText size={18} />}
+            label="Changelog"
+            onClick={() => go("/changelog")}
+          />
 
           <div className="mt-2 border-t px-2 pt-3">
             <p className="pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">

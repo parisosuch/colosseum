@@ -8,13 +8,22 @@
 import { getSessionUser } from "@/lib/auth";
 import {
   Channel,
+  ChannelAccess,
   ChannelSearchResult,
+  canContributeChannel,
+  canReadChannel,
   createChannel,
   deleteChannel,
   getChannel,
   searchChannels,
   updateChannel,
 } from "./channel";
+import {
+  ChannelMember,
+  addChannelMemberByHandle,
+  isChannelMember,
+  removeChannelMember,
+} from "./member";
 import {
   Column,
   ColumnQuery,
@@ -34,6 +43,14 @@ import {
   uploadTextColumn,
   uploadURLColumn,
 } from "./column";
+import {
+  Comment,
+  createComment,
+  deleteComment,
+  getColumnComments,
+  getCommentAuthorization,
+  MAX_COMMENT_LENGTH,
+} from "./comment";
 import { deleteMediaByUrl, MAX_IMAGE_BYTES, putImageBlob } from "./blob";
 import { DESKTOP_UA } from "./og-meta";
 import { createInviteCode, InviteCode, revokeInviteCode } from "./invite";
@@ -41,6 +58,7 @@ import { revokeApiToken } from "./api-token";
 import { getScreenshotsForUrls, ColumnScreenshot } from "./screenshot-data";
 import {
   createUserProfile,
+  getPublicUserProfile,
   getUserProfile,
   HandleTakenError,
   normalizeHandle,
@@ -76,27 +94,66 @@ async function requireOwnedChannel(channelId: number, userId: string): Promise<C
   return channel;
 }
 
-// A block the caller may write to: it must exist and live in a channel they own.
-async function requireOwnedBlock(columnId: number, userId: string): Promise<Column> {
+// A channel the caller may add blocks to, per the access matrix (open → any
+// signed-in user, public/private → owner or member). A channel they can't even
+// read 404s (don't leak); a readable one they can't add to is a 403-ish.
+async function requireContributableChannel(channelId: number, userId: string): Promise<Channel> {
+  const channel = await getChannel(channelId);
+  if (!channel) {
+    throw new Error("Not found.");
+  }
+  const isMember = channel.access === "open" ? false : await isChannelMember(channelId, userId);
+  if (!canReadChannel(channel, userId, isMember)) {
+    throw new Error("Not found.");
+  }
+  if (!canContributeChannel(channel, userId, isMember)) {
+    throw new Error("You do not have permission to add to this channel.");
+  }
+  return channel;
+}
+
+// A block the caller may edit/delete: it must exist, live in a channel they can
+// read, and be either the channel's owner or the block's own creator (so open /
+// group contributors can manage what they added).
+async function requireWritableBlock(columnId: number, userId: string): Promise<Column> {
   const column = await getColumn(columnId);
   if (!column) {
     throw new Error("Not found.");
   }
-  await requireOwnedChannel(column.channel_id, userId);
+  const channel = await requireReadableChannel(column.channel_id);
+  if (channel.owner_id !== userId && column.created_by !== userId) {
+    throw new Error("You do not have permission to modify this block.");
+  }
   return column;
 }
 
-// A channel the caller may read: public channels are visible to anyone; private
-// channels only to their owner.
+// A channel the caller may read: public/open channels are visible to anyone;
+// private channels only to their owner or a member.
 async function requireReadableChannel(channelId: number): Promise<Channel> {
   const channel = await getChannel(channelId);
   if (!channel) {
     throw new Error("Not found.");
   }
-  if (channel.private && channel.owner_id !== (await currentUserId())) {
+  const userId = await currentUserId();
+  const isMember =
+    channel.access === "private" && userId ? await isChannelMember(channelId, userId) : false;
+  if (!canReadChannel(channel, userId, isMember)) {
     throw new Error("Not found.");
   }
   return channel;
+}
+
+// A block the caller may read: it must exist and live in a channel they may
+// read (public, or their own private one). Returns the block and its channel.
+async function requireReadableBlock(
+  columnId: number,
+): Promise<{ column: Column; channel: Channel }> {
+  const column = await getColumn(columnId);
+  if (!column) {
+    throw new Error("Not found.");
+  }
+  const channel = await requireReadableChannel(column.channel_id);
+  return { column, channel };
 }
 
 // ---------------------------------------------------------------------------
@@ -119,13 +176,21 @@ export async function searchAction(query: string): Promise<{
   return { profiles, channels, columns };
 }
 
+// Profile-only search for the comment @-mention autocomplete. Profiles are
+// public, so this only gates on being signed in (mentions are authored, never
+// read-only). Returns [] for an empty query.
+export async function searchProfilesAction(query: string): Promise<ProfileSearchResult[]> {
+  await requireUserId();
+  return searchProfiles(query);
+}
+
 // ---------------------------------------------------------------------------
 // Channels
 // ---------------------------------------------------------------------------
 export async function createChannelAction(input: {
   title: string;
   description?: string;
-  private: boolean;
+  access: ChannelAccess;
 }): Promise<Channel> {
   const userId = await requireUserId();
   return createChannel({ ...input, owner_id: userId });
@@ -133,7 +198,7 @@ export async function createChannelAction(input: {
 
 export async function updateChannelAction(
   channelId: number,
-  updates: { title: string; description?: string; private: boolean; tags?: string[] },
+  updates: { title: string; description?: string; access: ChannelAccess; tags?: string[] },
 ): Promise<Channel> {
   const userId = await requireUserId();
   await requireOwnedChannel(channelId, userId);
@@ -144,6 +209,40 @@ export async function deleteChannelAction(channelId: number): Promise<void> {
   const userId = await requireUserId();
   await requireOwnedChannel(channelId, userId);
   await deleteChannel(channelId);
+}
+
+// ---------------------------------------------------------------------------
+// Channel members (public/private channels) — the owner manages the roster.
+// Listing is done server-side on the channel page (readable to any viewer of the
+// channel), so there's no list action here — only the owner-gated mutations.
+// ---------------------------------------------------------------------------
+export async function addChannelMemberAction(
+  channelId: number,
+  handle: string,
+): Promise<ChannelMember> {
+  const userId = await requireUserId();
+  const channel = await requireOwnedChannel(channelId, userId);
+  const normalized = normalizeHandle(handle);
+  if (!normalized) {
+    throw new Error("Enter a handle.");
+  }
+  const profile = await getPublicUserProfile(normalized);
+  if (!profile) {
+    throw new Error("No user with that handle.");
+  }
+  if (profile.user_id === channel.owner_id) {
+    throw new Error("You're already the owner of this channel.");
+  }
+  return addChannelMemberByHandle(channelId, normalized);
+}
+
+export async function removeChannelMemberAction(
+  channelId: number,
+  memberUserId: string,
+): Promise<void> {
+  const userId = await requireUserId();
+  await requireOwnedChannel(channelId, userId);
+  await removeChannelMember(channelId, memberUserId);
 }
 
 // ---------------------------------------------------------------------------
@@ -162,7 +261,7 @@ export async function uploadURLColumnAction(input: {
   text: string;
 }): Promise<Column> {
   const userId = await requireUserId();
-  await requireOwnedChannel(input.channelId, userId);
+  await requireContributableChannel(input.channelId, userId);
   return uploadURLColumn({ created_by: userId, channel_id: input.channelId, text: input.text });
 }
 
@@ -171,7 +270,7 @@ export async function uploadTextColumnAction(input: {
   text: string;
 }): Promise<Column> {
   const userId = await requireUserId();
-  await requireOwnedChannel(input.channelId, userId);
+  await requireContributableChannel(input.channelId, userId);
   return uploadTextColumn({ created_by: userId, channel_id: input.channelId, text: input.text });
 }
 
@@ -184,7 +283,7 @@ export async function uploadImageColumnAction(formData: FormData): Promise<Colum
   if (!Number.isInteger(channelId) || !(file instanceof File)) {
     throw new Error("Bad request.");
   }
-  const channel = await requireOwnedChannel(channelId, userId);
+  const channel = await requireContributableChannel(channelId, userId);
   // The media reference inherits the channel's privacy; updateChannel keeps it
   // in sync if the channel flips later.
   const image = await putImageBlob(file, userId, channel.private ? "private" : "public");
@@ -213,7 +312,7 @@ export async function uploadImageColumnFromUrlAction(
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error("Unsupported image URL.");
   }
-  const channel = await requireOwnedChannel(channelId, userId);
+  const channel = await requireContributableChannel(channelId, userId);
 
   // Same posture as the screenshot capture, which already fetches arbitrary
   // user-supplied URLs. ponytail: no SSRF allowlist here to match that existing
@@ -237,13 +336,13 @@ export async function updateColumnMetaAction(
   fields: { title?: string; description?: string },
 ): Promise<void> {
   const userId = await requireUserId();
-  await requireOwnedBlock(columnId, userId);
+  await requireWritableBlock(columnId, userId);
   await updateColumnMeta(columnId, fields);
 }
 
 export async function updateColumnTitleAction(columnId: number, title: string): Promise<void> {
   const userId = await requireUserId();
-  await requireOwnedBlock(columnId, userId);
+  await requireWritableBlock(columnId, userId);
   await updateColumnTitle(columnId, title);
 }
 
@@ -252,42 +351,43 @@ export async function updateColumnDescriptionAction(
   description: string,
 ): Promise<void> {
   const userId = await requireUserId();
-  await requireOwnedBlock(columnId, userId);
+  await requireWritableBlock(columnId, userId);
   await updateColumnDescription(columnId, description);
 }
 
 export async function updateColumnTextAction(columnId: number, text: string): Promise<void> {
   const userId = await requireUserId();
-  await requireOwnedBlock(columnId, userId);
+  await requireWritableBlock(columnId, userId);
   await updateColumnText(columnId, text);
 }
 
 export async function updateColumnTagsAction(columnId: number, tags: string[]): Promise<void> {
   const userId = await requireUserId();
-  await requireOwnedBlock(columnId, userId);
+  await requireWritableBlock(columnId, userId);
   await updateColumnTags(columnId, tags);
 }
 
 export async function deleteColumnAction(columnId: number): Promise<void> {
   const userId = await requireUserId();
-  await requireOwnedBlock(columnId, userId);
+  await requireWritableBlock(columnId, userId);
   await deleteColumn(columnId);
 }
 
-// Move a block to another channel. The caller must own both the block's current
-// channel and the target — this connection bypasses RLS, so both checks live
-// here. requireOwnedBlock already authorizes the current side.
+// Move a block to another channel. The caller must be able to write the block
+// (its channel's owner or the block's creator) and must own the target — this
+// connection bypasses RLS, so both checks live here. requireWritableBlock
+// authorizes the current side.
 export async function moveColumnAction(columnId: number, targetChannelId: number): Promise<void> {
   const userId = await requireUserId();
-  await requireOwnedBlock(columnId, userId);
+  await requireWritableBlock(columnId, userId);
   await requireOwnedChannel(targetChannelId, userId);
   await moveColumn(columnId, targetChannelId);
 }
 
 // Add a channel as a column inside one of the caller's channels (Are.na-style).
-// The caller must own the host; the linked channel must exist and be public
-// (you can't nest a private channel, so nothing private ever leaks through the
-// link). A channel can't be added to itself.
+// The caller must own the host; the linked channel must exist and be non-private
+// (public or open — you can't nest a private channel, so nothing private ever
+// leaks through the link). A channel can't be added to itself.
 export async function addChannelColumnAction(
   linkedChannelId: number,
   hostChannelId: number,
@@ -306,6 +406,46 @@ export async function addChannelColumnAction(
     channel_id: hostChannelId,
     linked_channel_id: linkedChannelId,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Comments — anyone who can read the block can post; the comment's author or
+// the block's channel owner can delete.
+// ---------------------------------------------------------------------------
+export async function getColumnCommentsAction(columnId: number): Promise<Comment[]> {
+  await requireReadableBlock(columnId);
+  return getColumnComments(columnId);
+}
+
+export async function createCommentAction(columnId: number, body: string): Promise<Comment> {
+  const userId = await requireUserId();
+  await requireReadableBlock(columnId);
+  const trimmed = body.trim();
+  if (!trimmed) {
+    throw new Error("Comment can't be empty.");
+  }
+  if (trimmed.length > MAX_COMMENT_LENGTH) {
+    throw new Error(`Comment is too long (max ${MAX_COMMENT_LENGTH} characters).`);
+  }
+  return createComment({ column_id: columnId, author_id: userId, body: trimmed });
+}
+
+export async function deleteCommentAction(commentId: number): Promise<void> {
+  const userId = await requireUserId();
+  const target = await getCommentAuthorization(commentId);
+  if (!target) {
+    throw new Error("Not found.");
+  }
+  // The author may always remove their own comment; otherwise the block's
+  // channel owner may moderate it.
+  if (target.author_id !== userId) {
+    const column = await getColumn(target.column_id);
+    if (!column) {
+      throw new Error("Not found.");
+    }
+    await requireOwnedChannel(column.channel_id, userId);
+  }
+  await deleteComment(commentId);
 }
 
 // ---------------------------------------------------------------------------

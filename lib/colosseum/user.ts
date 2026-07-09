@@ -1,3 +1,5 @@
+import { cache } from "react";
+
 import { eq, ilike, or } from "drizzle-orm";
 
 import { db } from "@/lib/db";
@@ -71,22 +73,24 @@ function toProfile(row: UserProfileRow): UserProfile {
   };
 }
 
-export async function getPublicUserProfile(handle: string): Promise<UserProfile | null> {
+// Wrapped in React cache() so the profile page and its metadata share one
+// lookup per request. cache() keys on the handle.
+export const getPublicUserProfile = cache(async (handle: string): Promise<UserProfile | null> => {
   const [row] = await db.select().from(userProfile).where(eq(userProfile.handle, handle)).limit(1);
   return row ? toProfile(row) : null;
-}
+});
 
 // Returns the profile for a user, or null when they haven't created one yet
 // (e.g. immediately after sign-up, before onboarding). Callers should treat a
 // null result as "send the user to onboarding" rather than an error.
-export async function getUserProfile(user_id: string): Promise<UserProfile | null> {
+export const getUserProfile = cache(async (user_id: string): Promise<UserProfile | null> => {
   const [row] = await db
     .select()
     .from(userProfile)
     .where(eq(userProfile.user_id, user_id))
     .limit(1);
   return row ? toProfile(row) : null;
-}
+});
 
 export async function updateUserProfile(
   user_id: string,

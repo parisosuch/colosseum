@@ -2,7 +2,17 @@
 
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { Laptop, LogOutIcon, MailIcon, Moon, SettingsIcon, Sun, UserIcon } from "lucide-react";
+import {
+  Code,
+  Laptop,
+  LogOutIcon,
+  MailIcon,
+  Moon,
+  ScrollText,
+  SettingsIcon,
+  Sun,
+  UserIcon,
+} from "lucide-react";
 
 import { authClient } from "@/lib/auth-client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -26,8 +36,9 @@ function ThemeIcon({ theme }: { theme?: string }) {
   return <Icon size={ICON_SIZE} className="text-muted-foreground" />;
 }
 
-// The desktop avatar menu body: Profile, Settings, Invites, a Theme submenu,
-// and Logout. (The mobile bottom nav mirrors these in ProfileDrawer.)
+// The desktop avatar menu body: Profile, Settings, Invites, Developers,
+// Changelog, a Theme submenu, and Logout. (The mobile bottom nav mirrors these
+// in ProfileDrawer.)
 export function UserMenuItems({ handle }: { handle: string }) {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
@@ -54,6 +65,16 @@ export function UserMenuItems({ handle }: { handle: string }) {
       <DropdownMenuItem onSelect={() => router.push("/invites")}>
         <MailIcon />
         Invites
+      </DropdownMenuItem>
+
+      <DropdownMenuItem onSelect={() => router.push("/developers")}>
+        <Code />
+        Developers
+      </DropdownMenuItem>
+
+      <DropdownMenuItem onSelect={() => router.push("/changelog")}>
+        <ScrollText />
+        Changelog
       </DropdownMenuItem>
 
       <DropdownMenuSub>

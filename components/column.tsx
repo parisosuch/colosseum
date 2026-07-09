@@ -160,9 +160,13 @@ const ColumnComponent = memo(function ColumnComponent({
     </div>
   );
 
+  // Press feedback on the core "open a block" gesture, matching Button's spring.
+  const cardPress =
+    "transition-transform duration-150 ease-[var(--ease-out)] motion-safe:active:scale-[0.97]";
+
   if (column.type === "channel") {
     return linkedHref ? (
-      <Link href={linkedHref} className="cv-card block w-full text-left">
+      <Link href={linkedHref} className={`cv-card block w-full text-left ${cardPress}`}>
         {gridInner}
       </Link>
     ) : (
@@ -171,7 +175,11 @@ const ColumnComponent = memo(function ColumnComponent({
   }
 
   return (
-    <button type="button" onClick={() => onOpen(column.id)} className="cv-card w-full text-left">
+    <button
+      type="button"
+      onClick={() => onOpen(column.id)}
+      className={`cv-card w-full text-left ${cardPress}`}
+    >
       {gridInner}
     </button>
   );

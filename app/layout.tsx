@@ -78,12 +78,15 @@ export default async function RootLayout({
           {/* h-[100dvh], not h-screen (100vh): in an iOS standalone PWA with
               viewportFit=cover, 100vh overshoots the visible area. */}
           <div className="h-[100dvh] flex flex-col">
-            <NavBarGate>
-              <NavBar />
-            </NavBarGate>
-            {/* Scrollable content region. Bottom padding on mobile clears the
-                fixed bottom bar so the last content isn't hidden behind it. */}
+            {/* Scrollable content region. The nav lives inside it as a sticky
+                child so content scrolls translucently under it (see .chrome);
+                a sticky element needs its scroll container as an ancestor.
+                Bottom padding on mobile clears the fixed bottom bar so the last
+                content isn't hidden behind it. */}
             <div className="flex-1 min-h-0 flex flex-col overflow-y-auto pb-[calc(3.5rem+env(safe-area-inset-bottom))] sm:pb-0">
+              <NavBarGate>
+                <NavBar />
+              </NavBarGate>
               <HeroFrame>{children}</HeroFrame>
             </div>
             <NavBarGate>

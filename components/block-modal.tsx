@@ -5,7 +5,7 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, GlobeIcon, LayersIcon, LinkIcon } from "lucide-react";
 import { toast } from "sonner";
-
+import ColumnComments from "./column-comments";
 import type { Column } from "@/lib/colosseum/column";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import {
@@ -35,8 +35,13 @@ type BlockModalProps = {
   column: Column | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  // Channel owner: gates moderation (delete any comment) and the "Move" picker.
   isOwner: boolean;
+  // May edit/delete *this* block: the channel owner or the block's own creator.
+  canEdit: boolean;
   handle: string;
+  // The signed-in viewer's id, or null when signed out. Drives commenting.
+  viewerId: string | null;
   setColumns: Dispatch<SetStateAction<Column[]>>;
   // The owner's channels, for the "Move" picker. Empty for non-owners.
   channels: PickableChannel[];
@@ -56,7 +61,9 @@ export default function BlockModal({
   open,
   onOpenChange,
   isOwner,
+  canEdit,
   handle,
+  viewerId,
   setColumns,
   channels,
   screenshot,
@@ -95,7 +102,9 @@ export default function BlockModal({
             key={displayColumn.id}
             column={displayColumn}
             isOwner={isOwner}
+            canEdit={canEdit}
             handle={handle}
+            viewerId={viewerId}
             setColumns={setColumns}
             channels={channels}
             screenshot={screenshot}
@@ -115,7 +124,9 @@ export default function BlockModal({
 function BlockModalBody({
   column,
   isOwner,
+  canEdit,
   handle,
+  viewerId,
   setColumns,
   channels,
   screenshot,
@@ -126,7 +137,9 @@ function BlockModalBody({
 }: {
   column: Column;
   isOwner: boolean;
+  canEdit: boolean;
   handle: string;
+  viewerId: string | null;
   setColumns: Dispatch<SetStateAction<Column[]>>;
   channels: PickableChannel[];
   screenshot?: ColumnScreenshot;
@@ -270,7 +283,7 @@ function BlockModalBody({
           <Textarea
             ref={textInputRef}
             value={text}
-            disabled={!isOwner}
+            disabled={!canEdit}
             className="min-h-[50vh]"
             onChange={(e) => setText(e.target.value)}
           />
@@ -307,8 +320,8 @@ function BlockModalBody({
           </a>
         )}
       </div>
-      <div className="w-full md:w-1/4 space-y-2">
-        <div className="flex justify-end gap-1">
+      <div className="w-full md:w-1/4 space-y-2 md:flex md:flex-col md:min-h-0">
+        <div className="flex justify-end gap-1 shrink-0">
           <Button
             variant="ghost"
             size="icon"
@@ -328,12 +341,12 @@ function BlockModalBody({
             <ChevronRight />
           </Button>
         </div>
-        <div className="border rounded-lg space-y-2 h-fit">
+        <div className="border rounded-lg space-y-2 h-fit shrink-0">
           <DialogTitle>
             <Input
               ref={titleInputRef}
               placeholder="No title"
-              disabled={!isOwner}
+              disabled={!canEdit}
               value={title}
               className="border-none shadow-none"
               onChange={(e) => setTitle(e.target.value)}
@@ -349,7 +362,7 @@ function BlockModalBody({
             <Textarea
               ref={descriptionInputRef}
               placeholder="No description"
-              disabled={!isOwner}
+              disabled={!canEdit}
               value={description}
               rows={1}
               // field-sizing grows the box with its content; shift+Enter adds a
@@ -364,9 +377,9 @@ function BlockModalBody({
               }}
             />
           </DialogDescription>
-          {isOwner || column.tags.length > 0 ? (
+          {canEdit || column.tags.length > 0 ? (
             <div className="p-3">
-              <TagInput tags={column.tags} onChange={handleTagsChange} disabled={!isOwner} />
+              <TagInput tags={column.tags} onChange={handleTagsChange} disabled={!canEdit} />
             </div>
           ) : null}
           <div className="flex w-full justify-between text-xs p-3">
@@ -426,7 +439,7 @@ function BlockModalBody({
                 </CommandDialog>
               </>
             ) : null}
-            {isOwner ? (
+            {canEdit ? (
               <Button
                 variant="ghost"
                 size="sm"
@@ -437,6 +450,9 @@ function BlockModalBody({
               </Button>
             ) : null}
           </div>
+        </div>
+        <div className="border rounded-lg md:flex-1 md:min-h-0 md:overflow-hidden">
+          <ColumnComments columnId={column.id} viewerId={viewerId} isOwner={isOwner} />
         </div>
       </div>
     </div>

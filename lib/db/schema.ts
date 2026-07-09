@@ -14,6 +14,7 @@ import {
   index,
   integer,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -102,7 +103,11 @@ export const channel = pgTable(
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     title: text("title").notNull(),
     description: text("description"),
-    private: boolean("private").notNull().default(false),
+    // Access mode: `public` (all read, owner writes), `open` (all read, anyone
+    // writes), `private` (owner + channel_member rows read and write).
+    access: text("access", { enum: ["public", "open", "private"] })
+      .notNull()
+      .default("public"),
     owner_id: uuid("owner_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
@@ -112,7 +117,27 @@ export const channel = pgTable(
   (t) => [
     // Explore feed orders newly created channels by time.
     index("channel_created_at_idx").on(t.created_at),
+    // getUserChannels / getUserPublicChannels filtering on owner_id.
+    index("channel_owner_id_idx").on(t.owner_id),
   ],
+);
+
+// Members of a `private` channel: everyone here (plus the owner, who is an
+// implicit member and never stored) may read and add to the channel. Meaningless
+// for public/open channels. Both FKs cascade, so a row vanishes with its channel
+// or its user.
+export const channelMember = pgTable(
+  "channel_member",
+  {
+    channel_id: bigint("channel_id", { mode: "number" })
+      .notNull()
+      .references(() => channel.id, { onDelete: "cascade" }),
+    user_id: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.channel_id, t.user_id] })],
 );
 
 // "column" is a reserved SQL keyword; Drizzle quotes the table name for us.
@@ -146,7 +171,33 @@ export const column = pgTable(
   (t) => [
     // Explore feed orders newly added blocks by time.
     index("column_created_at_idx").on(t.created_at),
+    // getChannelColumns / getChannelColumnCount filtering and sorting on channel_id, created_at.
+    index("column_channel_id_created_at_idx").on(t.channel_id, t.created_at.desc()),
+    // Screenshot GC checks whether any column still references a url.
+    index("column_url_idx").on(t.url),
+    // Cascade delete + withLinkedChannels look up columns by linked channel.
+    index("column_linked_channel_id_idx").on(t.linked_channel_id),
   ],
+);
+
+// Comments on a block ("column"). Anyone who can read the block can post; the
+// author or the block's channel owner can delete. Cascades on both FKs so a
+// comment vanishes with its block or its author.
+export const comment = pgTable(
+  "comment",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    column_id: bigint("column_id", { mode: "number" })
+      .notNull()
+      .references(() => column.id, { onDelete: "cascade" }),
+    author_id: uuid("author_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+  },
+  // A block's comment thread is fetched by column_id, oldest first.
+  (t) => [index("comment_column_id_created_at_idx").on(t.column_id, t.created_at)],
 );
 
 export const screenshot = pgTable("screenshot", {

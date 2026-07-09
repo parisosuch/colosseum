@@ -126,6 +126,12 @@ export async function putImageBlob(
     throw new Error("That image is too large (max 10MB).");
   }
   const sha256 = await putBlob(Buffer.from(await file.arrayBuffer()), file.type, createdBy);
+  // Pre-build the thumbnail so the first grid render serves it already made,
+  // instead of paying the sharp resize on the first `?thumb` request. Idempotent
+  // and dedup-friendly (ensureThumbnail skips if the file already exists). A
+  // failure here just falls back to the lazy path in the serving route, so it
+  // must never fail the upload.
+  await ensureThumbnail(sha256).catch(() => {});
   return createMedia(sha256, createdBy, visibility);
 }
 

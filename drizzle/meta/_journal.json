@@ -43,6 +43,34 @@
       "when": 1783467367432,
       "tag": "0005_cold_lilandra",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783569586162,
+      "tag": "0006_loose_toxin",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783574405245,
+      "tag": "0007_nifty_professor_monster",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783636073457,
+      "tag": "0008_rare_madame_masque",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1783636208664,
+      "tag": "0009_majestic_dagger",
+      "breakpoints": true
     }
   ]
 }

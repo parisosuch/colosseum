@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 import PageHeader from "@/components/page-header";
 import { EditProfileForm } from "@/components/edit-profile-form";
 import ApiTokenManager from "@/components/api-token-manager";
@@ -28,12 +26,6 @@ export default async function SettingsPage() {
       <PageHeader crumbs={[{ label: "settings" }]} />
       <EditProfileForm profile={profile} />
       <ApiTokenManager userId={user.id} initialTokens={apiTokens} />
-      <Link
-        href="/changelog"
-        className="text-sm text-muted-foreground underline hover:text-foreground"
-      >
-        Changelog
-      </Link>
     </div>
   );
 }

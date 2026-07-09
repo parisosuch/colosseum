@@ -110,6 +110,55 @@
   .link-subtle {
     @apply text-black/75 transition-colors hover:text-black dark:text-white/75 dark:hover:text-white;
   }
+
+  /* Rendered markdown docs (developers page). Styles marked's HTML output with
+     the app's theme tokens — no typography plugin. */
+  .doc {
+    @apply text-sm leading-relaxed text-muted-foreground;
+  }
+  .doc h1 {
+    @apply mt-10 mb-4 scroll-mt-24 font-serif text-2xl font-semibold tracking-tight text-foreground;
+  }
+  .doc h2 {
+    @apply mt-8 mb-3 scroll-mt-24 font-serif text-lg font-medium text-foreground;
+  }
+  .doc h3 {
+    @apply mt-6 mb-2 font-mono text-sm font-semibold text-foreground;
+  }
+  .doc p {
+    @apply my-3;
+  }
+  .doc ul {
+    @apply my-3 list-disc space-y-1 pl-5;
+  }
+  .doc a {
+    @apply underline hover:text-foreground;
+  }
+  .doc strong {
+    @apply font-semibold text-foreground;
+  }
+  .doc code {
+    @apply rounded bg-muted px-1 py-0.5 font-mono text-[0.85em];
+  }
+  .doc pre {
+    @apply my-4 overflow-x-auto rounded bg-muted p-4 text-xs leading-relaxed;
+  }
+  .doc pre code {
+    @apply bg-transparent p-0;
+  }
+  .doc blockquote {
+    @apply my-4 border-l-2 border-border pl-4;
+  }
+  .doc table {
+    @apply my-4 block w-full overflow-x-auto text-xs;
+  }
+  .doc th,
+  .doc td {
+    @apply border border-border px-3 py-1.5 text-left align-top;
+  }
+  .doc th {
+    @apply font-medium text-foreground;
+  }
 }
 
 @layer utilities {

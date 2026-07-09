@@ -527,6 +527,7 @@ export default function ChannelBoard({
         }}
         isOwner={isOwner}
         handle={handle}
+        viewerId={user?.id ?? null}
         setColumns={setColumns}
         channels={channels}
         screenshot={openColumn?.url ? screenshots.get(openColumn.url) : undefined}

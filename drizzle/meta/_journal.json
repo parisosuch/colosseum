@@ -43,6 +43,13 @@
       "when": 1783467367432,
       "tag": "0005_cold_lilandra",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783569586162,
+      "tag": "0006_loose_toxin",
+      "breakpoints": true
     }
   ]
 }

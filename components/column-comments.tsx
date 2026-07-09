@@ -1,0 +1,323 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { ChevronDown } from "lucide-react";
+import { toast } from "sonner";
+
+import type { Comment } from "@/lib/colosseum/comment";
+import { activeMention, parseMentions } from "@/lib/colosseum/mentions";
+import type { ProfileSearchResult } from "@/lib/colosseum/user";
+import {
+  createCommentAction,
+  deleteCommentAction,
+  getColumnCommentsAction,
+  searchProfilesAction,
+} from "@/lib/colosseum/actions";
+import { cn } from "@/lib/utils";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+
+// Mirrors MAX_COMMENT_LENGTH in lib/colosseum/comment.ts; kept as a literal so
+// this client file never imports the server-only module. The action re-validates.
+const MAX_COMMENT_LENGTH = 2000;
+
+type ColumnCommentsProps = {
+  columnId: number;
+  // The signed-in viewer, or null when signed out (read-only).
+  viewerId: string | null;
+  // Whether the viewer owns the block's channel (may delete any comment).
+  isOwner: boolean;
+};
+
+export default function ColumnComments({ columnId, viewerId, isOwner }: ColumnCommentsProps) {
+  // null while the initial fetch is in flight; [] once loaded and empty.
+  const [comments, setComments] = useState<Comment[] | null>(null);
+  const [body, setBody] = useState("");
+  const [posting, setPosting] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // @-mention autocomplete: the fragment being typed, matching profiles, and the
+  // highlighted row. `mention` is null unless the caret sits inside an `@…`.
+  const [mention, setMention] = useState<{ query: string; start: number } | null>(null);
+  const [mentionResults, setMentionResults] = useState<ProfileSearchResult[]>([]);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const mentionOpen = mention !== null && mentionResults.length > 0;
+  // Mobile accordion: collapsed until tapped. Ignored on desktop (always shown).
+  const [open, setOpen] = useState(false);
+
+  // Keyed by block id in the modal, so this remounts (and refetches) per block.
+  useEffect(() => {
+    let active = true;
+    getColumnCommentsAction(columnId)
+      .then((c) => active && setComments(c))
+      .catch(() => active && setComments([]));
+    return () => {
+      active = false;
+    };
+  }, [columnId]);
+
+  // Keep the thread pinned to the newest (bottom) — on load, after a post, and
+  // when the mobile accordion expands (the list is display:none until then). A
+  // plain scroll container (not flex-col-reverse, which has a Chromium bug where
+  // you can't wheel-scroll up to older content) placed at the bottom.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [comments, open]);
+
+  const post = async () => {
+    const trimmed = body.trim();
+    if (!trimmed || posting) return;
+    setPosting(true);
+    try {
+      const created = await createCommentAction(columnId, trimmed);
+      setComments((prev) => [...(prev ?? []), created]);
+      setBody("");
+    } catch (e) {
+      console.error(e);
+      toast.error("Couldn't post that comment. Please try again.");
+    } finally {
+      setPosting(false);
+    }
+  };
+
+  const remove = async (id: number) => {
+    const previous = comments ?? [];
+    setComments(previous.filter((c) => c.id !== id));
+    try {
+      await deleteCommentAction(id);
+    } catch (e) {
+      console.error(e);
+      setComments(previous);
+      toast.error("Couldn't delete that comment. Please try again.");
+    }
+  };
+
+  // Profile lookup for the active mention fragment, fired on every keystroke for
+  // instant feedback (skips the empty "just typed @" case so we don't dump every
+  // user). The `active` guard drops a stale response so out-of-order results
+  // can't clobber a newer query.
+  const query = mention?.query ?? "";
+  useEffect(() => {
+    if (query.length < 1) {
+      setMentionResults([]);
+      return;
+    }
+    let active = true;
+    searchProfilesAction(query)
+      .then((r) => active && setMentionResults(r.slice(0, 6)))
+      .catch(() => active && setMentionResults([]));
+    return () => {
+      active = false;
+    };
+  }, [query]);
+
+  useEffect(() => setMentionIndex(0), [mentionResults]);
+
+  // Recompute the active mention from the textarea's current value + caret.
+  const syncMention = (el: HTMLTextAreaElement) => {
+    setMention(activeMention(el.value, el.selectionStart ?? el.value.length));
+  };
+
+  // Replace the `@fragment` at the caret with the chosen handle + a trailing
+  // space, then restore focus and caret after it.
+  const acceptMention = (handle: string) => {
+    if (!mention) return;
+    const el = textareaRef.current;
+    const caret = el?.selectionStart ?? body.length;
+    const before = body.slice(0, mention.start);
+    const insert = `@${handle} `;
+    setBody(before + insert + body.slice(caret));
+    setMention(null);
+    setMentionResults([]);
+    const pos = before.length + insert.length;
+    requestAnimationFrame(() => {
+      const t = textareaRef.current;
+      if (t) {
+        t.focus();
+        t.setSelectionRange(pos, pos);
+      }
+    });
+  };
+
+  return (
+    <div className="flex h-full flex-col min-h-0 p-3">
+      {/* Header doubles as the mobile accordion toggle; inert on desktop. */}
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex shrink-0 items-center justify-between text-label md:pointer-events-none"
+      >
+        <span>Comments{comments && comments.length > 0 ? ` (${comments.length})` : ""}</span>
+        <ChevronDown
+          className={cn("size-4 transition-transform md:hidden", open && "rotate-180")}
+        />
+      </button>
+
+      {/* Collapsed on mobile until the header is tapped; always open on desktop. */}
+      <div className={cn(open ? "flex" : "hidden", "mt-3 min-h-0 flex-1 flex-col md:flex")}>
+        {/* Oldest→newest, top→bottom; scrolled to the bottom on load/open/post
+            so the newest shows first and you scroll up for history. */}
+        <div
+          ref={scrollRef}
+          className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto max-h-[50vh] md:max-h-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {comments === null ? (
+            <p className="text-xs text-muted-foreground">Loading…</p>
+          ) : comments.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No comments yet.</p>
+          ) : (
+            comments.map((c) => (
+              <div key={c.id} className="flex gap-2">
+                <Avatar className="size-6">
+                  <AvatarImage src={c.author_avatar_url} />
+                  <AvatarFallback className="text-[10px]">
+                    {c.author_handle.charAt(0).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href={`/${c.author_handle}`}
+                      className="text-xs font-medium hover:underline"
+                    >
+                      @{c.author_handle}
+                    </Link>
+                    <span className="font-mono text-[10px] text-muted-foreground">
+                      {new Date(c.created_at).toLocaleDateString()}
+                    </span>
+                    {viewerId && (isOwner || viewerId === c.author_id) ? (
+                      <button
+                        type="button"
+                        onClick={() => remove(c.id)}
+                        className="ml-auto text-[10px] text-muted-foreground hover:text-destructive"
+                      >
+                        Delete
+                      </button>
+                    ) : null}
+                  </div>
+                  <p className="whitespace-pre-wrap break-words text-sm">
+                    {parseMentions(c.body).map((seg) =>
+                      seg.type === "mention" ? (
+                        <Link
+                          key={seg.start}
+                          href={`/${seg.handle}`}
+                          className="font-semibold hover:underline"
+                        >
+                          {seg.raw}
+                        </Link>
+                      ) : (
+                        <span key={seg.start}>{seg.value}</span>
+                      ),
+                    )}
+                  </p>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {viewerId ? (
+          <div className="mt-3 shrink-0 space-y-2">
+            <div className="relative">
+              <Textarea
+                ref={textareaRef}
+                value={body}
+                maxLength={MAX_COMMENT_LENGTH}
+                placeholder="Add a comment…"
+                rows={2}
+                // Enter adds a newline; ⌘/Ctrl+Enter posts. While the @-mention
+                // list is open, arrows/Tab/Enter/Escape drive it instead.
+                className="resize-none text-sm [field-sizing:content]"
+                onChange={(e) => {
+                  setBody(e.target.value);
+                  syncMention(e.target);
+                }}
+                onClick={(e) => syncMention(e.currentTarget)}
+                onKeyUp={(e) => {
+                  if (
+                    mentionOpen &&
+                    ["ArrowUp", "ArrowDown", "Enter", "Tab", "Escape"].includes(e.key)
+                  ) {
+                    return;
+                  }
+                  syncMention(e.currentTarget);
+                }}
+                // Delay so a mousedown on a suggestion still registers before close.
+                onBlur={() => setTimeout(() => setMention(null), 120)}
+                onKeyDown={(e) => {
+                  if (mentionOpen) {
+                    if (e.key === "ArrowDown") {
+                      e.preventDefault();
+                      setMentionIndex((i) => (i + 1) % mentionResults.length);
+                      return;
+                    }
+                    if (e.key === "ArrowUp") {
+                      e.preventDefault();
+                      setMentionIndex(
+                        (i) => (i - 1 + mentionResults.length) % mentionResults.length,
+                      );
+                      return;
+                    }
+                    if (e.key === "Enter" || e.key === "Tab") {
+                      e.preventDefault();
+                      acceptMention(mentionResults[mentionIndex].handle);
+                      return;
+                    }
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      setMention(null);
+                      return;
+                    }
+                  }
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault();
+                    post();
+                  }
+                }}
+              />
+              {mentionOpen ? (
+                // Opens upward — the composer is pinned to the bottom of the panel.
+                <ul className="absolute bottom-full left-0 right-0 z-50 mb-1 max-h-48 overflow-y-auto rounded-md border bg-popover p-1 shadow-md">
+                  {mentionResults.map((p, i) => (
+                    <li key={p.handle}>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          acceptMention(p.handle);
+                        }}
+                        onMouseEnter={() => setMentionIndex(i)}
+                        className={cn(
+                          "flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm",
+                          i === mentionIndex ? "bg-accent" : "",
+                        )}
+                      >
+                        <Avatar className="size-5">
+                          <AvatarImage src={p.avatar_url} />
+                          <AvatarFallback className="text-[9px]">
+                            {p.handle.charAt(0).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="truncate">@{p.handle}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+            <div className="flex justify-end">
+              <Button size="sm" disabled={!body.trim() || posting} onClick={post}>
+                Comment
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}

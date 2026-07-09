@@ -5,7 +5,7 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, GlobeIcon, LayersIcon, LinkIcon } from "lucide-react";
 import { toast } from "sonner";
-
+import ColumnComments from "./column-comments";
 import type { Column } from "@/lib/colosseum/column";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import {
@@ -37,6 +37,8 @@ type BlockModalProps = {
   onOpenChange: (open: boolean) => void;
   isOwner: boolean;
   handle: string;
+  // The signed-in viewer's id, or null when signed out. Drives commenting.
+  viewerId: string | null;
   setColumns: Dispatch<SetStateAction<Column[]>>;
   // The owner's channels, for the "Move" picker. Empty for non-owners.
   channels: PickableChannel[];
@@ -57,6 +59,7 @@ export default function BlockModal({
   onOpenChange,
   isOwner,
   handle,
+  viewerId,
   setColumns,
   channels,
   screenshot,
@@ -96,6 +99,7 @@ export default function BlockModal({
             column={displayColumn}
             isOwner={isOwner}
             handle={handle}
+            viewerId={viewerId}
             setColumns={setColumns}
             channels={channels}
             screenshot={screenshot}
@@ -116,6 +120,7 @@ function BlockModalBody({
   column,
   isOwner,
   handle,
+  viewerId,
   setColumns,
   channels,
   screenshot,
@@ -127,6 +132,7 @@ function BlockModalBody({
   column: Column;
   isOwner: boolean;
   handle: string;
+  viewerId: string | null;
   setColumns: Dispatch<SetStateAction<Column[]>>;
   channels: PickableChannel[];
   screenshot?: ColumnScreenshot;
@@ -307,8 +313,8 @@ function BlockModalBody({
           </a>
         )}
       </div>
-      <div className="w-full md:w-1/4 space-y-2">
-        <div className="flex justify-end gap-1">
+      <div className="w-full md:w-1/4 space-y-2 md:flex md:flex-col md:min-h-0">
+        <div className="flex justify-end gap-1 shrink-0">
           <Button
             variant="ghost"
             size="icon"
@@ -328,7 +334,7 @@ function BlockModalBody({
             <ChevronRight />
           </Button>
         </div>
-        <div className="border rounded-lg space-y-2 h-fit">
+        <div className="border rounded-lg space-y-2 h-fit shrink-0">
           <DialogTitle>
             <Input
               ref={titleInputRef}
@@ -437,6 +443,9 @@ function BlockModalBody({
               </Button>
             ) : null}
           </div>
+        </div>
+        <div className="border rounded-lg md:flex-1 md:min-h-0 md:overflow-hidden">
+          <ColumnComments columnId={column.id} viewerId={viewerId} isOwner={isOwner} />
         </div>
       </div>
     </div>

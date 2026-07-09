@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { channel, column, userProfile } from "@/lib/db/schema";
 import { sanitizeSearch } from "@/lib/utils";
 import { deleteMediaByUrl, setMediaVisibilityByUrls } from "./blob";
+import { deleteScreenshotIfUnreferenced } from "./column";
 
 export type Channel = {
   id: number;
@@ -105,14 +106,20 @@ export async function createChannel(input: {
 
 // Deletes a channel. Callers must authorize ownership first (this connection
 // bypasses RLS). The channel's columns are removed by the ON DELETE CASCADE
-// foreign key. Screenshots are a shared per-URL cache and are left untouched.
+// foreign key.
 export async function deleteChannel(channel_id: number): Promise<void> {
-  // Collect image URLs before the cascade removes the columns, then drop their
-  // media references (blobs GC when the last reference goes).
+  // Collect referenced media/URLs before the cascade removes the columns.
   const images = await channelImageUrls(channel_id);
+  const linkUrls = await channelLinkUrls(channel_id);
   await db.delete(channel).where(eq(channel.id, channel_id));
+  // Drop image-block media references (blobs GC when the last reference goes).
   for (const url of images) {
     await deleteMediaByUrl(url);
+  }
+  // URL blocks share a per-URL screenshot cache; the cascade above bypasses
+  // deleteColumn, so GC any screenshot no surviving column still references.
+  for (const url of linkUrls) {
+    await deleteScreenshotIfUnreferenced(url);
   }
 }
 
@@ -122,6 +129,14 @@ async function channelImageUrls(channel_id: number): Promise<string[]> {
     .from(column)
     .where(and(eq(column.channel_id, channel_id), eq(column.type, "image")));
   return rows.map((r) => r.image).filter((image): image is string => image !== null);
+}
+
+async function channelLinkUrls(channel_id: number): Promise<string[]> {
+  const rows = await db
+    .select({ url: column.url })
+    .from(column)
+    .where(and(eq(column.channel_id, channel_id), eq(column.type, "url")));
+  return rows.map((r) => r.url).filter((url): url is string => url !== null);
 }
 
 // Updates an existing channel's editable fields. Callers must authorize

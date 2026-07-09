@@ -18,5 +18,5 @@ export default async function ExplorePage() {
   }
 
   const activity = await getActivityFeed(user?.id ?? null);
-  return <ExploreView activity={activity} />;
+  return <ExploreView activity={activity} viewerId={user?.id ?? null} />;
 }

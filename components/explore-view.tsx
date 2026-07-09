@@ -57,7 +57,7 @@ const Muted = ({ children }: { children: ReactNode }) => (
 // Sync on purpose: an async component here renders through an async boundary,
 // and flex `gap` won't apply between such siblings. The async work (the URL
 // screenshot fetch) lives in the nested ColumnPreview, which is fine.
-export function ActivityRow({ item }: { item: ActivityItem }) {
+export function ActivityRow({ item, viewerId }: { item: ActivityItem; viewerId: string | null }) {
   const isChannelColumn = item.kind === "block" && item.column?.type === "channel";
   const linked = item.column?.linked_channel;
 
@@ -136,6 +136,7 @@ export function ActivityRow({ item }: { item: ActivityItem }) {
           handle={item.handle}
           screenshot={item.screenshot}
           aria={focalAria}
+          viewerId={viewerId}
         >
           <div className={FOCAL_CARD}>{focal}</div>
         </FeedBlockModal>
@@ -150,7 +151,13 @@ export function ActivityRow({ item }: { item: ActivityItem }) {
 
 // The Explore page: a feed of recent public activity across the whole invite-
 // connected network, each item showing the block or channel as the focal point.
-export default function ExploreView({ activity }: { activity: ActivityItem[] }) {
+export default function ExploreView({
+  activity,
+  viewerId,
+}: {
+  activity: ActivityItem[];
+  viewerId: string | null;
+}) {
   return (
     <div className="w-full flex-1 p-6 sm:p-12 space-y-8">
       <PageHeader crumbs={[{ label: "Explore" }]} />
@@ -166,7 +173,7 @@ export default function ExploreView({ activity }: { activity: ActivityItem[] }) 
         // further siblings so they share the same spacing.
         <div className="flex flex-col items-center gap-16">
           {activity.map((item) => (
-            <ActivityRow key={activityKey(item)} item={item} />
+            <ActivityRow key={activityKey(item)} item={item} viewerId={viewerId} />
           ))}
           <ExploreLoadMore
             initialCursor={activity[activity.length - 1].at}

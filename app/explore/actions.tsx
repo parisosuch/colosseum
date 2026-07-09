@@ -14,9 +14,12 @@ export async function loadMoreActivity(
   before: string,
 ): Promise<{ rows: ReactNode; nextCursor: string | null; hasMore: boolean }> {
   const user = await getSessionUser();
-  const items = await getActivityFeed(user?.id ?? null, ACTIVITY_PAGE, before);
+  const viewerId = user?.id ?? null;
+  const items = await getActivityFeed(viewerId, ACTIVITY_PAGE, before);
   return {
-    rows: items.map((item) => <ActivityRow key={activityKey(item)} item={item} />),
+    rows: items.map((item) => (
+      <ActivityRow key={activityKey(item)} item={item} viewerId={viewerId} />
+    )),
     nextCursor: items.length > 0 ? items[items.length - 1].at : null,
     hasMore: items.length === ACTIVITY_PAGE,
   };

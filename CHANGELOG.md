@@ -8,6 +8,32 @@ release.
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-07-09
+
+### Fixed
+
+- The profile and Explore pages now scroll beneath the translucent nav bar like
+  every other page, instead of within their own inner scroll area.
+
+## [1.4.0] - 2026-07-09
+
+### Added
+
+- Comments: leave comments on individual blocks.
+- Channel access modes — public, open (any signed-in user can add blocks), and
+  private — with per-channel membership.
+- An in-app developer documentation page.
+- A UI motion and materials pass: press feedback when opening a block,
+  translucent (frosted) nav bars, and support for the system reduced-motion,
+  reduced-transparency, and increased-contrast preferences.
+
+### Changed
+
+- Channel pages load noticeably faster — the first page of blocks is
+  server-rendered, image thumbnails are pre-generated at upload, per-request
+  reads are deduplicated, prepared statements are enabled, and foreign-key
+  columns are indexed.
+
 ## [1.3.3] - 2026-07-09
 
 ### Fixed

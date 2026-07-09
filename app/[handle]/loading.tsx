@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 // Mirrors app/[handle]/page.tsx's container and structure to minimize shift.
 export default function Loading() {
   return (
-    <div className="w-full flex-1 min-h-0 overflow-y-auto p-6 sm:p-12 space-y-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div className="w-full flex-1 p-6 sm:p-12 space-y-8">
       <Skeleton className="h-9 w-56" />
       <div className="flex flex-col space-y-4">
         <div className="flex flex-col gap-2">

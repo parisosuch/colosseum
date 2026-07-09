@@ -44,6 +44,10 @@ export function FeedBlockModal({
         onOpenChange={setOpen}
         isOwner={false}
         handle={handle}
+        // Read-only in the feed (like edit/delete/move); the comment thread
+        // shows but isn't writable here. ponytail: thread the viewer id through
+        // ExploreView if feed-side commenting is ever wanted.
+        viewerId={null}
         setColumns={noop}
         channels={[]}
         screenshot={screenshot}

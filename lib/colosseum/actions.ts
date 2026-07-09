@@ -34,6 +34,14 @@ import {
   uploadTextColumn,
   uploadURLColumn,
 } from "./column";
+import {
+  Comment,
+  createComment,
+  deleteComment,
+  getColumnComments,
+  getCommentAuthorization,
+  MAX_COMMENT_LENGTH,
+} from "./comment";
 import { deleteMediaByUrl, MAX_IMAGE_BYTES, putImageBlob } from "./blob";
 import { DESKTOP_UA } from "./og-meta";
 import { createInviteCode, InviteCode, revokeInviteCode } from "./invite";
@@ -99,6 +107,19 @@ async function requireReadableChannel(channelId: number): Promise<Channel> {
   return channel;
 }
 
+// A block the caller may read: it must exist and live in a channel they may
+// read (public, or their own private one). Returns the block and its channel.
+async function requireReadableBlock(
+  columnId: number,
+): Promise<{ column: Column; channel: Channel }> {
+  const column = await getColumn(columnId);
+  if (!column) {
+    throw new Error("Not found.");
+  }
+  const channel = await requireReadableChannel(column.channel_id);
+  return { column, channel };
+}
+
 // ---------------------------------------------------------------------------
 // Search (nav box) — scoped to the caller's own channels and blocks.
 // ---------------------------------------------------------------------------
@@ -117,6 +138,14 @@ export async function searchAction(query: string): Promise<{
     searchColumns(userId, query),
   ]);
   return { profiles, channels, columns };
+}
+
+// Profile-only search for the comment @-mention autocomplete. Profiles are
+// public, so this only gates on being signed in (mentions are authored, never
+// read-only). Returns [] for an empty query.
+export async function searchProfilesAction(query: string): Promise<ProfileSearchResult[]> {
+  await requireUserId();
+  return searchProfiles(query);
 }
 
 // ---------------------------------------------------------------------------
@@ -306,6 +335,46 @@ export async function addChannelColumnAction(
     channel_id: hostChannelId,
     linked_channel_id: linkedChannelId,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Comments — anyone who can read the block can post; the comment's author or
+// the block's channel owner can delete.
+// ---------------------------------------------------------------------------
+export async function getColumnCommentsAction(columnId: number): Promise<Comment[]> {
+  await requireReadableBlock(columnId);
+  return getColumnComments(columnId);
+}
+
+export async function createCommentAction(columnId: number, body: string): Promise<Comment> {
+  const userId = await requireUserId();
+  await requireReadableBlock(columnId);
+  const trimmed = body.trim();
+  if (!trimmed) {
+    throw new Error("Comment can't be empty.");
+  }
+  if (trimmed.length > MAX_COMMENT_LENGTH) {
+    throw new Error(`Comment is too long (max ${MAX_COMMENT_LENGTH} characters).`);
+  }
+  return createComment({ column_id: columnId, author_id: userId, body: trimmed });
+}
+
+export async function deleteCommentAction(commentId: number): Promise<void> {
+  const userId = await requireUserId();
+  const target = await getCommentAuthorization(commentId);
+  if (!target) {
+    throw new Error("Not found.");
+  }
+  // The author may always remove their own comment; otherwise the block's
+  // channel owner may moderate it.
+  if (target.author_id !== userId) {
+    const column = await getColumn(target.column_id);
+    if (!column) {
+      throw new Error("Not found.");
+    }
+    await requireOwnedChannel(column.channel_id, userId);
+  }
+  await deleteComment(commentId);
 }
 
 // ---------------------------------------------------------------------------

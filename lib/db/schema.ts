@@ -149,6 +149,26 @@ export const column = pgTable(
   ],
 );
 
+// Comments on a block ("column"). Anyone who can read the block can post; the
+// author or the block's channel owner can delete. Cascades on both FKs so a
+// comment vanishes with its block or its author.
+export const comment = pgTable(
+  "comment",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    column_id: bigint("column_id", { mode: "number" })
+      .notNull()
+      .references(() => column.id, { onDelete: "cascade" }),
+    author_id: uuid("author_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+  },
+  // A block's comment thread is fetched by column_id, oldest first.
+  (t) => [index("comment_column_id_created_at_idx").on(t.column_id, t.created_at)],
+);
+
 export const screenshot = pgTable("screenshot", {
   id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

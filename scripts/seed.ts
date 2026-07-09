@@ -9,7 +9,15 @@
 import { inArray } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { channel, column, inviteCode, inviteRedemption, user, userProfile } from "@/lib/db/schema";
+import {
+  channel,
+  column,
+  comment,
+  inviteCode,
+  inviteRedemption,
+  user,
+  userProfile,
+} from "@/lib/db/schema";
 
 type SeedUser = { id: string; name: string; email: string; handle: string; about: string };
 
@@ -40,6 +48,13 @@ export const CHANNELS = {
 export const BLOCKS = {
   alicePublic: "Quokka sketch",
   alicePrivate: "Quokka secret",
+};
+
+// Comments on the alicePublic block: one by the block owner, one by another
+// user, so tests can assert delete authorization from both angles.
+export const COMMENTS = {
+  byAlice: "Alice's own note.",
+  byBob: "Bob chiming in.",
 };
 
 export const INVITE_CODES = {
@@ -116,31 +131,40 @@ export async function seed(): Promise<void> {
   // Blocks in Alice's public channel, plus one in her private channel so tests
   // can assert cross-user search never surfaces private blocks. The titles use
   // distinctive tokens (BLOCKS) so a search matches exactly one.
-  await db.insert(column).values([
-    {
-      type: "text",
-      title: BLOCKS.alicePublic,
-      text: "Something worth keeping.",
-      created_by: USERS.alice.id,
-      channel_id: aliceDesign.id,
-      tags: [],
-    },
-    {
-      type: "url",
-      title: "A link",
-      url: "https://example.com",
-      created_by: USERS.alice.id,
-      channel_id: aliceDesign.id,
-      tags: ["ref"],
-    },
-    {
-      type: "text",
-      title: BLOCKS.alicePrivate,
-      text: "For my eyes only.",
-      created_by: USERS.alice.id,
-      channel_id: alicePrivate.id,
-      tags: [],
-    },
+  const [alicePublicBlock] = await db
+    .insert(column)
+    .values([
+      {
+        type: "text",
+        title: BLOCKS.alicePublic,
+        text: "Something worth keeping.",
+        created_by: USERS.alice.id,
+        channel_id: aliceDesign.id,
+        tags: [],
+      },
+      {
+        type: "url",
+        title: "A link",
+        url: "https://example.com",
+        created_by: USERS.alice.id,
+        channel_id: aliceDesign.id,
+        tags: ["ref"],
+      },
+      {
+        type: "text",
+        title: BLOCKS.alicePrivate,
+        text: "For my eyes only.",
+        created_by: USERS.alice.id,
+        channel_id: alicePrivate.id,
+        tags: [],
+      },
+    ])
+    .returning();
+
+  // Comments on Alice's public block, one from each user.
+  await db.insert(comment).values([
+    { column_id: alicePublicBlock.id, author_id: USERS.alice.id, body: COMMENTS.byAlice },
+    { column_id: alicePublicBlock.id, author_id: USERS.bob.id, body: COMMENTS.byBob },
   ]);
 }
 

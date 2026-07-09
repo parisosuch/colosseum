@@ -47,7 +47,7 @@ export default async function ChangelogPage() {
   const releases = (await getChangelog()).filter((r) => r.note || r.sections.length > 0);
 
   return (
-    <div className="w-full max-w-2xl p-6 sm:p-12 space-y-8">
+    <div className="mx-auto w-full max-w-2xl p-6 sm:p-12 space-y-8">
       <PageHeader crumbs={[{ label: "changelog" }]} />
       <div className="space-y-10">
         {releases.map((release) => (

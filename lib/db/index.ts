@@ -20,8 +20,13 @@ if (!connectionString) {
 
 // Reuse the connection across hot-reloads in dev so we don't leak a new pool on
 // every module reload.
+//
+// Prepared statements are left on (the postgres default): the app connects
+// directly to Postgres, not through a transaction-mode pooler, so re-planning
+// every query buys nothing. Only flip `prepare: false` back on if a PgBouncer /
+// transaction-mode pooler is introduced in front of the DB.
 const globalForDb = globalThis as unknown as { client?: ReturnType<typeof postgres> };
-const client = globalForDb.client ?? postgres(connectionString, { prepare: false });
+const client = globalForDb.client ?? postgres(connectionString);
 if (process.env.NODE_ENV !== "production") {
   globalForDb.client = client;
 }

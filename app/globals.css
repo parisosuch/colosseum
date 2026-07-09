@@ -170,4 +170,49 @@
     content-visibility: auto;
     contain-intrinsic-size: auto 320px;
   }
+
+  /* Translucent app chrome (nav bars) that content scrolls under, à la iOS.
+     Alpha comes off the theme background token so it tracks light/dark. The
+     reduced-transparency fallback lives with the rule it overrides (below). */
+  .chrome {
+    background-color: hsl(var(--background) / 0.72);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+  }
+}
+
+/* Accessibility media queries, unlayered so they win over the base tokens and
+   any component animation when the OS asks for them. One place covers every
+   surface (dialog/drawer/dropdown/popover/toast/buttons/cards) instead of each
+   opting in — the gap was that only Button respected motion-safe. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .chrome {
+    background-color: hsl(var(--background));
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --border: 0 0% 55%;
+    --ring: 0 0% 0%;
+    --muted-foreground: 0 0% 28%;
+  }
+  .dark {
+    --border: 0 0% 45%;
+    --ring: 0 0% 100%;
+    --muted-foreground: 0 0% 80%;
+  }
 }

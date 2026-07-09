@@ -28,7 +28,7 @@ export function MobileBottomBar({
   const [searchOpen, setSearchOpen] = useState(false);
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-background pb-[env(safe-area-inset-bottom)] sm:hidden">
+    <nav className="chrome fixed inset-x-0 bottom-0 z-40 border-t pb-[env(safe-area-inset-bottom)] sm:hidden">
       <div className="flex h-14 items-center justify-around px-2">
         <Link href="/" aria-label="Home" className={ITEM}>
           <HomeIcon />

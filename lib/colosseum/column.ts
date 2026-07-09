@@ -367,7 +367,7 @@ export async function deleteColumn(column_id: number): Promise<void> {
 // anywhere still references that URL. No-op while any column still links it.
 // ponytail: a column re-added between the count check and the delete would lose
 // its cached screenshot (a re-capture, not a crash); acceptable for a GC path.
-async function deleteScreenshotIfUnreferenced(url: string): Promise<void> {
+export async function deleteScreenshotIfUnreferenced(url: string): Promise<void> {
   const [stillReferenced] = await db
     .select({ id: column.id })
     .from(column)

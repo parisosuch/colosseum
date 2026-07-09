@@ -8,6 +8,13 @@ release.
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-07-09
+
+### Fixed
+
+- The profile and Explore pages now scroll beneath the translucent nav bar like
+  every other page, instead of within their own inner scroll area.
+
 ## [1.4.0] - 2026-07-09
 
 ### Added

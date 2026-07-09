@@ -57,6 +57,13 @@
       "when": 1783574405245,
       "tag": "0007_nifty_professor_monster",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783636073457,
+      "tag": "0008_rare_madame_masque",
+      "breakpoints": true
     }
   ]
 }

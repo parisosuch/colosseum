@@ -117,6 +117,8 @@ export const channel = pgTable(
   (t) => [
     // Explore feed orders newly created channels by time.
     index("channel_created_at_idx").on(t.created_at),
+    // getUserChannels / getUserPublicChannels filtering on owner_id.
+    index("channel_owner_id_idx").on(t.owner_id),
   ],
 );
 
@@ -169,6 +171,8 @@ export const column = pgTable(
   (t) => [
     // Explore feed orders newly added blocks by time.
     index("column_created_at_idx").on(t.created_at),
+    // getChannelColumns / getChannelColumnCount filtering and sorting on channel_id, created_at.
+    index("column_channel_id_created_at_idx").on(t.channel_id, t.created_at.desc()),
   ],
 );
 

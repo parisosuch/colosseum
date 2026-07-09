@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { channel, column, userProfile } from "@/lib/db/schema";
+import { channel, column, screenshot, userProfile } from "@/lib/db/schema";
 import { sanitizeSearch } from "@/lib/utils";
 import { deleteMediaByUrl } from "./blob";
 
@@ -46,7 +46,14 @@ export function toColumn(row: ColumnRow): Column {
 // Resolve display info for `channel` columns: the linked channel's title, its
 // owner's handle (the link target is /handle/id), and its block count. Batched
 // so a board with several channel columns still runs two queries, not 2N.
-export async function withLinkedChannels(cols: Column[]): Promise<Column[]> {
+// `viewerId` (the current user, or null when signed out) gates privacy:
+// privacy is re-checked live here, not just at link creation, so a linked
+// channel that has since gone private resolves no display data for anyone but
+// its owner — the column then renders as a removed link.
+export async function withLinkedChannels(
+  cols: Column[],
+  viewerId: string | null,
+): Promise<Column[]> {
   const linkedIds = [
     ...new Set(cols.map((c) => c.linked_channel_id).filter((id): id is number => id != null)),
   ];
@@ -62,7 +69,12 @@ export async function withLinkedChannels(cols: Column[]): Promise<Column[]> {
       })
       .from(channel)
       .innerJoin(userProfile, eq(userProfile.user_id, channel.owner_id))
-      .where(inArray(channel.id, linkedIds)),
+      .where(
+        and(
+          inArray(channel.id, linkedIds),
+          or(eq(channel.private, false), viewerId ? eq(channel.owner_id, viewerId) : undefined),
+        ),
+      ),
     db
       .select({ channel_id: column.channel_id, n: sql<number>`count(*)::int` })
       .from(column)
@@ -125,6 +137,7 @@ export type ColumnQuery = {
 export async function getChannelColumns(
   channel_id: number,
   query: ColumnQuery = {},
+  viewerId: string | null = null,
 ): Promise<Column[]> {
   const { search, type = "all", sort = "newest", limit, offset = 0 } = query;
 
@@ -170,7 +183,7 @@ export async function getChannelColumns(
     .limit(limit ?? Number.MAX_SAFE_INTEGER)
     .offset(offset);
 
-  return withLinkedChannels(rows.map(toColumn));
+  return withLinkedChannels(rows.map(toColumn), viewerId);
 }
 
 // A block search hit, carrying the owning channel's handle so callers can build
@@ -335,11 +348,38 @@ export async function deleteColumn(column_id: number): Promise<void> {
   const [row] = await db
     .delete(column)
     .where(eq(column.id, column_id))
-    .returning({ image: column.image });
+    .returning({ type: column.type, image: column.image, url: column.url });
+  if (!row) return;
   // Drop the deleted block's media reference (no-op for external image URLs);
   // the blob is GC'd if this was its last reference.
-  if (row?.image) {
+  if (row.image) {
     await deleteMediaByUrl(row.image);
+  }
+  // A URL block's screenshot lives in the shared per-URL `screenshot` cache,
+  // not on the column. When the last column linking this URL (across all users)
+  // is gone, GC the cached screenshot and its blob too.
+  if (row.type === "url" && row.url) {
+    await deleteScreenshotIfUnreferenced(row.url);
+  }
+}
+
+// Drop the cached screenshot for `url` (and GC its blob) once no column
+// anywhere still references that URL. No-op while any column still links it.
+// ponytail: a column re-added between the count check and the delete would lose
+// its cached screenshot (a re-capture, not a crash); acceptable for a GC path.
+export async function deleteScreenshotIfUnreferenced(url: string): Promise<void> {
+  const [stillReferenced] = await db
+    .select({ id: column.id })
+    .from(column)
+    .where(eq(column.url, url))
+    .limit(1);
+  if (stillReferenced) return;
+  const [dropped] = await db
+    .delete(screenshot)
+    .where(eq(screenshot.url, url))
+    .returning({ image_url: screenshot.image_url });
+  if (dropped?.image_url) {
+    await deleteMediaByUrl(dropped.image_url);
   }
 }
 

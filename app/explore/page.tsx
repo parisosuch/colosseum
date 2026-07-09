@@ -17,6 +17,6 @@ export default async function ExplorePage() {
     if (!profile) redirect("/auth/onboarding");
   }
 
-  const activity = await getActivityFeed();
+  const activity = await getActivityFeed(user?.id ?? null);
   return <ExploreView activity={activity} />;
 }

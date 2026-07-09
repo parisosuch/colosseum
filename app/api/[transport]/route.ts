@@ -201,7 +201,7 @@ const handler = createMcpHandler(
       },
       asTool(async ({ channelId, limit }: { channelId: number; limit?: number }, { userId }) => {
         await requireChannel(userId, channelId, "read");
-        return { blocks: await getChannelColumns(channelId, { limit }) };
+        return { blocks: await getChannelColumns(channelId, { limit }, userId) };
       }),
     );
 

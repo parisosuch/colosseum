@@ -8,6 +8,15 @@ release.
 
 ## [Unreleased]
 
+## [1.3.3] - 2026-07-09
+
+### Fixed
+
+- Deleting a URL block — or a whole channel — now removes its cached page
+  screenshot instead of retaining it forever, fixing a storage leak.
+- A channel column no longer shows a linked channel's title, description, or
+  item count after that channel is made private (unless you own it).
+
 ## [1.3.2] - 2026-07-08
 
 ### Fixed

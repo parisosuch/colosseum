@@ -23,8 +23,9 @@ import { LayoutGrid, List, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-// How many blocks to load per page (initial load and each load-more).
-const PAGE_SIZE = 50;
+// How many blocks to load per page (initial load and each load-more). Exported
+// so the channel page can server-render exactly the first page.
+export const PAGE_SIZE = 50;
 // Placeholder tiles shown while the first page loads — a few rows' worth.
 const SKELETON_COUNT = 18;
 
@@ -80,6 +81,13 @@ type ChannelBoardProps = {
   // add/remove updates the bar live.
   members: ChannelMember[];
   ownerAvatarUrl: string | null;
+  // The first page of blocks, server-rendered so the grid paints without a
+  // hydrate + server-action round-trip. Seeds `columns`; the mount fetch is
+  // skipped while the controls are still at their defaults.
+  initialColumns: Column[];
+  // Cached screenshots for the first page's URL blocks (entries, not a Map — a
+  // Map isn't needed on the wire), so previews paint without a second fetch.
+  initialScreenshots: [string, ColumnScreenshot][];
 };
 
 export default function ChannelBoard({
@@ -94,11 +102,15 @@ export default function ChannelBoard({
   channels,
   members: initialMembers,
   ownerAvatarUrl,
+  initialColumns,
+  initialScreenshots,
 }: ChannelBoardProps) {
   const [members, setMembers] = useState<ChannelMember[]>(initialMembers);
   const [channel, setChannel] = useState<Channel>(initialChannel);
-  const [columns, setColumns] = useState<Column[]>([]);
-  const [screenshots, setScreenshots] = useState<Map<string, ColumnScreenshot>>(new Map());
+  const [columns, setColumns] = useState<Column[]>(initialColumns);
+  const [screenshots, setScreenshots] = useState<Map<string, ColumnScreenshot>>(
+    () => new Map(initialScreenshots),
+  );
 
   // Channel-wide stats, kept independent of the paged/filtered `columns` list so
   // the meta panel always reflects the whole channel.
@@ -112,10 +124,11 @@ export default function ChannelBoard({
   const [typeFilter, setTypeFilter] = useState<ColumnFilter>("all");
   const [sort, setSort] = useState<ColumnSort>("newest");
 
-  // Paging state for the current control selection.
-  const [loadingPage, setLoadingPage] = useState(true);
+  // Paging state for the current control selection. Seeded from the
+  // server-rendered first page, so nothing loads on mount.
+  const [loadingPage, setLoadingPage] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(false);
+  const [hasMore, setHasMore] = useState(initialColumns.length === PAGE_SIZE);
 
   // Grid (square cards) vs list (Are.na-style table) layout for the block area.
   const [view, setView] = useState<"grid" | "list">("grid");
@@ -164,10 +177,20 @@ export default function ChannelBoard({
     return () => clearTimeout(t);
   }, [search]);
 
+  // Skip the first run of the effect below: it fires on mount with the controls
+  // at their defaults, which is exactly the page the server already rendered
+  // into `columns`. Any later control change still refetches.
+  const skipInitialFetch = useRef(true);
+
   // Load (or reload) the first page whenever the channel or any control changes.
   // The previous list stays on screen until the new one resolves, so changing a
   // control doesn't flash an empty grid.
   useEffect(() => {
+    if (skipInitialFetch.current) {
+      skipInitialFetch.current = false;
+      return;
+    }
+
     let cancelled = false;
     setLoadingPage(true);
     (async () => {

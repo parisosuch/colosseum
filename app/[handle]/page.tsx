@@ -11,12 +11,14 @@ import Link from "next/link";
 async function ChannelColumnsView({
   channel,
   columnCount,
+  viewerId,
 }: {
   channel: Channel;
   columnCount: number;
+  viewerId: string | null;
 }) {
   // Only the first 5 previews are shown, so don't fetch the whole channel.
-  const columns = await getChannelColumns(channel.id, { limit: 5 });
+  const columns = await getChannelColumns(channel.id, { limit: 5 }, viewerId);
 
   return (
     <div className="flex flex-col md:flex-row gap-8 p-2">
@@ -82,7 +84,11 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
         <div
           className={`flex aspect-square items-center justify-center p-4 md:block md:aspect-auto md:p-8 border-2 rounded-lg transition-colors ${channel.private ? "bg-red-500/5 border-red-500/50 hover:border-red-500" : "border-gray-500/50 hover:border-gray-500"}`}
         >
-          <ChannelColumnsView channel={channel} columnCount={countById.get(channel.id) ?? 0} />
+          <ChannelColumnsView
+            channel={channel}
+            columnCount={countById.get(channel.id) ?? 0}
+            viewerId={user?.id ?? null}
+          />
         </div>
       </Link>
     ),

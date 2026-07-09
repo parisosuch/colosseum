@@ -40,7 +40,7 @@ export default async function ChannelPage({ params }: ChannelPageParams) {
   // first paint. The block grid is fetched client-side with skeletons.
   const [totalCount, newest] = await Promise.all([
     getChannelColumnCount(id),
-    getChannelColumns(id, { sort: "newest", limit: 1 }),
+    getChannelColumns(id, { sort: "newest", limit: 1 }, user?.id ?? null),
   ]);
 
   const createdOnLabel = new Date(channel.created_at).toLocaleString("default", {

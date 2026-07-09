@@ -58,6 +58,7 @@ export function blockLabel(b: {
 // cursor — the `at` of the last item seen — so each source returns only older
 // rows for the next page.
 export async function getActivityFeed(
+  viewerId: string | null,
   limit = ACTIVITY_PAGE,
   before?: string,
 ): Promise<ActivityItem[]> {
@@ -101,7 +102,10 @@ export async function getActivityFeed(
   const [blockColumns, shots] = await Promise.all([
     // Enrich channel-columns with their linked channel (title/handle/count) so
     // the feed can render and link them like the channel grid does.
-    withLinkedChannels(blocks.map((b) => toColumn(b.col))),
+    withLinkedChannels(
+      blocks.map((b) => toColumn(b.col)),
+      viewerId,
+    ),
     // Cached screenshots for the url blocks, so their modals show the capture.
     urls.length
       ? getScreenshotsForUrls(urls)

@@ -154,7 +154,7 @@ export async function getChannelColumnsAction(
   query: ColumnQuery = {},
 ): Promise<Column[]> {
   await requireReadableChannel(channelId);
-  return getChannelColumns(channelId, query);
+  return getChannelColumns(channelId, query, await currentUserId());
 }
 
 export async function uploadURLColumnAction(input: {

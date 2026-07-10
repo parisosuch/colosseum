@@ -8,6 +8,21 @@ release.
 
 ## [Unreleased]
 
+## [1.4.4] - 2026-07-10
+
+### Added
+
+- The block permalink page now shows the block's comments, matching the block
+  modal.
+
+### Fixed
+
+- On a URL block's permalink page, the site link and its screenshot are now a
+  single clickable preview that opens the link, sized to match the modal
+  instead of stretching across the page.
+- The block permalink page now fits the viewport like the modal — the page no
+  longer scrolls; the screenshot and comments scroll within their own panels.
+
 ## [1.4.3] - 2026-07-10
 
 ### Fixed

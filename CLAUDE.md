@@ -51,6 +51,7 @@ Use `bun`, never `npm`. A `Makefile` wraps the common ones:
   `## [X.Y.Z] - YYYY-MM-DD` section in `CHANGELOG.md` in the same commit,
   moving the accumulated `Unreleased` notes under it. The two never move apart.
 - PRs that are hotfixes should target `main` and others should target `next`.
+- GH releases need to attribute PRs. See previous release for example.
 
 ## Conventions
 

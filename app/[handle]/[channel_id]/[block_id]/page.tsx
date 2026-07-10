@@ -1,6 +1,7 @@
 import { GlobeIcon } from "lucide-react";
 import { Metadata } from "next";
 
+import ColumnComments from "@/components/column-comments";
 import PageHeader from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Channel, canReadChannel, getChannel } from "@/lib/colosseum/channel";
@@ -72,6 +73,7 @@ export default async function BlockPage({ params }: BlockPageParams) {
   }
 
   const { column, channel } = found;
+  const viewer = await getSessionUser();
 
   // URL blocks render their cached screenshot full-size when one exists.
   const screenshot = column.type === "url" && column.url ? await getScreenshot(column.url) : null;
@@ -155,6 +157,13 @@ export default async function BlockPage({ params }: BlockPageParams) {
           <div className="flex flex-col">
             <h2 className="text-label">Created</h2>
             <p className="font-mono">{new Date(column.created_at).toDateString()}</p>
+          </div>
+          <div className="border rounded-lg">
+            <ColumnComments
+              columnId={column.id}
+              viewerId={viewer?.id ?? null}
+              isOwner={channel.owner_id === viewer?.id}
+            />
           </div>
         </aside>
       </div>

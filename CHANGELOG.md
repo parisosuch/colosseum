@@ -8,6 +8,13 @@ release.
 
 ## [Unreleased]
 
+## [1.4.3] - 2026-07-10
+
+### Fixed
+
+- Text blocks in the block modal now size to their content instead of a fixed
+  half-viewport-tall box with a large empty expanse below short text.
+
 ## [1.4.2] - 2026-07-10
 
 ### Fixed

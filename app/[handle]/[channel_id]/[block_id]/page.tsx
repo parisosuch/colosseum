@@ -102,28 +102,30 @@ export default async function BlockPage({ params }: BlockPageParams) {
               className="w-full rounded-lg"
             />
           ) : (
-            <div className="space-y-3">
-              <a
-                href={column.url}
-                target="_blank"
-                rel="noreferrer"
-                className="flex flex-row space-x-2 items-center border rounded-md px-2 py-1 w-fit"
-              >
-                <GlobeIcon className="size-4" />
-                <span className="font-mono break-all">{column.url}</span>
-              </a>
-              {screenshotSrc ? (
-                <img
-                  src={screenshotSrc}
-                  alt={column.title ?? "Website screenshot"}
-                  className="w-full rounded-lg border"
-                />
-              ) : (
-                <div className="w-full rounded-md border p-4 text-center text-sm text-muted-foreground">
-                  No screenshot available
-                </div>
-              )}
-            </div>
+            <a
+              href={column.url}
+              target="_blank"
+              rel="noreferrer"
+              className="block w-full max-w-3xl"
+            >
+              <div className="flex flex-row items-center gap-2 border rounded-md px-2 py-1">
+                <GlobeIcon className="size-4 shrink-0" />
+                <span className="font-mono text-sm break-all">{column.url}</span>
+              </div>
+              <div className="mt-2 w-full">
+                {screenshotSrc ? (
+                  <img
+                    src={screenshotSrc}
+                    alt={column.title ?? "Website screenshot"}
+                    className="w-full rounded-md"
+                  />
+                ) : (
+                  <div className="w-full rounded-md border p-4 text-center text-sm text-muted-foreground">
+                    No screenshot available
+                  </div>
+                )}
+              </div>
+            </a>
           )}
         </div>
 

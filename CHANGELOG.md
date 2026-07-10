@@ -8,6 +8,13 @@ release.
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-07-10
+
+### Fixed
+
+- Signed-in users can now post comments on blocks opened from the Explore feed,
+  not just read them.
+
 ## [1.4.1] - 2026-07-09
 
 ### Fixed

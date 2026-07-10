@@ -284,7 +284,9 @@ function BlockModalBody({
             ref={textInputRef}
             value={text}
             disabled={!canEdit}
-            className="min-h-[50vh]"
+            // Sizes to content (Textarea sets field-sizing-content, min-h-16);
+            // caps at the panel height so a long block scrolls, not overflows.
+            className="max-h-full"
             onChange={(e) => setText(e.target.value)}
           />
         ) : column.type === "image" ? (

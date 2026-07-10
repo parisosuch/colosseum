@@ -8,22 +8,25 @@ import BlockModal from "@/components/block-modal";
 
 const noop = () => {};
 
-// Opens a block in the shared BlockModal (read-only) from the Explore feed —
-// like clicking a block in the channel grid — instead of navigating to its
-// page. `children` is the server-rendered focal card. Read-only: the viewer
-// doesn't own these blocks, so edit/delete/move are hidden and setColumns is
-// never called; there's no prev/next since the feed is heterogeneous.
+// Opens a block in the shared BlockModal from the Explore feed — like clicking
+// a block in the channel grid — instead of navigating to its page. `children`
+// is the server-rendered focal card. The viewer doesn't own these blocks, so
+// edit/delete/move are hidden and setColumns is never called; there's no
+// prev/next since the feed is heterogeneous. Signed-in viewers can still
+// comment, so their id is threaded through.
 export function FeedBlockModal({
   column,
   handle,
   screenshot,
   aria,
+  viewerId,
   children,
 }: {
   column: Column;
   handle: string;
   screenshot?: ColumnScreenshot;
   aria: string;
+  viewerId: string | null;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -45,10 +48,7 @@ export function FeedBlockModal({
         isOwner={false}
         canEdit={false}
         handle={handle}
-        // Read-only in the feed (like edit/delete/move); the comment thread
-        // shows but isn't writable here. ponytail: thread the viewer id through
-        // ExploreView if feed-side commenting is ever wanted.
-        viewerId={null}
+        viewerId={viewerId}
         setColumns={noop}
         channels={[]}
         screenshot={screenshot}

@@ -8,6 +8,35 @@ release.
 
 ## [Unreleased]
 
+## [1.4.4] - 2026-07-10
+
+### Added
+
+- The block permalink page now shows the block's comments, matching the block
+  modal.
+
+### Fixed
+
+- On a URL block's permalink page, the site link and its screenshot are now a
+  single clickable preview that opens the link, sized to match the modal
+  instead of stretching across the page.
+- The block permalink page now fits the viewport like the modal — the page no
+  longer scrolls; the screenshot and comments scroll within their own panels.
+
+## [1.4.3] - 2026-07-10
+
+### Fixed
+
+- Text blocks in the block modal now size to their content instead of a fixed
+  half-viewport-tall box with a large empty expanse below short text.
+
+## [1.4.2] - 2026-07-10
+
+### Fixed
+
+- Signed-in users can now post comments on blocks opened from the Explore feed,
+  not just read them.
+
 ## [1.4.1] - 2026-07-09
 
 ### Fixed

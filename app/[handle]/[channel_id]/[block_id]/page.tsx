@@ -1,6 +1,7 @@
 import { GlobeIcon } from "lucide-react";
 import { Metadata } from "next";
 
+import ColumnComments from "@/components/column-comments";
 import PageHeader from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Channel, canReadChannel, getChannel } from "@/lib/colosseum/channel";
@@ -72,6 +73,7 @@ export default async function BlockPage({ params }: BlockPageParams) {
   }
 
   const { column, channel } = found;
+  const viewer = await getSessionUser();
 
   // URL blocks render their cached screenshot full-size when one exists.
   const screenshot = column.type === "url" && column.url ? await getScreenshot(column.url) : null;
@@ -82,7 +84,7 @@ export default async function BlockPage({ params }: BlockPageParams) {
       : (screenshot?.image_url ?? null);
 
   return (
-    <div className="w-full p-6 sm:p-12 space-y-8">
+    <div className="w-full p-6 sm:p-12 flex flex-col gap-8 lg:flex-1 lg:min-h-0 lg:overflow-hidden">
       <PageHeader
         crumbs={[
           { label: handle, href: `/${handle}` },
@@ -91,8 +93,8 @@ export default async function BlockPage({ params }: BlockPageParams) {
         ]}
       />
 
-      <div className="flex flex-col lg:flex-row gap-8">
-        <div className="w-full lg:w-3/4">
+      <div className="flex flex-col lg:flex-row gap-8 lg:flex-1 lg:min-h-0">
+        <div className="w-full lg:w-3/4 lg:min-h-0 lg:overflow-y-auto">
           {column.type === "text" ? (
             <p className="whitespace-pre-wrap text-lg leading-relaxed">{column.text}</p>
           ) : column.type === "image" && column.image ? (
@@ -102,57 +104,70 @@ export default async function BlockPage({ params }: BlockPageParams) {
               className="w-full rounded-lg"
             />
           ) : (
-            <div className="space-y-3">
-              <a
-                href={column.url}
-                target="_blank"
-                rel="noreferrer"
-                className="flex flex-row space-x-2 items-center border rounded-md px-2 py-1 w-fit"
-              >
-                <GlobeIcon className="size-4" />
-                <span className="font-mono break-all">{column.url}</span>
-              </a>
-              {screenshotSrc ? (
-                <img
-                  src={screenshotSrc}
-                  alt={column.title ?? "Website screenshot"}
-                  className="w-full rounded-lg border"
-                />
-              ) : (
-                <div className="w-full rounded-md border p-4 text-center text-sm text-muted-foreground">
-                  No screenshot available
-                </div>
-              )}
-            </div>
+            <a
+              href={column.url}
+              target="_blank"
+              rel="noreferrer"
+              className="block w-full max-w-3xl"
+            >
+              <div className="flex flex-row items-center gap-2 border rounded-md px-2 py-1">
+                <GlobeIcon className="size-4 shrink-0" />
+                <span className="font-mono text-sm break-all">{column.url}</span>
+              </div>
+              <div className="mt-2 w-full">
+                {screenshotSrc ? (
+                  <img
+                    src={screenshotSrc}
+                    alt={column.title ?? "Website screenshot"}
+                    className="w-full rounded-md"
+                  />
+                ) : (
+                  <div className="w-full rounded-md border p-4 text-center text-sm text-muted-foreground">
+                    No screenshot available
+                  </div>
+                )}
+              </div>
+            </a>
           )}
         </div>
 
-        <aside className="w-full lg:w-1/4 space-y-4">
-          <div className="flex flex-col">
-            <h2 className="text-label">Title</h2>
-            <p>{column.title || <span className="text-muted-foreground">No title</span>}</p>
-          </div>
-          <div className="flex flex-col">
-            <h2 className="text-label">Description</h2>
-            <p>
-              {column.description || <span className="text-muted-foreground">No description</span>}
-            </p>
-          </div>
-          {column.tags.length > 0 ? (
+        <aside className="w-full lg:w-1/4 flex flex-col gap-4 lg:min-h-0">
+          <div className="space-y-4 lg:shrink-0">
             <div className="flex flex-col">
-              <h2 className="text-label">Tags</h2>
-              <div className="flex flex-wrap gap-1 pt-1">
-                {column.tags.map((tag) => (
-                  <Badge key={tag} variant="secondary">
-                    #{tag}
-                  </Badge>
-                ))}
-              </div>
+              <h2 className="text-label">Title</h2>
+              <p>{column.title || <span className="text-muted-foreground">No title</span>}</p>
             </div>
-          ) : null}
-          <div className="flex flex-col">
-            <h2 className="text-label">Created</h2>
-            <p className="font-mono">{new Date(column.created_at).toDateString()}</p>
+            <div className="flex flex-col">
+              <h2 className="text-label">Description</h2>
+              <p>
+                {column.description || (
+                  <span className="text-muted-foreground">No description</span>
+                )}
+              </p>
+            </div>
+            {column.tags.length > 0 ? (
+              <div className="flex flex-col">
+                <h2 className="text-label">Tags</h2>
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {column.tags.map((tag) => (
+                    <Badge key={tag} variant="secondary">
+                      #{tag}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            <div className="flex flex-col">
+              <h2 className="text-label">Created</h2>
+              <p className="font-mono">{new Date(column.created_at).toDateString()}</p>
+            </div>
+          </div>
+          <div className="border rounded-lg lg:flex-1 lg:min-h-0 lg:overflow-hidden">
+            <ColumnComments
+              columnId={column.id}
+              viewerId={viewer?.id ?? null}
+              isOwner={channel.owner_id === viewer?.id}
+            />
           </div>
         </aside>
       </div>

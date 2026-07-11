@@ -2,6 +2,7 @@ import { GlobeIcon } from "lucide-react";
 import { Metadata } from "next";
 
 import ColumnComments from "@/components/column-comments";
+import { Markdown } from "@/components/markdown";
 import PageHeader from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Channel, canReadChannel, getChannel } from "@/lib/colosseum/channel";
@@ -97,7 +98,7 @@ export default async function BlockPage({ params }: BlockPageParams) {
       <div className="flex flex-col lg:flex-row gap-8 lg:flex-1 lg:min-h-0">
         <div className="w-full lg:w-3/4 lg:min-h-0 lg:overflow-y-auto">
           {column.type === "text" ? (
-            <p className="whitespace-pre-wrap text-lg leading-relaxed">{column.text}</p>
+            <Markdown text={column.text ?? ""} className="text-base leading-relaxed" />
           ) : column.type === "image" && column.image ? (
             <img
               src={column.image}

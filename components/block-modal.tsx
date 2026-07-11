@@ -67,7 +67,8 @@ function MarkdownEditor({
   canEdit: boolean;
   textRef: React.RefObject<HTMLTextAreaElement | null>;
 }) {
-  const [mode, setMode] = useState<"write" | "preview">("write");
+  // Default to Preview (rendered markdown) — editors switch to Write to edit.
+  const [mode, setMode] = useState<"write" | "preview">("preview");
 
   if (!canEdit) {
     return (
@@ -101,11 +102,13 @@ function MarkdownEditor({
         <Textarea
           ref={textRef}
           value={text}
-          className="max-h-full min-h-40 font-mono"
+          // Fill the panel height (override the base field-sizing-content, which
+          // would otherwise shrink to the text) so it matches the sidebar.
+          className="min-h-40 flex-1 [field-sizing:fixed] font-mono"
           onChange={(e) => setText(e.target.value)}
         />
       ) : (
-        <div className="min-h-40 w-full overflow-y-auto rounded-md border p-3">
+        <div className="min-h-40 w-full flex-1 overflow-y-auto rounded-md border p-3">
           {text.trim() ? (
             <Markdown text={text} />
           ) : (

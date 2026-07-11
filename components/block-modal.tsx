@@ -459,6 +459,14 @@ function BlockModalBody({
             <h3>Created on</h3>
             <p className="font-mono">{new Date(column.created_at).toDateString()}</p>
           </div>
+          {column.created_by_handle ? (
+            <div className="flex w-full justify-between text-xs p-3">
+              <h3>Created by</h3>
+              <Link href={`/${column.created_by_handle}`} className="font-mono hover:underline">
+                @{column.created_by_handle}
+              </Link>
+            </div>
+          ) : null}
           <div className="p-3 w-full flex justify-end items-center gap-2">
             <Button asChild variant="link" size="sm">
               <Link href={`/${handle}/${column.channel_id}/${column.id}`}>

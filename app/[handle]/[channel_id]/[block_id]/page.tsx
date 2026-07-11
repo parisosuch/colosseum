@@ -1,5 +1,6 @@
 import { GlobeIcon } from "lucide-react";
 import { Metadata } from "next";
+import Link from "next/link";
 
 import ColumnComments from "@/components/column-comments";
 import { Markdown } from "@/components/markdown";
@@ -174,6 +175,14 @@ export default async function BlockPage({ params }: BlockPageParams) {
               <h2 className="text-label">Created</h2>
               <p className="font-mono">{new Date(column.created_at).toDateString()}</p>
             </div>
+            {column.created_by_handle ? (
+              <div className="flex flex-col">
+                <h2 className="text-label">Created by</h2>
+                <Link href={`/${column.created_by_handle}`} className="hover:underline">
+                  @{column.created_by_handle}
+                </Link>
+              </div>
+            ) : null}
           </div>
           <div className="border rounded-lg lg:flex-1 lg:min-h-0 lg:overflow-hidden">
             <ColumnComments

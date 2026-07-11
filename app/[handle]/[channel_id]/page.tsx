@@ -76,7 +76,7 @@ export default async function ChannelPage({ params }: ChannelPageParams) {
       initialColumns.filter((c) => c.type === "url" && c.url).map((c) => c.url!),
     ).then((shots) => [...shots.entries()]),
     // The logged-in user's own channels back two pickers: the block modal's
-    // "Move" (owner only) and "Add to channel" (any viewer can nest this channel
+    // "Move" (owner only) and "Connect to channel" (any viewer can nest this channel
     // into one of theirs). Skip the query when signed out.
     user
       ? getUserChannels(user.id).then((cs) =>

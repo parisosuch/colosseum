@@ -3,7 +3,7 @@
 import PageHeader from "@/components/page-header";
 import ColumnComponent, { LIST_GRID } from "@/components/column";
 import BlockModal from "@/components/block-modal";
-import AddChannelToChannelButton from "@/components/add-channel-to-channel-button";
+import ConnectChannelButton from "@/components/connect-channel-button";
 import type { PickableChannel } from "@/components/add-block-drawer";
 import ManageChannelButton from "@/components/manage-channel-button";
 import ChannelMembersBar from "@/components/channel-members-bar";
@@ -74,7 +74,7 @@ type ChannelBoardProps = {
   // the client timezone and cause a hydration mismatch.
   createdOnLabel: string;
   // The viewer's own channels, for the block modal's "Move" picker (owner only)
-  // and the "Add to channel" button (any viewer). Empty when signed out.
+  // and the "Connect to channel" button (any viewer). Empty when signed out.
   channels: PickableChannel[];
   // The channel's invited members (empty for open/solo channels), and the owner's
   // avatar, for the collaborators bar. Held as state so the settings editor's
@@ -426,7 +426,7 @@ export default function ChannelBoard({
         ) : null}
         {/* Any signed-in viewer can nest a public channel into one of their own. */}
         {!channel.private ? (
-          <AddChannelToChannelButton channelId={channel.id} channels={channels} />
+          <ConnectChannelButton channelId={channel.id} channels={channels} />
         ) : null}
         <ExportChannelButton channel={channel} />
         <Button

@@ -3,10 +3,14 @@ import ColumnPreview from "@/components/column-preview";
 import CreateChannelButton from "@/components/create-channel-button";
 import { ChannelsView } from "@/components/channels-view";
 import { Channel, getUserChannels, getVisibleUserChannels } from "@/lib/colosseum/channel";
-import { getChannelColumnCount, getChannelColumns } from "@/lib/colosseum/column";
+import { Column, getChannelColumnCounts, getTopColumnsByChannel } from "@/lib/colosseum/column";
+import { getScreenshotsForUrls, type ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import { getPublicUserProfile } from "@/lib/colosseum/user";
 import { getSessionUser } from "@/lib/auth";
 import Link from "next/link";
+
+// How many block previews each channel card shows.
+const PREVIEWS_PER_CHANNEL = 5;
 
 // Grid-card border per access mode: private reads as "restricted" (red), open as
 // "collaborative" (emerald), public as neutral.
@@ -16,18 +20,19 @@ const CHANNEL_CARD_CLASS = {
   public: "border-gray-500/50 hover:border-gray-500",
 } as const;
 
-async function ChannelColumnsView({
+// Previews are fetched once for the whole page (batched) and passed in, so this
+// is a plain sync component — no per-card query.
+function ChannelColumnsView({
   channel,
   columnCount,
-  viewerId,
+  columns,
+  screenshots,
 }: {
   channel: Channel;
   columnCount: number;
-  viewerId: string | null;
+  columns: Column[];
+  screenshots: Map<string, ColumnScreenshot>;
 }) {
-  // Only the first 5 previews are shown, so don't fetch the whole channel.
-  const columns = await getChannelColumns(channel.id, { limit: 5 }, viewerId);
-
   return (
     <div className="flex flex-col md:flex-row gap-8 p-2">
       <div className="flex flex-col justify-center items-center space-y-1 w-full md:w-[250px] md:h-[250px] shrink-0">
@@ -38,16 +43,15 @@ async function ChannelColumnsView({
         <p className="text-caption">{columnCount} column(s)</p>
       </div>
       <div className="hidden md:flex gap-8 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {columns.map((column, index) => (
+        {columns.map((column) => (
           <div
             key={column.id}
-            className={
-              index >= 5
-                ? "hidden"
-                : "border-2 rounded-md w-[200px] h-[200px] sm:w-[250px] sm:h-[250px] shrink-0"
-            }
+            className="border-2 rounded-md w-[200px] h-[200px] sm:w-[250px] sm:h-[250px] shrink-0"
           >
-            <ColumnPreview column={column} />
+            <ColumnPreview
+              column={column}
+              screenshot={column.url ? (screenshots.get(column.url) ?? null) : null}
+            />
           </div>
         ))}
       </div>
@@ -80,10 +84,22 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
     ? await getUserChannels(user!.id)
     : await getVisibleUserChannels(userProfile.user_id, user?.id ?? null);
 
-  // One count per channel, fetched once and shared by the grid cards and the
-  // list rows so the two views don't each re-query.
-  const counts = await Promise.all(channels.map((c) => getChannelColumnCount(c.id)));
-  const countById = new Map(channels.map((c, i) => [c.id, counts[i]]));
+  // Counts and previews for every channel in one query each (not one per
+  // channel): a grouped count(*) and a single windowed top-N fetch. Counts are
+  // shared by the grid cards and the list rows so the two views don't re-query.
+  const channelIds = channels.map((c) => c.id);
+  const [countById, previewsById] = await Promise.all([
+    getChannelColumnCounts(channelIds),
+    getTopColumnsByChannel(channelIds, PREVIEWS_PER_CHANNEL, user?.id ?? null),
+  ]);
+
+  // One batched screenshot lookup for every url block across all the previews,
+  // rather than each ColumnPreview querying on its own.
+  const previewUrls = [...previewsById.values()]
+    .flat()
+    .filter((c) => c.type === "url" && c.url)
+    .map((c) => c.url!);
+  const screenshots = await getScreenshotsForUrls(previewUrls);
 
   // One grid card per channel, keyed by id, so the (client) ChannelsView can
   // pick which to render when filtering while the previews stay server-fetched.
@@ -97,7 +113,8 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
           <ChannelColumnsView
             channel={channel}
             columnCount={countById.get(channel.id) ?? 0}
-            viewerId={user?.id ?? null}
+            columns={previewsById.get(channel.id) ?? []}
+            screenshots={screenshots}
           />
         </div>
       </Link>

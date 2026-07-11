@@ -31,14 +31,19 @@ export function AddBlockDrawer({ channels }: { channels: PickableChannel[] }) {
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [channelQuery, setChannelQuery] = useState("");
 
   const hasContent = file != null || text.trim() !== "";
+
+  const q = channelQuery.trim().toLowerCase();
+  const filteredChannels = q ? channels.filter((c) => c.title.toLowerCase().includes(q)) : channels;
 
   const reset = () => {
     setStep("content");
     setText("");
     setFile(null);
     setSubmitting(false);
+    setChannelQuery("");
   };
 
   const onOpenChange = (next: boolean) => {
@@ -147,29 +152,44 @@ export function AddBlockDrawer({ channels }: { channels: PickableChannel[] }) {
             </Button>
           </div>
         ) : (
-          <div className="space-y-3 px-4 pb-6">
+          // min height opens the sheet taller, leaving whitespace under the list
+          // to drag/dismiss without fighting the scrollable list.
+          <div className="flex min-h-[60dvh] flex-col gap-3 px-4 pb-6">
             {channels.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 You have no channels yet — create one first.
               </p>
             ) : (
-              <ul className="flex max-h-[50dvh] flex-col divide-y overflow-y-auto rounded-md border">
-                {channels.map((channel) => (
-                  <li key={channel.id}>
-                    <button
-                      type="button"
-                      disabled={submitting}
-                      onClick={() => addToChannel(channel.id)}
-                      className={`flex w-full items-center justify-between gap-2 p-3 text-left text-sm hover:bg-accent disabled:opacity-50 ${channel.private ? "bg-red-500/5 border-red-500/50 hover:border-red-500" : ""}`}
-                    >
-                      <span className="truncate">{channel.title}</span>
-                      {channel.private ? (
-                        <span className="shrink-0 text-xs text-muted-foreground">private</span>
-                      ) : null}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <>
+                <input
+                  type="search"
+                  value={channelQuery}
+                  onChange={(e) => setChannelQuery(e.target.value)}
+                  placeholder="Search channels…"
+                  // text-base (16px) so iOS doesn't zoom on focus.
+                  className="w-full shrink-0 rounded-md border bg-transparent p-3 text-base leading-normal focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                <ul className="flex max-h-[40dvh] flex-col divide-y overflow-y-auto rounded-md border">
+                  {filteredChannels.map((channel) => (
+                    <li key={channel.id}>
+                      <button
+                        type="button"
+                        disabled={submitting}
+                        onClick={() => addToChannel(channel.id)}
+                        className={`flex w-full items-center justify-between gap-2 p-3 text-left text-sm hover:bg-accent disabled:opacity-50 ${channel.private ? "bg-red-500/5 border-red-500/50 hover:border-red-500" : ""}`}
+                      >
+                        <span className="truncate">{channel.title}</span>
+                        {channel.private ? (
+                          <span className="shrink-0 text-xs text-muted-foreground">private</span>
+                        ) : null}
+                      </button>
+                    </li>
+                  ))}
+                  {filteredChannels.length === 0 ? (
+                    <li className="p-3 text-sm text-muted-foreground">No channels match.</li>
+                  ) : null}
+                </ul>
+              </>
             )}
 
             <Button

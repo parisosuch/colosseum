@@ -8,6 +8,15 @@ release.
 
 ## [Unreleased]
 
+## [1.4.5] - 2026-07-10
+
+### Fixed
+
+- The block permalink side panel now has a bordered card around its metadata,
+  matching the block modal.
+- A URL block's preview is now centered in the permalink page's main column
+  instead of hugging the left edge.
+
 ## [1.4.4] - 2026-07-10
 
 ### Added

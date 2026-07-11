@@ -230,7 +230,7 @@ export default function ColumnComments({ columnId, viewerId, isOwner }: ColumnCo
                 maxLength={MAX_COMMENT_LENGTH}
                 placeholder="Add a comment…"
                 rows={2}
-                // Enter adds a newline; ⌘/Ctrl+Enter posts. While the @-mention
+                // Enter posts; Shift+Enter adds a newline. While the @-mention
                 // list is open, arrows/Tab/Enter/Escape drive it instead.
                 className="resize-none text-sm [field-sizing:content]"
                 onChange={(e) => {
@@ -274,7 +274,7 @@ export default function ColumnComments({ columnId, viewerId, isOwner }: ColumnCo
                       return;
                     }
                   }
-                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     post();
                   }

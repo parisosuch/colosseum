@@ -101,7 +101,7 @@ export function ActivityRow({ item, viewerId }: { item: ActivityItem; viewerId: 
             {item.handle.charAt(0).toUpperCase()}
           </AvatarFallback>
         </Avatar>
-        @{item.handle}
+        <span className="hover:underline">@{item.handle}</span>
       </span>
     </A>
   );

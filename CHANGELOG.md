@@ -8,6 +8,15 @@ release.
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-07-11
+
+### Fixed
+
+- Image blocks created through the API (REST and MCP) are now fetched and stored
+  like uploaded images — so they're compressed, thumbnailed, and served from
+  Colosseum — instead of keeping a link to a third-party host that bypassed the
+  grid's image compression.
+
 ## [1.5.1] - 2026-07-11
 
 ### Fixed

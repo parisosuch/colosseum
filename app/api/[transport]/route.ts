@@ -35,6 +35,7 @@ import {
   uploadTextColumn,
   uploadURLColumn,
 } from "@/lib/colosseum/column";
+import { putImageBlobFromUrl } from "@/lib/colosseum/blob";
 import { logError } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -261,7 +262,7 @@ const handler = createMcpHandler(
           },
           { userId },
         ) => {
-          await requireChannel(userId, args.channelId, "contribute");
+          const channel = await requireChannel(userId, args.channelId, "contribute");
           const base = { created_by: userId, channel_id: args.channelId };
 
           if (args.type === "text") {
@@ -273,10 +274,15 @@ const handler = createMcpHandler(
             return { block: await uploadURLColumn({ ...base, text: args.url.trim() }) };
           }
           if (!args.image?.trim())
-            throw new Error("`image` (a public URL) is required for an image block.");
-          return {
-            block: await uploadImageColumn({ ...base, image: args.image.trim() }),
-          };
+            throw new Error("`image` (a public image URL) is required for an image block.");
+          // Fetch and store the image so it's thumbnailed and self-hosted,
+          // rather than persisting a third-party URL that skips compression.
+          const image = await putImageBlobFromUrl(
+            args.image.trim(),
+            userId,
+            channel.private ? "private" : "public",
+          );
+          return { block: await uploadImageColumn({ ...base, image }) };
         },
       ),
     );

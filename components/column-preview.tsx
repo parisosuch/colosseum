@@ -1,8 +1,17 @@
 import type { Column } from "@/lib/colosseum/column";
-import { getScreenshot } from "@/lib/colosseum/screenshot-data";
+import { getScreenshot, type ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import ScreenShotPreview from "./screenshot-preview";
 
-export default async function ColumnPreview({ column }: { column: Column }) {
+export default async function ColumnPreview({
+  column,
+  screenshot,
+}: {
+  column: Column;
+  // Pre-fetched screenshot for a url block, so a list of previews can batch the
+  // lookup instead of each preview querying on its own. `undefined` means "not
+  // provided — fetch it yourself"; `null` means "already looked up, none found".
+  screenshot?: ColumnScreenshot | null;
+}) {
   // return the preview based on the column type
 
   if (column.type === "channel") {
@@ -38,16 +47,21 @@ export default async function ColumnPreview({ column }: { column: Column }) {
     );
   }
 
-  // get the image url of the screenshot
-  let data: Awaited<ReturnType<typeof getScreenshot>>;
-  try {
-    data = column.url ? await getScreenshot(column.url) : null;
-  } catch {
-    return (
-      <div>
-        <p>Error fetching the screenshot.</p>
-      </div>
-    );
+  // Use the pre-fetched screenshot when a caller passed one (batched list);
+  // otherwise fetch this one on its own.
+  let data: { image_url: string | null; captured_at: string | null } | null;
+  if (screenshot !== undefined) {
+    data = screenshot;
+  } else {
+    try {
+      data = column.url ? await getScreenshot(column.url) : null;
+    } catch {
+      return (
+        <div>
+          <p>Error fetching the screenshot.</p>
+        </div>
+      );
+    }
   }
 
   // `data` is null when no screenshot has been cached for this URL yet.

@@ -1,4 +1,17 @@
-import { and, asc, desc, eq, ilike, inArray, ne, or, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  getTableColumns,
+  ilike,
+  inArray,
+  lte,
+  ne,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { channel, channelMember, column, screenshot, userProfile } from "@/lib/db/schema";
@@ -184,6 +197,48 @@ export async function getChannelColumns(
     .offset(offset);
 
   return withLinkedChannels(rows.map(toColumn), viewerId);
+}
+
+// The `perChannel` newest blocks for each of `channelIds`, as one windowed query
+// rather than a query per channel. Backs the profile grid previews, which show a
+// handful of channels each with its first few blocks. Returns a map keyed by
+// channel id (a channel with no blocks is simply absent); each list is
+// newest-first. Channel-link blocks are enriched once across all channels.
+export async function getTopColumnsByChannel(
+  channelIds: number[],
+  perChannel: number,
+  viewerId: string | null = null,
+): Promise<Map<number, Column[]>> {
+  const byChannel = new Map<number, Column[]>();
+  if (channelIds.length === 0) return byChannel;
+
+  const ranked = db
+    .select({
+      ...getTableColumns(column),
+      rn: sql<number>`row_number() over (partition by ${column.channel_id} order by ${column.created_at} desc)`.as(
+        "rn",
+      ),
+    })
+    .from(column)
+    .where(inArray(column.channel_id, channelIds))
+    .as("ranked");
+
+  const rows = await db
+    .select()
+    .from(ranked)
+    .where(lte(ranked.rn, perChannel))
+    .orderBy(ranked.channel_id, ranked.rn);
+
+  const enriched = await withLinkedChannels(
+    rows.map((r) => toColumn(r)),
+    viewerId,
+  );
+  for (const col of enriched) {
+    const list = byChannel.get(col.channel_id);
+    if (list) list.push(col);
+    else byChannel.set(col.channel_id, [col]);
+  }
+  return byChannel;
 }
 
 // A block search hit, carrying the owning channel's handle so callers can build
@@ -393,6 +448,21 @@ export async function getChannelColumnCount(channel_id: number): Promise<number>
     .from(column)
     .where(eq(column.channel_id, channel_id));
   return row?.count ?? 0;
+}
+
+// Block counts for many channels in a single grouped query instead of one
+// count(*) per channel. Returns a map keyed by channel id; a channel with no
+// blocks is absent (callers default to 0). Backs the profile grid.
+export async function getChannelColumnCounts(channelIds: number[]): Promise<Map<number, number>> {
+  const counts = new Map<number, number>();
+  if (channelIds.length === 0) return counts;
+  const rows = await db
+    .select({ channel_id: column.channel_id, count: sql<number>`count(*)::int` })
+    .from(column)
+    .where(inArray(column.channel_id, channelIds))
+    .groupBy(column.channel_id);
+  for (const r of rows) counts.set(r.channel_id, r.count);
+  return counts;
 }
 
 export async function updateColumnText(column_id: number, text: string): Promise<void> {

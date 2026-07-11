@@ -8,6 +8,14 @@ release.
 
 ## [Unreleased]
 
+## [1.5.4] - 2026-07-11
+
+### Fixed
+
+- The mobile add-column drawer now opens to a consistent taller height, so the
+  channel picker has room to scroll — previously it stayed stuck at the first
+  step's shorter height.
+
 ## [1.5.3] - 2026-07-11
 
 ### Fixed

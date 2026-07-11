@@ -102,13 +102,16 @@ export function AddBlockDrawer({ channels }: { channels: PickableChannel[] }) {
       >
         <PlusIcon />
       </DrawerTrigger>
-      <DrawerContent>
+      {/* Fixed height so the sheet opens the same (taller) for both steps —
+          Vaul measures height at mount, so growing the channel step's content
+          alone wouldn't expand an already-open drawer. Each step fills it. */}
+      <DrawerContent className="h-[70dvh]">
         <DrawerHeader>
           <DrawerTitle>{step === "content" ? "Add a column" : "Add to which channel?"}</DrawerTitle>
         </DrawerHeader>
 
         {step === "content" ? (
-          <div className="space-y-3 px-4 pb-6">
+          <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pb-6">
             <textarea
               value={text}
               onChange={(e) => {
@@ -126,13 +129,13 @@ export function AddBlockDrawer({ channels }: { channels: PickableChannel[] }) {
               }}
               placeholder="Paste a link or an image, or type text…"
               // text-base (16px) so iOS doesn't zoom on focus.
-              className="min-h-28 w-full resize-none rounded-md border bg-transparent p-3 text-base leading-normal focus:outline-none focus:ring-2 focus:ring-ring"
+              className="min-h-28 w-full flex-1 resize-none rounded-md border bg-transparent p-3 text-base leading-normal focus:outline-none focus:ring-2 focus:ring-ring"
             />
 
             {file ? (
-              <p className="truncate text-sm text-muted-foreground">File: {file.name}</p>
+              <p className="shrink-0 truncate text-sm text-muted-foreground">File: {file.name}</p>
             ) : (
-              <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-muted-foreground underline">
+              <label className="inline-flex shrink-0 cursor-pointer items-center gap-2 text-sm text-muted-foreground underline">
                 <ImageIcon size={16} />
                 Upload an image or PDF
                 <input
@@ -147,14 +150,16 @@ export function AddBlockDrawer({ channels }: { channels: PickableChannel[] }) {
               </label>
             )}
 
-            <Button className="w-full" disabled={!hasContent} onClick={() => setStep("channel")}>
+            <Button
+              className="w-full shrink-0"
+              disabled={!hasContent}
+              onClick={() => setStep("channel")}
+            >
               Continue
             </Button>
           </div>
         ) : (
-          // min height opens the sheet taller, leaving whitespace under the list
-          // to drag/dismiss without fighting the scrollable list.
-          <div className="flex min-h-[60dvh] flex-col gap-3 px-4 pb-6">
+          <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pb-6">
             {channels.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 You have no channels yet — create one first.
@@ -169,7 +174,7 @@ export function AddBlockDrawer({ channels }: { channels: PickableChannel[] }) {
                   // text-base (16px) so iOS doesn't zoom on focus.
                   className="w-full shrink-0 rounded-md border bg-transparent p-3 text-base leading-normal focus:outline-none focus:ring-2 focus:ring-ring"
                 />
-                <ul className="flex max-h-[40dvh] flex-col divide-y overflow-y-auto rounded-md border">
+                <ul className="flex min-h-0 flex-1 flex-col divide-y overflow-y-auto rounded-md border">
                   {filteredChannels.map((channel) => (
                     <li key={channel.id}>
                       <button
@@ -195,6 +200,7 @@ export function AddBlockDrawer({ channels }: { channels: PickableChannel[] }) {
             <Button
               variant="ghost"
               size="sm"
+              className="shrink-0 self-start"
               disabled={submitting}
               onClick={() => setStep("content")}
             >

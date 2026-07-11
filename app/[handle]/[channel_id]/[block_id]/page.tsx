@@ -108,7 +108,7 @@ export default async function BlockPage({ params }: BlockPageParams) {
               href={column.url}
               target="_blank"
               rel="noreferrer"
-              className="block w-full max-w-3xl"
+              className="block w-full max-w-3xl mx-auto"
             >
               <div className="flex flex-row items-center gap-2 border rounded-md px-2 py-1">
                 <GlobeIcon className="size-4 shrink-0" />
@@ -132,7 +132,7 @@ export default async function BlockPage({ params }: BlockPageParams) {
         </div>
 
         <aside className="w-full lg:w-1/4 flex flex-col gap-4 lg:min-h-0">
-          <div className="space-y-4 lg:shrink-0">
+          <div className="space-y-4 lg:shrink-0 border rounded-lg p-4">
             <div className="flex flex-col">
               <h2 className="text-label">Title</h2>
               <p>{column.title || <span className="text-muted-foreground">No title</span>}</p>

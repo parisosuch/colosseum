@@ -18,10 +18,27 @@ import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 // Mirrors MAX_COMMENT_LENGTH in lib/colosseum/comment.ts; kept as a literal so
 // this client file never imports the server-only module. The action re-validates.
 const MAX_COMMENT_LENGTH = 2000;
+
+const formatCommentTime = (createdAt: string) => {
+  const created = new Date(createdAt);
+  const now = new Date();
+  const diffMs = now.getTime() - created.getTime();
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+
+  const absolute = created.toLocaleString();
+
+  if (diffMins < 1) return { relative: "Just now", absolute };
+  if (diffMins < 60) return { relative: `${diffMins}m ago`, absolute };
+  if (diffHours < 24) return { relative: `${diffHours}h ago`, absolute };
+
+  return { relative: created.toLocaleDateString(), absolute };
+};
 
 type ColumnCommentsProps = {
   columnId: number;
@@ -187,9 +204,19 @@ export default function ColumnComments({ columnId, viewerId, isOwner }: ColumnCo
                     >
                       @{c.author_handle}
                     </Link>
-                    <span className="font-mono text-[10px] text-muted-foreground">
-                      {new Date(c.created_at).toLocaleDateString()}
-                    </span>
+                    {(() => {
+                      const { relative, absolute } = formatCommentTime(c.created_at);
+                      return (
+                        <Tooltip delayDuration={100}>
+                          <TooltipTrigger asChild>
+                            <span className="font-mono text-[10px] text-muted-foreground cursor-default">
+                              {relative}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>{absolute}</TooltipContent>
+                        </Tooltip>
+                      );
+                    })()}
                     {viewerId && (isOwner || viewerId === c.author_id) ? (
                       <button
                         type="button"

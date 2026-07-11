@@ -2,13 +2,13 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { LayersIcon, LayoutGrid, List, SearchIcon } from "lucide-react";
+import { LayersIcon, SearchIcon } from "lucide-react";
 
 import { LIST_GRID } from "./column";
 import { timeAgo } from "@/lib/utils";
 import CreateChannelButton from "./create-channel-button";
-import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { ViewToggle } from "./view-toggle";
 import { channelMatches, type ChannelRow } from "./channel-filter";
 
 export type { ChannelRow };
@@ -58,22 +58,7 @@ export function ChannelsView({
           />
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <Button
-            variant={view === "grid" ? "secondary" : "ghost"}
-            size="icon"
-            aria-label="Grid view"
-            onClick={() => setView("grid")}
-          >
-            <LayoutGrid />
-          </Button>
-          <Button
-            variant={view === "list" ? "secondary" : "ghost"}
-            size="icon"
-            aria-label="List view"
-            onClick={() => setView("list")}
-          >
-            <List />
-          </Button>
+          <ViewToggle view={view} onChange={setView} />
         </div>
       </div>
 

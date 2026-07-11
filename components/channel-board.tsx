@@ -8,6 +8,7 @@ import type { PickableChannel } from "@/components/add-block-drawer";
 import ManageChannelButton from "@/components/manage-channel-button";
 import ChannelMembersBar from "@/components/channel-members-bar";
 import ExportChannelButton from "@/components/export-channel-button";
+import { ViewToggle } from "@/components/view-toggle";
 import ColumnInput from "@/components/column-input";
 import ChannelControls from "@/components/channel-controls";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +20,7 @@ import type { ChannelMember } from "@/lib/colosseum/member";
 import type { Column, ColumnFilter, ColumnSort } from "@/lib/colosseum/column";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import { getChannelColumnsAction, getScreenshotsForUrlsAction } from "@/lib/colosseum/actions";
-import { LayoutGrid, List, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -429,22 +430,7 @@ export default function ChannelBoard({
           <ConnectChannelButton channelId={channel.id} channels={channels} />
         ) : null}
         <ExportChannelButton channel={channel} />
-        <Button
-          variant={view === "grid" ? "secondary" : "ghost"}
-          size="icon"
-          aria-label="Grid view"
-          onClick={() => setView("grid")}
-        >
-          <LayoutGrid />
-        </Button>
-        <Button
-          variant={view === "list" ? "secondary" : "ghost"}
-          size="icon"
-          aria-label="List view"
-          onClick={() => setView("list")}
-        >
-          <List />
-        </Button>
+        <ViewToggle view={view} onChange={setView} />
       </div>
       <div className="flex flex-col space-y-4">
         <div className="flex flex-col">

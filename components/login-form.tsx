@@ -10,7 +10,11 @@ import Link from "next/link";
 import { useState } from "react";
 import { getMyProfileAction } from "@/lib/colosseum/actions";
 
-export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRef<"div">) {
+export function LoginForm({
+  className,
+  invite = "",
+  ...props
+}: React.ComponentPropsWithoutRef<"div"> & { invite?: string }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -88,7 +92,10 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
           </Button>
           <p className="text-center text-sm text-muted-foreground">
             Don&apos;t have an account?{" "}
-            <Link href="/auth/sign-up" className="underline underline-offset-4">
+            <Link
+              href={invite ? `/auth/sign-up?invite=${encodeURIComponent(invite)}` : "/auth/sign-up"}
+              className="underline underline-offset-4"
+            >
               Create account
             </Link>
           </p>

@@ -10,7 +10,11 @@ import { inviteRequired } from "@/lib/colosseum/invite";
 import { getUserProfile } from "@/lib/colosseum/user";
 import { signupsDisabled } from "@/lib/colosseum/config";
 
-export default async function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ invite?: string }>;
+}) {
   const user = await getSessionUser();
 
   // if there is no user, immediately show the sign-in view
@@ -20,6 +24,10 @@ export default async function Home() {
     // Invites are required once the first account exists; before that the
     // self-hoster can sign up freely.
     const inviteOnly = await inviteRequired();
+    // Carry a shared invite link's ?invite=CODE through to login/sign-up so a
+    // confused invitee who lands on the home page doesn't lose their code.
+    const { invite } = await searchParams;
+    const q = invite ? `?invite=${encodeURIComponent(invite)}` : "";
     return (
       <div className="flex flex-1 flex-col items-center md:items-start gap-8 text-center md:text-left">
         <div className="flex flex-col items-center md:items-start gap-3">
@@ -37,14 +45,14 @@ export default async function Home() {
         </div>
         <div className="flex flex-row items-center gap-5">
           <Button asChild>
-            <Link href="/auth/login">
+            <Link href={`/auth/login${q}`}>
               Login
               <ArrowRight />
             </Link>
           </Button>
           {!noSignups && (
             <Link
-              href="/auth/sign-up"
+              href={`/auth/sign-up${q}`}
               className="text-sm text-muted-foreground underline-offset-4 hover:underline"
             >
               Create account

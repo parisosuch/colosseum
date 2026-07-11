@@ -33,7 +33,9 @@ export type ActivityItem = {
   // Cached website screenshot for a `url` block, so its modal shows the capture
   // the way the channel view does.
   screenshot?: ColumnScreenshot;
-  // user (join) only — the avatar shown as the focal point.
+  // The actor's avatar: the focal point for a `user` (join) item, and shown
+  // beside their handle in the attribution line for every kind. Absent when the
+  // user has no avatar set.
   avatarUrl?: string;
 };
 
@@ -49,6 +51,7 @@ export function blockLabel(b: {
   if (b.type === "url") return (b.url ?? "a link").replace(/^https?:\/\//, "");
   if (b.type === "text") return b.text ? b.text.slice(0, 60) : "a note";
   if (b.type === "image") return "an image";
+  if (b.type === "pdf") return "a PDF";
   if (b.type === "channel") return "a channel";
   return "a column";
 }
@@ -65,7 +68,12 @@ export async function getActivityFeed(
   const cursor = before ? new Date(before) : null;
   const [blocks, channels, joins] = await Promise.all([
     db
-      .select({ col: column, handle: userProfile.handle, channelTitle: channel.title })
+      .select({
+        col: column,
+        handle: userProfile.handle,
+        avatar: userProfile.avatar_url,
+        channelTitle: channel.title,
+      })
       .from(column)
       .innerJoin(channel, eq(channel.id, column.channel_id))
       .innerJoin(userProfile, eq(userProfile.user_id, column.created_by))
@@ -76,6 +84,7 @@ export async function getActivityFeed(
       .select({
         at: channel.created_at,
         handle: userProfile.handle,
+        avatar: userProfile.avatar_url,
         channelId: channel.id,
         channelTitle: channel.title,
         channelDescription: channel.description,
@@ -115,10 +124,11 @@ export async function getActivityFeed(
   ]);
 
   const items: ActivityItem[] = [
-    ...blocks.map(({ col, handle, channelTitle }, i) => ({
+    ...blocks.map(({ col, handle, avatar, channelTitle }, i) => ({
       kind: "block" as const,
       at: col.created_at.toISOString(),
       handle,
+      avatarUrl: avatar ?? undefined,
       channelId: col.channel_id,
       channelTitle,
       label: blockLabel(col),
@@ -129,6 +139,7 @@ export async function getActivityFeed(
       kind: "channel" as const,
       at: c.at.toISOString(),
       handle: c.handle,
+      avatarUrl: c.avatar ?? undefined,
       channelId: c.channelId,
       channelTitle: c.channelTitle,
       channelDescription: c.channelDescription ?? undefined,

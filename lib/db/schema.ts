@@ -8,6 +8,7 @@
 // keep their type. Their property names are camelCase because the Better Auth
 // Drizzle adapter looks fields up by its own field names.
 
+import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
@@ -119,6 +120,13 @@ export const channel = pgTable(
     index("channel_created_at_idx").on(t.created_at),
     // getUserChannels / getUserPublicChannels filtering on owner_id.
     index("channel_owner_id_idx").on(t.owner_id),
+    // Channel search. It ORs `tags @> ARRAY[...]` with ILIKE '%term%' across
+    // title/description, so every OR branch needs an index or the planner
+    // seq-scans the whole thing: a GIN for tag containment plus trigram GINs
+    // (pg_trgm) for the substring matches.
+    index("channel_tags_gin_idx").using("gin", t.tags),
+    index("channel_title_trgm_idx").using("gin", sql`${t.title} gin_trgm_ops`),
+    index("channel_description_trgm_idx").using("gin", sql`${t.description} gin_trgm_ops`),
   ],
 );
 
@@ -146,7 +154,7 @@ export const column = pgTable(
   {
     id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    type: text("type", { enum: ["url", "text", "image", "channel"] }).notNull(),
+    type: text("type", { enum: ["url", "text", "image", "channel", "pdf"] }).notNull(),
     title: text("title"),
     description: text("description"),
     url: text("url"),
@@ -173,10 +181,20 @@ export const column = pgTable(
     index("column_created_at_idx").on(t.created_at),
     // getChannelColumns / getChannelColumnCount filtering and sorting on channel_id, created_at.
     index("column_channel_id_created_at_idx").on(t.channel_id, t.created_at.desc()),
-    // Screenshot GC checks whether any column still references a url.
+    // Screenshot GC checks whether any column still references a url (exact
+    // match — this btree stays for equality lookups; the trigram index below is
+    // only for ILIKE search).
     index("column_url_idx").on(t.url),
     // Cascade delete + withLinkedChannels look up columns by linked channel.
     index("column_linked_channel_id_idx").on(t.linked_channel_id),
+    // Block search. Same shape as channel search: `tags @> ARRAY[...]` ORed with
+    // ILIKE '%term%' across title/description/text/url. A tag GIN plus a trigram
+    // GIN (pg_trgm) per searched column so no OR branch forces a seq scan.
+    index("column_tags_gin_idx").using("gin", t.tags),
+    index("column_title_trgm_idx").using("gin", sql`${t.title} gin_trgm_ops`),
+    index("column_description_trgm_idx").using("gin", sql`${t.description} gin_trgm_ops`),
+    index("column_text_trgm_idx").using("gin", sql`${t.text} gin_trgm_ops`),
+    index("column_url_trgm_idx").using("gin", sql`${t.url} gin_trgm_ops`),
   ],
 );
 

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import {
   uploadImageColumnAction,
+  uploadPdfColumnAction,
   uploadTextColumnAction,
   uploadURLColumnAction,
 } from "@/lib/colosseum/actions";
@@ -45,10 +46,10 @@ export function AddBlockDrawer({ channels }: { channels: PickableChannel[] }) {
     if (!next) reset();
   };
 
-  const pickImage = (selected: File | undefined) => {
+  const pickFile = (selected: File | undefined) => {
     if (!selected) return;
-    if (!selected.type.startsWith("image/")) {
-      toast.error("That's not an image.");
+    if (!selected.type.startsWith("image/") && selected.type !== "application/pdf") {
+      toast.error("That's not an image or PDF.");
       return;
     }
     setFile(selected);
@@ -63,7 +64,11 @@ export function AddBlockDrawer({ channels }: { channels: PickableChannel[] }) {
         const formData = new FormData();
         formData.set("channelId", String(channelId));
         formData.set("file", file);
-        await uploadImageColumnAction(formData);
+        if (file.type === "application/pdf") {
+          await uploadPdfColumnAction(formData);
+        } else {
+          await uploadImageColumnAction(formData);
+        }
       } else if (isURL(text)) {
         const url = text.startsWith("http") ? text : `https://${text}`;
         await uploadURLColumnAction({ channelId, text: url });
@@ -111,7 +116,7 @@ export function AddBlockDrawer({ channels }: { channels: PickableChannel[] }) {
                 );
                 if (img) {
                   e.preventDefault();
-                  pickImage(img);
+                  pickFile(img);
                 }
               }}
               placeholder="Paste a link or an image, or type text…"
@@ -120,17 +125,17 @@ export function AddBlockDrawer({ channels }: { channels: PickableChannel[] }) {
             />
 
             {file ? (
-              <p className="truncate text-sm text-muted-foreground">Image: {file.name}</p>
+              <p className="truncate text-sm text-muted-foreground">File: {file.name}</p>
             ) : (
               <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-muted-foreground underline">
                 <ImageIcon size={16} />
-                Upload an image
+                Upload an image or PDF
                 <input
                   type="file"
-                  accept="image/*"
+                  accept="image/*,application/pdf"
                   className="hidden"
                   onChange={(e) => {
-                    pickImage(e.target.files?.[0]);
+                    pickFile(e.target.files?.[0]);
                     e.target.value = "";
                   }}
                 />

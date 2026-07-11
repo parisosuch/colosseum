@@ -8,6 +8,24 @@ release.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-07-11
+
+### Added
+
+- Text blocks are now Markdown: rendered when viewed, with a GitHub-style
+  Write/Preview editor while editing. Dropping a `.md` file onto a channel
+  creates one.
+- PDF files are now a block type — drop or upload a PDF and it opens in an
+  in-app viewer.
+- The Explore feed now shows each member's avatar next to their handle.
+
+### Changed
+
+- Channel pages load with fewer, parallelized database queries.
+- Profile pages fetch channel previews and counts in batched queries instead of
+  one per channel.
+- Channel and block search is backed by trigram and tag (GIN) indexes.
+
 ## [1.4.5] - 2026-07-10
 
 ### Fixed

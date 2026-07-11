@@ -116,6 +116,11 @@
   .doc {
     @apply text-sm leading-relaxed text-muted-foreground;
   }
+  /* Sit flush at the top so rendered markdown doesn't add a leading gap inside
+     compact block cards/previews (headings/paragraphs carry a top margin). */
+  .doc > :first-child {
+    @apply mt-0;
+  }
   .doc h1 {
     @apply mt-10 mb-4 scroll-mt-24 font-serif text-2xl font-semibold tracking-tight text-foreground;
   }

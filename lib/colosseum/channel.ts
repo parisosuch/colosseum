@@ -195,11 +195,15 @@ export async function deleteChannel(channel_id: number): Promise<void> {
   }
 }
 
+// Media URLs (image and pdf blocks both store one in `image`) for a channel,
+// so deleting the channel can drop their references and GC the blobs.
 async function channelImageUrls(channel_id: number): Promise<string[]> {
   const rows = await db
     .select({ image: column.image })
     .from(column)
-    .where(and(eq(column.channel_id, channel_id), eq(column.type, "image")));
+    .where(
+      and(eq(column.channel_id, channel_id), or(eq(column.type, "image"), eq(column.type, "pdf"))),
+    );
   return rows.map((r) => r.image).filter((image): image is string => image !== null);
 }
 

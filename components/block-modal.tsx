@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ChevronLeft, ChevronRight, GlobeIcon, LayersIcon, LinkIcon } from "lucide-react";
 import { toast } from "sonner";
 import ColumnComments from "./column-comments";
+import { Markdown } from "./markdown";
 import type { Column } from "@/lib/colosseum/column";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import {
@@ -51,6 +52,70 @@ type BlockModalProps = {
   hasPrev: boolean;
   hasNext: boolean;
 };
+
+// A text block is markdown. Viewers see it rendered; editors get GitHub-style
+// Write/Preview tabs over a monospace textarea (raw syntax stays visible while
+// writing), Preview rendering the current draft.
+function MarkdownEditor({
+  text,
+  setText,
+  canEdit,
+  textRef,
+}: {
+  text: string;
+  setText: (v: string) => void;
+  canEdit: boolean;
+  textRef: React.RefObject<HTMLTextAreaElement | null>;
+}) {
+  const [mode, setMode] = useState<"write" | "preview">("write");
+
+  if (!canEdit) {
+    return (
+      <div className="w-full max-h-full overflow-y-auto">
+        <Markdown text={text} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex w-full min-h-0 flex-col gap-2 self-stretch">
+      <div className="flex shrink-0 gap-1">
+        <Button
+          type="button"
+          size="sm"
+          variant={mode === "write" ? "secondary" : "ghost"}
+          onClick={() => setMode("write")}
+        >
+          Write
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant={mode === "preview" ? "secondary" : "ghost"}
+          onClick={() => setMode("preview")}
+        >
+          Preview
+        </Button>
+      </div>
+      {mode === "write" ? (
+        <Textarea
+          ref={textRef}
+          value={text}
+          className="max-h-full min-h-40 font-mono"
+          onChange={(e) => setText(e.target.value)}
+        />
+      ) : (
+        <div className="min-h-40 w-full overflow-y-auto rounded-md border p-3">
+          {text.trim() ? (
+            <Markdown text={text} />
+          ) : (
+            <p className="text-sm text-muted-foreground">Nothing to preview.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // One shared modal for the whole channel. Stepping between blocks only swaps the
 // body (keyed by block id) — the Dialog stays mounted and open, so navigation
@@ -279,22 +344,25 @@ function BlockModalBody({
       className="flex flex-1 min-h-0 flex-col md:flex-row pt-4 px-4 gap-4 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       <div className="flex w-full min-h-0 items-center justify-center p-2 md:w-3/4 md:p-6">
-        {column.text ? (
-          <Textarea
-            ref={textInputRef}
-            value={text}
-            disabled={!canEdit}
-            // Sizes to content (Textarea sets field-sizing-content, min-h-16);
-            // caps at the panel height so a long block scrolls, not overflows.
-            className="max-h-full"
-            onChange={(e) => setText(e.target.value)}
-          />
+        {column.type === "text" ? (
+          <MarkdownEditor text={text} setText={setText} canEdit={canEdit} textRef={textInputRef} />
         ) : column.type === "image" ? (
           <img
             src={column.image}
             alt={column.title ?? "Image column"}
             className="max-h-[70vh] md:max-h-full max-w-full object-contain rounded-md"
           />
+        ) : column.type === "pdf" ? (
+          <object
+            data={column.image}
+            type="application/pdf"
+            aria-label={column.title ?? "PDF"}
+            className="h-[70vh] w-full rounded-md border md:h-full"
+          >
+            <a href={column.image} target="_blank" rel="noreferrer" className="underline">
+              Open PDF
+            </a>
+          </object>
         ) : (
           <a href={column.url} target="_blank" className="block w-full max-w-3xl">
             <div className="flex flex-row items-center gap-2 border rounded-md px-2 py-1">

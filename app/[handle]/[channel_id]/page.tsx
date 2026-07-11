@@ -34,11 +34,10 @@ export default async function ChannelPage({ params }: ChannelPageParams) {
   if (Number.isNaN(id)) redirect("/");
 
   // null = the channel doesn't exist; the visibility check below hides a private
-  // channel from anyone but its owner. Don't leak which; redirect.
-  const channel = await getChannel(id);
+  // channel from anyone but its owner. Don't leak which; redirect. Independent
+  // of the session lookup, so resolve both together.
+  const [channel, user] = await Promise.all([getChannel(id), getSessionUser()]);
   if (!channel) redirect("/");
-
-  const user = await getSessionUser();
 
   // Membership matters for reading a private channel and for adding to a public
   // or private one; open channels never gate on it. Resolve it once for both the
@@ -60,38 +59,36 @@ export default async function ChannelPage({ params }: ChannelPageParams) {
     getChannelColumns(id, { sort: "newest", limit: PAGE_SIZE }, user?.id ?? null),
   ]);
 
-  // Cached previews for the first page's URL blocks, so screenshots render at
-  // first paint too. URLs without a cached row are simply absent; the board's
-  // hydrate/poll effect fetches those.
-  const initialScreenshots = [
-    ...(
-      await getScreenshotsForUrls(
-        initialColumns.filter((c) => c.type === "url" && c.url).map((c) => c.url!),
-      )
-    ).entries(),
-  ];
-
   const createdOnLabel = new Date(channel.created_at).toLocaleString("default", {
     month: "long",
     day: "numeric",
     year: "numeric",
   });
 
-  // The logged-in user's own channels back two pickers: the block modal's
-  // "Move" (owner only) and "Add to channel" (any viewer can nest this channel
-  // into one of theirs). Skip the query when signed out.
-  const myChannels = user
-    ? (await getUserChannels(user.id)).map((c) => ({
-        id: c.id,
-        title: c.title,
-        private: c.private,
-      }))
-    : [];
+  // These three reads are mutually independent, so run them together instead of
+  // serializing three round-trips. ownerAvatarUrl depends on members and follows
+  // once they resolve.
+  const [initialScreenshots, myChannels, members] = await Promise.all([
+    // Cached previews for the first page's URL blocks, so screenshots render at
+    // first paint too. URLs without a cached row are simply absent; the board's
+    // hydrate/poll effect fetches those.
+    getScreenshotsForUrls(
+      initialColumns.filter((c) => c.type === "url" && c.url).map((c) => c.url!),
+    ).then((shots) => [...shots.entries()]),
+    // The logged-in user's own channels back two pickers: the block modal's
+    // "Move" (owner only) and "Add to channel" (any viewer can nest this channel
+    // into one of theirs). Skip the query when signed out.
+    user
+      ? getUserChannels(user.id).then((cs) =>
+          cs.map((c) => ({ id: c.id, title: c.title, private: c.private })),
+        )
+      : Promise.resolve([] as { id: number; title: string; private: boolean }[]),
+    // Collaborators shown on the board itself (not just settings). Only public
+    // and private channels have a roster; open channels let anyone add.
+    channel.access !== "open" ? listChannelMembers(id) : Promise.resolve([]),
+  ]);
 
-  // Collaborators shown on the board itself (not just settings). Only public and
-  // private channels have a roster; open channels let anyone add. Skip the
-  // owner-avatar lookup when there are no members to show.
-  const members = channel.access !== "open" ? await listChannelMembers(id) : [];
+  // Skip the owner-avatar lookup when there are no members to show.
   const ownerAvatarUrl =
     members.length > 0 ? ((await getPublicUserProfile(handle))?.avatar_url ?? null) : null;
 

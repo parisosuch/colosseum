@@ -6,6 +6,7 @@ import {
   uploadTextColumnAction,
   uploadImageColumnAction,
   uploadImageColumnFromUrlAction,
+  uploadPdfColumnAction,
   updateColumnMetaAction,
 } from "@/lib/colosseum/actions";
 import type { Column } from "@/lib/colosseum/column";
@@ -18,6 +19,12 @@ import { toast } from "sonner";
 // Kept in sync with the server-side limits in lib/colosseum/blob.ts.
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10MB
 const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"];
+const MAX_PDF_BYTES = 25 * 1024 * 1024; // 25MB
+const PDF_TYPE = "application/pdf";
+// A dropped .md file becomes a (markdown) text block. Cap the source and reject
+// anything that isn't plain text.
+const MAX_MD_BYTES = 256 * 1024; // 256KB
+const isMarkdownFile = (f: File) => f.type === "text/markdown" || /\.(md|markdown)$/i.test(f.name);
 
 type ColumnInputProps = {
   user: SessionUser | null;
@@ -97,20 +104,28 @@ export default function ColumnInput({
     await handleFilesUpload(files);
   };
 
-  // Upload one or more image files, creating an image column per file. Bytes go
-  // through a server action to local-disk blob storage; type/size are validated
-  // here for fast feedback and re-checked server-side. Invalid files are
-  // reported and skipped; valid ones upload sequentially so a big multi-drop
-  // doesn't fire dozens of requests at once. Newest ends up on top.
+  // Upload one or more dropped/picked files, creating a block per file: images
+  // and PDFs go to blob storage as image/pdf blocks; .md files become markdown
+  // text blocks. Type/size are validated here for fast feedback (blobs are
+  // re-checked server-side). Invalid files are reported and skipped; valid ones
+  // process sequentially so a big multi-drop doesn't fire dozens of requests at
+  // once. Newest ends up on top.
   const handleFilesUpload = async (fileList: FileList | File[]) => {
     if (!user?.id || !channel) return;
 
     const valid: File[] = [];
     for (const f of Array.from(fileList)) {
-      if (!ALLOWED_IMAGE_TYPES.includes(f.type)) {
-        toast.error(`${f.name}: only image files (PNG, JPEG, GIF, WebP, AVIF) are supported.`);
-      } else if (f.size > MAX_IMAGE_BYTES) {
-        toast.error(`${f.name} is too large (max 10MB).`);
+      const isImage = ALLOWED_IMAGE_TYPES.includes(f.type);
+      const isPdf = f.type === PDF_TYPE;
+      const isMd = isMarkdownFile(f);
+      if (!isImage && !isPdf && !isMd) {
+        toast.error(
+          `${f.name}: only image files (PNG, JPEG, GIF, WebP, AVIF), PDFs, or Markdown (.md) files are supported.`,
+        );
+      } else if (
+        isMd ? f.size > MAX_MD_BYTES : isPdf ? f.size > MAX_PDF_BYTES : f.size > MAX_IMAGE_BYTES
+      ) {
+        toast.error(`${f.name} is too large (max ${isMd ? "256KB" : isPdf ? "25MB" : "10MB"}).`);
       } else {
         valid.push(f);
       }
@@ -121,15 +136,30 @@ export default function ColumnInput({
     const created: Column[] = [];
     try {
       for (const f of valid) {
-        const formData = new FormData();
-        formData.set("channelId", String(channel.id));
-        formData.set("file", f);
-        created.push(await uploadImageColumnAction(formData));
+        if (isMarkdownFile(f)) {
+          const md = await f.text();
+          // A binary file renamed .md reads as garbage with NUL bytes — reject
+          // it rather than storing a non-text blob.
+          if (md.includes("\u0000")) {
+            toast.error(`${f.name}: not a text file.`);
+          } else {
+            created.push(await uploadTextColumnAction({ channelId: channel.id, text: md }));
+          }
+        } else {
+          const formData = new FormData();
+          formData.set("channelId", String(channel.id));
+          formData.set("file", f);
+          created.push(
+            f.type === PDF_TYPE
+              ? await uploadPdfColumnAction(formData)
+              : await uploadImageColumnAction(formData),
+          );
+        }
         setUploading((n) => n - 1);
       }
     } catch (e) {
       console.error(e);
-      toast.error("Couldn't upload one or more images. Please try again.");
+      toast.error("Couldn't upload one or more files. Please try again.");
     } finally {
       setUploading(0);
     }
@@ -280,7 +310,7 @@ export default function ColumnInput({
               upload
               <input
                 type="file"
-                accept="image/*"
+                accept="image/*,application/pdf,.md,.markdown,text/markdown"
                 multiple
                 className="hidden"
                 onChange={handleFileChange}

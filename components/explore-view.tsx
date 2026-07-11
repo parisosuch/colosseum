@@ -91,9 +91,14 @@ export function ActivityRow({ item, viewerId }: { item: ActivityItem; viewerId: 
   // actor's avatar sits inline right before their handle.
   const handleLink = (
     <A href={userHref}>
-      <span className="inline-flex items-center gap-1.5 align-middle">
-        <UserProfilePicture avatarUrl={item.avatarUrl} handle={item.handle} size="sm" />
-        <span className="hover:underline">@{item.handle}</span>
+      <span className="whitespace-nowrap">
+        {/* inline-block + align-middle centers the avatar on the text line
+            without disturbing the surrounding baseline; the handle stays plain
+            inline text so it sits on the same baseline as the other words. */}
+        <span className="mr-1.5 inline-block align-middle">
+          <UserProfilePicture avatarUrl={item.avatarUrl} handle={item.handle} size="sm" />
+        </span>
+        @{item.handle}
       </span>
     </A>
   );
@@ -128,8 +133,10 @@ export function ActivityRow({ item, viewerId }: { item: ActivityItem; viewerId: 
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-4">
-      {/* Attribution leads, in the serif section-title style. */}
-      <div className="flex flex-col items-center gap-1 text-center">
+      {/* Attribution leads, in the serif section-title style. Plain inline text
+          so the handle and connective words share one baseline; the avatar is
+          the only non-text element and floats centered via align-middle. */}
+      <div className="flex flex-col items-center justify-center gap-1 text-center">
         <p className="text-title">{attribution}</p>
         <p className="text-caption">{timeAgo(new Date(item.at))}</p>
       </div>

@@ -1,3 +1,5 @@
+import { FileText } from "lucide-react";
+
 import type { Column } from "@/lib/colosseum/column";
 import { getScreenshot, type ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import ScreenShotPreview from "./screenshot-preview";
@@ -44,6 +46,15 @@ export default async function ColumnPreview({
         alt={column.title ?? "Image column"}
         className="w-full h-full object-cover rounded-md"
       />
+    );
+  }
+
+  if (column.type === "pdf") {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center text-muted-foreground">
+        <FileText className="size-10" />
+        <span className="line-clamp-2 max-w-full break-words text-sm">{column.title || "PDF"}</span>
+      </div>
     );
   }
 

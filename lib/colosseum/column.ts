@@ -21,11 +21,13 @@ import { deleteMediaByUrl } from "./blob";
 export type Column = {
   id: number;
   created_at: string;
-  type: "url" | "text" | "image" | "channel";
+  type: "url" | "text" | "image" | "channel" | "pdf";
   title?: string;
   description?: string;
   url?: string;
   text?: string;
+  // Media URL of the uploaded blob for `image` columns, and reused for `pdf`
+  // columns (the stored file is a PDF, served by /api/media with its own mime).
   image?: string;
   created_by: string;
   channel_id: number;
@@ -329,6 +331,24 @@ export async function uploadImageColumn(input: {
     .insert(column)
     .values({
       type: "image",
+      image: input.image,
+      channel_id: input.channel_id,
+      created_by: input.created_by,
+    })
+    .returning();
+  return toColumn(row);
+}
+
+export async function uploadPdfColumn(input: {
+  created_by: string;
+  channel_id: number;
+  // Media URL of the already-uploaded PDF blob (reuses the `image` field).
+  image: string;
+}): Promise<Column> {
+  const [row] = await db
+    .insert(column)
+    .values({
+      type: "pdf",
       image: input.image,
       channel_id: input.channel_id,
       created_by: input.created_by,

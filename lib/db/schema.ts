@@ -154,7 +154,7 @@ export const column = pgTable(
   {
     id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    type: text("type", { enum: ["url", "text", "image", "channel"] }).notNull(),
+    type: text("type", { enum: ["url", "text", "image", "channel", "pdf"] }).notNull(),
     title: text("title"),
     description: text("description"),
     url: text("url"),

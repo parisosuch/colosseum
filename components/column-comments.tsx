@@ -15,10 +15,10 @@ import {
   searchProfilesAction,
 } from "@/lib/colosseum/actions";
 import { cn } from "@/lib/utils";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { UserProfilePicture } from "@/components/user-profile-picture";
 
 // Mirrors MAX_COMMENT_LENGTH in lib/colosseum/comment.ts; kept as a literal so
 // this client file never imports the server-only module. The action re-validates.
@@ -190,12 +190,11 @@ export default function ColumnComments({ columnId, viewerId, isOwner }: ColumnCo
           ) : (
             comments.map((c) => (
               <div key={c.id} className="flex gap-2">
-                <Avatar className="size-6">
-                  <AvatarImage src={c.author_avatar_url} />
-                  <AvatarFallback className="text-[10px]">
-                    {c.author_handle.charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
+                <UserProfilePicture
+                  avatarUrl={c.author_avatar_url}
+                  handle={c.author_handle}
+                  size="sm"
+                />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <Link
@@ -324,12 +323,7 @@ export default function ColumnComments({ columnId, viewerId, isOwner }: ColumnCo
                           i === mentionIndex ? "bg-accent" : "",
                         )}
                       >
-                        <Avatar className="size-5">
-                          <AvatarImage src={p.avatar_url} />
-                          <AvatarFallback className="text-[9px]">
-                            {p.handle.charAt(0).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
+                        <UserProfilePicture avatarUrl={p.avatar_url} handle={p.handle} size="xs" />
                         <span className="truncate">@{p.handle}</span>
                       </button>
                     </li>

@@ -5,7 +5,7 @@ import { ACTIVITY_PAGE, type ActivityItem } from "@/lib/colosseum/activity";
 import { timeAgo } from "@/lib/utils";
 import PageHeader from "@/components/page-header";
 import ColumnPreview from "@/components/column-preview";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserProfilePicture } from "@/components/user-profile-picture";
 import { ExploreLoadMore } from "@/components/explore-load-more";
 import { FeedBlockModal } from "@/components/feed-block-modal";
 
@@ -36,10 +36,7 @@ function ChannelFocal({ title, description }: { title: string; description?: str
 function UserFocal({ handle, avatarUrl }: { handle: string; avatarUrl?: string }) {
   return (
     <div className="flex h-full w-full items-center justify-center p-6">
-      <Avatar className="size-40">
-        <AvatarImage src={avatarUrl} alt={`@${handle}`} />
-        <AvatarFallback className="text-4xl">{handle.slice(0, 2).toUpperCase()}</AvatarFallback>
-      </Avatar>
+      <UserProfilePicture avatarUrl={avatarUrl} handle={handle} size="2xl" />
     </div>
   );
 }
@@ -95,12 +92,7 @@ export function ActivityRow({ item, viewerId }: { item: ActivityItem; viewerId: 
   const handleLink = (
     <A href={userHref}>
       <span className="inline-flex items-center gap-1.5 align-middle">
-        <Avatar className="size-6">
-          <AvatarImage src={item.avatarUrl} alt="" />
-          <AvatarFallback className="text-[10px]">
-            {item.handle.charAt(0).toUpperCase()}
-          </AvatarFallback>
-        </Avatar>
+        <UserProfilePicture avatarUrl={item.avatarUrl} handle={item.handle} size="sm" />
         <span className="hover:underline">@{item.handle}</span>
       </span>
     </A>

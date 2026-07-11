@@ -52,8 +52,7 @@ import {
   getCommentAuthorization,
   MAX_COMMENT_LENGTH,
 } from "./comment";
-import { deleteMediaByUrl, MAX_IMAGE_BYTES, putImageBlob, putPdfBlob } from "./blob";
-import { DESKTOP_UA } from "./og-meta";
+import { deleteMediaByUrl, putImageBlob, putImageBlobFromUrl, putPdfBlob } from "./blob";
 import { createInviteCode, InviteCode, revokeInviteCode } from "./invite";
 import { revokeApiToken } from "./api-token";
 import { getScreenshotsForUrls, ColumnScreenshot } from "./screenshot-data";
@@ -318,31 +317,8 @@ export async function uploadImageColumnFromUrlAction(
   if (!Number.isInteger(channelId)) {
     throw new Error("Bad request.");
   }
-  let url: URL;
-  try {
-    url = new URL(imageUrl);
-  } catch {
-    throw new Error("Bad image URL.");
-  }
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("Unsupported image URL.");
-  }
   const channel = await requireContributableChannel(channelId, userId);
-
-  // Same posture as the screenshot capture, which already fetches arbitrary
-  // user-supplied URLs. ponytail: no SSRF allowlist here to match that existing
-  // behavior — tighten both together if the threat model ever changes.
-  const res = await fetch(url, { headers: { "User-Agent": DESKTOP_UA, Accept: "image/*" } });
-  if (!res.ok) {
-    throw new Error("Couldn't fetch that image.");
-  }
-  if (Number(res.headers.get("content-length")) > MAX_IMAGE_BYTES) {
-    throw new Error("That image is too large (max 10MB).");
-  }
-  const type = (res.headers.get("content-type") ?? "").split(";")[0].trim();
-  const file = new File([await res.arrayBuffer()], "pasted-image", { type });
-  // putImageBlob re-validates the type and size against ALLOWED_IMAGE_TYPES/MAX.
-  const image = await putImageBlob(file, userId, channel.private ? "private" : "public");
+  const image = await putImageBlobFromUrl(imageUrl, userId, channel.private ? "private" : "public");
   return uploadImageColumn({ created_by: userId, channel_id: channelId, image });
 }
 

@@ -9,6 +9,7 @@ import {
   authorizeChannelRead,
   json,
 } from "@/lib/colosseum/api-auth";
+import { putImageBlobFromUrl } from "@/lib/colosseum/blob";
 import { getChannel } from "@/lib/colosseum/channel";
 import {
   getChannelColumns,
@@ -102,9 +103,23 @@ export async function POST(req: Request, { params }: Ctx) {
       triggerScreenshotCapture(url, auth.userId);
     } else if (type === "image") {
       if (typeof body.image !== "string" || !body.image.trim()) {
-        return apiError("`image` (a public URL) is required for an image block.", 400);
+        return apiError("`image` (a public image URL) is required for an image block.", 400);
       }
-      block = await uploadImageColumn({ ...base, image: body.image.trim() });
+      // Fetch and store the image so it's thumbnailed and self-hosted, rather
+      // than persisting a third-party URL that skips compression. A bad or
+      // unreachable URL is the client's fault, so surface it as a 422 instead of
+      // the generic 500 below.
+      let image: string;
+      try {
+        image = await putImageBlobFromUrl(
+          body.image.trim(),
+          auth.userId,
+          channel!.private ? "private" : "public",
+        );
+      } catch (e) {
+        return apiError(e instanceof Error ? e.message : "Couldn't fetch that image.", 422);
+      }
+      block = await uploadImageColumn({ ...base, image });
     } else {
       return apiError("`type` must be one of: text, url, image.", 400);
     }

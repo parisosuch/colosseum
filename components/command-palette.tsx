@@ -44,7 +44,6 @@ export default function CommandPalette({ handle }: { handle: string }) {
   const { setTheme } = useTheme();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [profiles, setProfiles] = useState<ProfileSearchResult[]>([]);
   const [channels, setChannels] = useState<ChannelSearchResult[]>([]);
   const [columns, setColumns] = useState<ColumnSearchResult[]>([]);
@@ -61,13 +60,10 @@ export default function CommandPalette({ handle }: { handle: string }) {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // Search on every keystroke (no debounce) so results feel instant. The
+  // cancelled flag drops stale responses if they land out of order.
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedQuery(query), 300);
-    return () => clearTimeout(t);
-  }, [query]);
-
-  useEffect(() => {
-    if (!debouncedQuery.trim()) {
+    if (!query.trim()) {
       setProfiles([]);
       setChannels([]);
       setColumns([]);
@@ -75,7 +71,7 @@ export default function CommandPalette({ handle }: { handle: string }) {
     }
     let cancelled = false;
     (async () => {
-      const results = await searchAction(debouncedQuery);
+      const results = await searchAction(query);
       if (cancelled) return;
       setProfiles(results.profiles);
       setChannels(results.channels);
@@ -84,7 +80,7 @@ export default function CommandPalette({ handle }: { handle: string }) {
     return () => {
       cancelled = true;
     };
-  }, [debouncedQuery]);
+  }, [query]);
 
   // Reset the query whenever the palette closes so it reopens clean.
   useEffect(() => {

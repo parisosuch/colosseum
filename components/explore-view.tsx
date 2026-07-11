@@ -158,6 +158,10 @@ export function ActivityRow({ item, viewerId }: { item: ActivityItem; viewerId: 
           <div className={FOCAL_CARD}>{focal}</div>
         </Link>
       )}
+      {/* A block's own title, shown under its card when it has one. */}
+      {item.kind === "block" && item.column?.title ? (
+        <p className="-mt-2 text-center text-sm font-medium">{item.column.title}</p>
+      ) : null}
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { getScreenshotsForUrls, type ColumnScreenshot } from "@/lib/colosseum/sc
 import { getPublicUserProfile } from "@/lib/colosseum/user";
 import { getSessionUser } from "@/lib/auth";
 import Link from "next/link";
+import { UserProfilePicture } from "@/components/user-profile-picture";
 
 // How many block previews each channel card shows.
 const PREVIEWS_PER_CHANNEL = 5;
@@ -134,6 +135,13 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
     <div className="w-full flex-1 p-6 sm:p-12 space-y-8">
       <PageHeader crumbs={[{ label: handle }]} />
       <div className="flex flex-col space-y-4">
+        <div>
+          <UserProfilePicture
+            avatarUrl={userProfile.avatar_url}
+            handle={userProfile.handle}
+            size="xl"
+          />
+        </div>
         <div className="flex flex-col">
           {userProfile.about ? (
             <>

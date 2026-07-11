@@ -8,6 +8,18 @@ release.
 
 ## [Unreleased]
 
+## [1.5.3] - 2026-07-11
+
+### Fixed
+
+- The markdown text-block editor in the block modal now opens in Preview
+  (rendered) mode and fills the panel height so it lines up with the sidebar.
+- The command palette (Cmd/Ctrl+K) searches instantly on each keystroke instead
+  of waiting for a short delay.
+- The Explore feed now shows a block's title beneath its card when it has one.
+- The mobile add-column drawer's channel picker opens taller and has a search
+  box to filter channels when the list is long.
+
 ## [1.5.2] - 2026-07-11
 
 ### Fixed

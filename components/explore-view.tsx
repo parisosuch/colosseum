@@ -90,8 +90,21 @@ export function ActivityRow({ item, viewerId }: { item: ActivityItem; viewerId: 
   // Only a plain block opens the modal; everything else navigates.
   const opensModal = item.kind === "block" && !isChannelColumn;
 
-  // Attribution, with every named channel/user resolving as its own link.
-  const handleLink = <A href={userHref}>@{item.handle}</A>;
+  // Attribution, with every named channel/user resolving as its own link. The
+  // actor's avatar sits inline right before their handle.
+  const handleLink = (
+    <A href={userHref}>
+      <span className="inline-flex items-center gap-1.5 align-middle">
+        <Avatar className="size-6">
+          <AvatarImage src={item.avatarUrl} alt="" />
+          <AvatarFallback className="text-[10px]">
+            {item.handle.charAt(0).toUpperCase()}
+          </AvatarFallback>
+        </Avatar>
+        @{item.handle}
+      </span>
+    </A>
+  );
   let attribution: ReactNode;
   if (item.kind === "user") {
     attribution = (

@@ -37,6 +37,7 @@
     "cmdk": "^1.1.1",
     "drizzle-orm": "^0.45.2",
     "global-tld-list": "^1.22.45",
+    "isomorphic-dompurify": "^3.18.0",
     "lucide-react": "^0.511.0",
     "marked": "^18.0.6",
     "mcp-handler": "^1.1.0",

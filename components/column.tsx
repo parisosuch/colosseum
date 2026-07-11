@@ -3,6 +3,7 @@
 import { memo } from "react";
 import Link from "next/link";
 import { FileText } from "lucide-react";
+import { Markdown } from "./markdown";
 import type { Column } from "@/lib/colosseum/column";
 import { timeAgo } from "@/lib/utils";
 import ScreenShotPreview from "./screenshot-preview";
@@ -71,7 +72,9 @@ const ColumnComponent = memo(function ColumnComponent({
         ) : null}
       </div>
     ) : column.type === "text" ? (
-      <p className="text-sm line-clamp-[10] p-2">{column.text}</p>
+      <div className="h-full w-full overflow-hidden p-2">
+        <Markdown text={column.text ?? ""} className="text-xs" />
+      </div>
     ) : column.type === "image" ? (
       <img
         src={`${column.image}?thumb`}

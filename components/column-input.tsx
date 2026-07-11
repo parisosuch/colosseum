@@ -122,7 +122,9 @@ export default function ColumnInput({
         toast.error(
           `${f.name}: only image files (PNG, JPEG, GIF, WebP, AVIF), PDFs, or Markdown (.md) files are supported.`,
         );
-      } else if (isMd ? f.size > MAX_MD_BYTES : isPdf ? f.size > MAX_PDF_BYTES : f.size > MAX_IMAGE_BYTES) {
+      } else if (
+        isMd ? f.size > MAX_MD_BYTES : isPdf ? f.size > MAX_PDF_BYTES : f.size > MAX_IMAGE_BYTES
+      ) {
         toast.error(`${f.name} is too large (max ${isMd ? "256KB" : isPdf ? "25MB" : "10MB"}).`);
       } else {
         valid.push(f);

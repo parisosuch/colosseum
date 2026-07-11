@@ -18,6 +18,7 @@ import sharp from "sharp";
 
 import { db } from "@/lib/db";
 import { blobs, media } from "@/lib/db/schema";
+import { DESKTOP_UA } from "./og-meta";
 
 const STORAGE_DIR = process.env.STORAGE_DIR ?? "./data/storage";
 
@@ -133,6 +134,39 @@ export async function putImageBlob(
   // must never fail the upload.
   await ensureThumbnail(sha256).catch(() => {});
   return createMedia(sha256, createdBy, visibility);
+}
+
+// Fetch a remote image URL and store its bytes as a blob (like a web upload),
+// returning the media URL. So an image supplied as a URL — the web paste-from-URL
+// flow and the API's image-block create — is ingested and thumbnailed instead of
+// persisting a third-party URL that skips compression and pins us to their host.
+// Throws on a bad/unreachable/oversized/non-image URL; putImageBlob re-validates
+// type and size. ponytail: no SSRF allowlist, matching the screenshot capture's
+// existing posture — tighten both together if the threat model changes.
+export async function putImageBlobFromUrl(
+  imageUrl: string,
+  createdBy: string,
+  visibility: MediaVisibility,
+): Promise<string> {
+  let url: URL;
+  try {
+    url = new URL(imageUrl);
+  } catch {
+    throw new Error("Bad image URL.");
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("Unsupported image URL.");
+  }
+  const res = await fetch(url, { headers: { "User-Agent": DESKTOP_UA, Accept: "image/*" } });
+  if (!res.ok) {
+    throw new Error("Couldn't fetch that image.");
+  }
+  if (Number(res.headers.get("content-length")) > MAX_IMAGE_BYTES) {
+    throw new Error("That image is too large (max 10MB).");
+  }
+  const type = (res.headers.get("content-type") ?? "").split(";")[0].trim();
+  const file = new File([await res.arrayBuffer()], "remote-image", { type });
+  return putImageBlob(file, createdBy, visibility);
 }
 
 // PDFs are heavier than images and aren't downsized, so a roomier cap.

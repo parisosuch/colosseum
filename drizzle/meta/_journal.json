@@ -71,6 +71,13 @@
       "when": 1783636208664,
       "tag": "0009_majestic_dagger",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1783741638816,
+      "tag": "0010_amused_silver_sable",
+      "breakpoints": true
     }
   ]
 }

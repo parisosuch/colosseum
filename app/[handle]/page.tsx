@@ -135,8 +135,12 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
       <PageHeader crumbs={[{ label: handle }]} />
       <div className="flex flex-col space-y-4">
         <div className="flex flex-col">
-          <h2 className="text-label">About</h2>
-          {userProfile.about ? <p className="">{userProfile.about}</p> : null}
+          {userProfile.about ? (
+            <>
+              <h2 className="text-label">About</h2>
+              <p className="">{userProfile.about}</p>
+            </>
+          ) : null}
         </div>
         <div className="flex flex-col">
           <h2 className="text-label">Joined</h2>

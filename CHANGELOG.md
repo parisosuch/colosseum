@@ -8,6 +8,14 @@ release.
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-07-11
+
+### Fixed
+
+- Fixed a build failure that stopped the 1.5.0 release from deploying: markdown
+  in text blocks is now sanitized with a pure-JS sanitizer that bundles for
+  production, instead of one that pulled in an unbundleable dependency.
+
 ## [1.5.0] - 2026-07-11
 
 ### Added

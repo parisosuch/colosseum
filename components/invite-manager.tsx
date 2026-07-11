@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { PlusIcon, CheckIcon, CopyIcon, Trash2Icon } from "lucide-react";
+import { PlusIcon, CheckIcon, CopyIcon, LinkIcon, Trash2Icon } from "lucide-react";
 
 import { createInviteCodeAction, revokeInviteCodeAction } from "@/lib/colosseum/actions";
 import type { InviteCode } from "@/lib/colosseum/invite";
@@ -19,6 +19,7 @@ export default function InviteManager({
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState<string | null>(null);
 
   const handleCreate = async () => {
     setCreating(true);
@@ -52,6 +53,20 @@ export default function InviteManager({
       await navigator.clipboard.writeText(code);
       setCopied(code);
       setTimeout(() => setCopied((c) => (c === code ? null : c)), 1500);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // Shareable link that lands the invitee on sign-up with the code prefilled.
+  const inviteLink = (code: string) =>
+    `${window.location.origin}/auth/sign-up?invite=${encodeURIComponent(code)}`;
+
+  const handleCopyLink = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(inviteLink(code));
+      setLinkCopied(code);
+      setTimeout(() => setLinkCopied((c) => (c === code ? null : c)), 1500);
     } catch (e) {
       console.error(e);
     }
@@ -117,6 +132,23 @@ export default function InviteManager({
                     ) : (
                       <>
                         <CopyIcon size={14} /> Copy
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleCopyLink(invite.code)}
+                    disabled={exhausted}
+                  >
+                    {linkCopied === invite.code ? (
+                      <>
+                        <CheckIcon size={14} /> Copied
+                      </>
+                    ) : (
+                      <>
+                        <LinkIcon size={14} /> Link
                       </>
                     )}
                   </Button>

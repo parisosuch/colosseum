@@ -152,17 +152,16 @@ const ColumnComponent = memo(function ColumnComponent({
     );
   }
 
+  // The block's title under the card, for every type (falls back to the URL
+  // screenshot's title). A single space is reserved when untitled so the block
+  // isn't a line shorter than its siblings (or its own hover state, which swaps
+  // in the timestamp) and doesn't visibly shift.
+  const gridTitle = column.title || urlTitle || " ";
+
   const gridInner = (
     <div className="group relative w-full">
       <div className="w-full aspect-square border rounded-lg text-left">{thumbnail}</div>
-      {column.type === "url" ? (
-        // Reserve one caption line even when the URL has no title — otherwise
-        // an untitled block is a line shorter than its siblings (and its own
-        // hover state, which shows the timestamp) and visibly shifts.
-        <p className="group-hover:hidden truncate pt-1 text-caption">{urlTitle || " "}</p>
-      ) : (
-        <p className="pt-1 text-caption opacity-0 group-hover:hidden select-none">placeholder</p>
-      )}
+      <p className="group-hover:hidden truncate pt-1 text-caption">{gridTitle}</p>
       <p className="hidden group-hover:block pt-1 text-caption">
         {timeAgo(new Date(column.created_at))}
       </p>

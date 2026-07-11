@@ -295,6 +295,17 @@ function BlockModalBody({
             alt={column.title ?? "Image column"}
             className="max-h-[70vh] md:max-h-full max-w-full object-contain rounded-md"
           />
+        ) : column.type === "pdf" ? (
+          <object
+            data={column.image}
+            type="application/pdf"
+            aria-label={column.title ?? "PDF"}
+            className="h-[70vh] w-full rounded-md border md:h-full"
+          >
+            <a href={column.image} target="_blank" rel="noreferrer" className="underline">
+              Open PDF
+            </a>
+          </object>
         ) : (
           <a href={column.url} target="_blank" className="block w-full max-w-3xl">
             <div className="flex flex-row items-center gap-2 border rounded-md px-2 py-1">

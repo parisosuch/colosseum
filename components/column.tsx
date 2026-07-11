@@ -2,6 +2,7 @@
 
 import { memo } from "react";
 import Link from "next/link";
+import { FileText } from "lucide-react";
 import type { Column } from "@/lib/colosseum/column";
 import { timeAgo } from "@/lib/utils";
 import ScreenShotPreview from "./screenshot-preview";
@@ -77,6 +78,11 @@ const ColumnComponent = memo(function ColumnComponent({
         alt={column.title ?? "Image column"}
         className="w-full h-full object-cover rounded-lg"
       />
+    ) : column.type === "pdf" ? (
+      <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center text-muted-foreground">
+        <FileText className="size-10" />
+        <span className="line-clamp-2 max-w-full break-words text-xs">{column.title || "PDF"}</span>
+      </div>
     ) : loading ? (
       <div className="w-full h-full flex items-center justify-center">
         <Spinner variant="circle" className="size-6 text-muted-foreground" />
@@ -95,7 +101,7 @@ const ColumnComponent = memo(function ColumnComponent({
           ? (column.text ?? "")
           : column.type === "channel"
             ? (column.linked_channel?.title ?? "Channel")
-            : column.title || "Image";
+            : column.title || (column.type === "pdf" ? "PDF" : "Image");
     const title = column.title || urlTitle || "";
 
     const rowClass = `w-full border-b px-2 py-2 text-left hover:bg-muted/50 ${LIST_GRID}`;

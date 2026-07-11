@@ -18,6 +18,7 @@ function blockLabel(column: Column): string {
   if (column.title) return column.title;
   if (column.type === "url") return column.url ?? "Link";
   if (column.type === "text") return "Text column";
+  if (column.type === "pdf") return "PDF column";
   return "Column";
 }
 
@@ -103,6 +104,17 @@ export default async function BlockPage({ params }: BlockPageParams) {
               alt={column.title ?? "Column image"}
               className="w-full rounded-lg"
             />
+          ) : column.type === "pdf" && column.image ? (
+            <object
+              data={column.image}
+              type="application/pdf"
+              aria-label={column.title ?? "PDF"}
+              className="h-[80vh] w-full rounded-lg border"
+            >
+              <a href={column.image} target="_blank" rel="noreferrer" className="underline">
+                Open PDF
+              </a>
+            </object>
           ) : (
             <a
               href={column.url}

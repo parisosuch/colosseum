@@ -6,6 +6,7 @@ import {
   uploadTextColumnAction,
   uploadImageColumnAction,
   uploadImageColumnFromUrlAction,
+  uploadPdfColumnAction,
   updateColumnMetaAction,
 } from "@/lib/colosseum/actions";
 import type { Column } from "@/lib/colosseum/column";
@@ -18,6 +19,8 @@ import { toast } from "sonner";
 // Kept in sync with the server-side limits in lib/colosseum/blob.ts.
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10MB
 const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"];
+const MAX_PDF_BYTES = 25 * 1024 * 1024; // 25MB
+const PDF_TYPE = "application/pdf";
 
 type ColumnInputProps = {
   user: SessionUser | null;
@@ -97,7 +100,7 @@ export default function ColumnInput({
     await handleFilesUpload(files);
   };
 
-  // Upload one or more image files, creating an image column per file. Bytes go
+  // Upload one or more image/PDF files, creating a block per file. Bytes go
   // through a server action to local-disk blob storage; type/size are validated
   // here for fast feedback and re-checked server-side. Invalid files are
   // reported and skipped; valid ones upload sequentially so a big multi-drop
@@ -107,10 +110,14 @@ export default function ColumnInput({
 
     const valid: File[] = [];
     for (const f of Array.from(fileList)) {
-      if (!ALLOWED_IMAGE_TYPES.includes(f.type)) {
-        toast.error(`${f.name}: only image files (PNG, JPEG, GIF, WebP, AVIF) are supported.`);
-      } else if (f.size > MAX_IMAGE_BYTES) {
-        toast.error(`${f.name} is too large (max 10MB).`);
+      const isImage = ALLOWED_IMAGE_TYPES.includes(f.type);
+      const isPdf = f.type === PDF_TYPE;
+      if (!isImage && !isPdf) {
+        toast.error(
+          `${f.name}: only image files (PNG, JPEG, GIF, WebP, AVIF) or PDFs are supported.`,
+        );
+      } else if (isPdf ? f.size > MAX_PDF_BYTES : f.size > MAX_IMAGE_BYTES) {
+        toast.error(`${f.name} is too large (max ${isPdf ? "25MB" : "10MB"}).`);
       } else {
         valid.push(f);
       }
@@ -124,12 +131,16 @@ export default function ColumnInput({
         const formData = new FormData();
         formData.set("channelId", String(channel.id));
         formData.set("file", f);
-        created.push(await uploadImageColumnAction(formData));
+        created.push(
+          f.type === PDF_TYPE
+            ? await uploadPdfColumnAction(formData)
+            : await uploadImageColumnAction(formData),
+        );
         setUploading((n) => n - 1);
       }
     } catch (e) {
       console.error(e);
-      toast.error("Couldn't upload one or more images. Please try again.");
+      toast.error("Couldn't upload one or more files. Please try again.");
     } finally {
       setUploading(0);
     }
@@ -280,7 +291,7 @@ export default function ColumnInput({
               upload
               <input
                 type="file"
-                accept="image/*"
+                accept="image/*,application/pdf"
                 multiple
                 className="hidden"
                 onChange={handleFileChange}

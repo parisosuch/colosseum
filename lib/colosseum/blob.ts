@@ -135,6 +135,27 @@ export async function putImageBlob(
   return createMedia(sha256, createdBy, visibility);
 }
 
+// PDFs are heavier than images and aren't downsized, so a roomier cap.
+export const MAX_PDF_BYTES = 25 * 1024 * 1024; // 25MB
+
+// Validate + store a user-uploaded PDF, returning the media URL to persist. No
+// thumbnail (sharp can't rasterize a PDF); the block renders a placeholder in
+// the grid and the real file in an <iframe> in the modal.
+export async function putPdfBlob(
+  file: File,
+  createdBy: string,
+  visibility: MediaVisibility,
+): Promise<string> {
+  if (file.type !== "application/pdf") {
+    throw new Error("Only PDF files are supported.");
+  }
+  if (file.size > MAX_PDF_BYTES) {
+    throw new Error("That PDF is too large (max 25MB).");
+  }
+  const sha256 = await putBlob(Buffer.from(await file.arrayBuffer()), file.type, createdBy);
+  return createMedia(sha256, createdBy, visibility);
+}
+
 // Everything the serving route needs to authorize and stream one media id.
 export async function getMedia(
   id: string,

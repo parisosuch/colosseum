@@ -15,7 +15,7 @@ import ChannelControls from "@/components/channel-controls";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Spinner } from "@/components/ui/spinner";
+import { GradientSpin } from "@/components/gradient-spin";
 import type { Channel } from "@/lib/colosseum/channel";
 import type { ChannelMember } from "@/lib/colosseum/member";
 import type { Column, ColumnFilter, ColumnSort } from "@/lib/colosseum/column";
@@ -541,7 +541,7 @@ export default function ChannelBoard({
           <div ref={sentinelRef} className="h-1" />
           {loadingMore ? (
             <div className="w-full flex justify-center py-4">
-              <Spinner variant="circle" className="size-6 text-muted-foreground" />
+              <GradientSpin cellSize={4} pattern="arrow-down" />
             </div>
           ) : null}
         </>

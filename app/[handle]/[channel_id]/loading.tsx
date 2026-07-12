@@ -59,9 +59,9 @@ export default function Loading() {
           // so the board swaps in without each tile growing a text row.
           <div key={i} className="w-full">
             <Skeleton className="w-full aspect-square rounded-lg border" />
-            <p className="pt-1 text-xs">
+            <div className="pt-1 text-xs">
               <Skeleton className="inline-block h-3 w-2/3 align-middle" />
-            </p>
+            </div>
           </div>
         ))}
       </div>

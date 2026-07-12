@@ -7,7 +7,7 @@ import { Markdown } from "./markdown";
 import type { Column } from "@/lib/colosseum/column";
 import { timeAgo } from "@/lib/utils";
 import ScreenShotPreview from "./screenshot-preview";
-import { Spinner } from "./ui/spinner";
+import { GradientSpin } from "./gradient-spin";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 
 // Column template shared by the table header (rendered by the channel board)
@@ -88,7 +88,7 @@ const ColumnComponent = memo(function ColumnComponent({
       </div>
     ) : loading ? (
       <div className="w-full h-full flex items-center justify-center">
-        <Spinner variant="circle" className="size-6 text-muted-foreground" />
+        <GradientSpin cellSize={4} />
       </div>
     ) : (
       <ScreenShotPreview image_url={imageURL} version={screenshotVersion} url={column.url} />

@@ -1,6 +1,12 @@
 import type { SpinPattern } from "./types";
 
-export const spinPatterns: readonly SpinPattern[] = ["arrow-up", "diagonal", "snake", "ripple"];
+export const spinPatterns: readonly SpinPattern[] = [
+  "arrow-up",
+  "arrow-down",
+  "diagonal",
+  "snake",
+  "ripple",
+];
 
 /**
  * Spatial period (in cells along the travel direction) for the scrolling
@@ -34,6 +40,13 @@ export function cellWaveOrder(
       // apex climbs upward as d grows.
       return {
         d: rows - 1 - row + Math.abs(col - centerCol),
+        max: rows - 1 + centerCol,
+      };
+    }
+    case "arrow-down": {
+      // Mirror of arrow-up: apex descends toward the bottom as d grows.
+      return {
+        d: row + Math.abs(col - centerCol),
         max: rows - 1 + centerCol,
       };
     }

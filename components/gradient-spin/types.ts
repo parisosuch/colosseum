@@ -23,7 +23,7 @@ export type GradientInput = GradientStop[] | GradientPresetName;
  * Wavefront shape. Each pattern is a distance function over the grid — cells
  * at equal distance light together and form the moving front.
  */
-export type SpinPattern = "arrow-up" | "diagonal" | "snake" | "ripple";
+export type SpinPattern = "arrow-up" | "arrow-down" | "diagonal" | "snake" | "ripple";
 
 export interface GradientSpinProps extends HTMLAttributes<HTMLSpanElement> {
   /** Multi-stop gradient or a preset name. Defaults to `"sunrise"`. */

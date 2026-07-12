@@ -9,10 +9,17 @@ import { inviteRequired } from "@/lib/colosseum/invite";
 // (the moment the first account exists), and the build machine has no database.
 export const dynamic = "force-dynamic";
 
-export default async function Page() {
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ invite?: string }>;
+}) {
   // The first account ever (the self-hoster) signs up without a code; after
   // that, invites are required.
   const inviteOnly = await inviteRequired();
+  // Prefilled from a shared invite link (?invite=CODE), so the invitee never
+  // has to transcribe the code.
+  const { invite } = await searchParams;
 
   return (
     <div className="flex flex-1 justify-center md:justify-start">
@@ -31,7 +38,7 @@ export default async function Page() {
             </p>
           </div>
         ) : (
-          <SignUpForm inviteRequired={inviteOnly} />
+          <SignUpForm inviteRequired={inviteOnly} invite={invite ?? ""} />
         )}
       </div>
     </div>

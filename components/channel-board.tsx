@@ -3,29 +3,28 @@
 import PageHeader from "@/components/page-header";
 import ColumnComponent, { LIST_GRID } from "@/components/column";
 import BlockModal from "@/components/block-modal";
-import AddChannelToChannelButton from "@/components/add-channel-to-channel-button";
+import ConnectChannelButton from "@/components/connect-channel-button";
 import type { PickableChannel } from "@/components/add-block-drawer";
 import ManageChannelButton from "@/components/manage-channel-button";
 import ChannelMembersBar from "@/components/channel-members-bar";
 import ExportChannelButton from "@/components/export-channel-button";
+import { ViewToggle } from "@/components/view-toggle";
+import { PAGE_SIZE } from "@/lib/pagination";
 import ColumnInput from "@/components/column-input";
 import ChannelControls from "@/components/channel-controls";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Spinner } from "@/components/ui/spinner";
+import { GradientSpin } from "@/components/gradient-spin";
 import type { Channel } from "@/lib/colosseum/channel";
 import type { ChannelMember } from "@/lib/colosseum/member";
 import type { Column, ColumnFilter, ColumnSort } from "@/lib/colosseum/column";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import { getChannelColumnsAction, getScreenshotsForUrlsAction } from "@/lib/colosseum/actions";
-import { LayoutGrid, List, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-// How many blocks to load per page (initial load and each load-more). Exported
-// so the channel page can server-render exactly the first page.
-export const PAGE_SIZE = 50;
 // Placeholder tiles shown while the first page loads — a few rows' worth.
 const SKELETON_COUNT = 18;
 
@@ -74,7 +73,7 @@ type ChannelBoardProps = {
   // the client timezone and cause a hydration mismatch.
   createdOnLabel: string;
   // The viewer's own channels, for the block modal's "Move" picker (owner only)
-  // and the "Add to channel" button (any viewer). Empty when signed out.
+  // and the "Connect to channel" button (any viewer). Empty when signed out.
   channels: PickableChannel[];
   // The channel's invited members (empty for open/solo channels), and the owner's
   // avatar, for the collaborators bar. Held as state so the settings editor's
@@ -426,25 +425,10 @@ export default function ChannelBoard({
         ) : null}
         {/* Any signed-in viewer can nest a public channel into one of their own. */}
         {!channel.private ? (
-          <AddChannelToChannelButton channelId={channel.id} channels={channels} />
+          <ConnectChannelButton channelId={channel.id} channels={channels} />
         ) : null}
         <ExportChannelButton channel={channel} />
-        <Button
-          variant={view === "grid" ? "secondary" : "ghost"}
-          size="icon"
-          aria-label="Grid view"
-          onClick={() => setView("grid")}
-        >
-          <LayoutGrid />
-        </Button>
-        <Button
-          variant={view === "list" ? "secondary" : "ghost"}
-          size="icon"
-          aria-label="List view"
-          onClick={() => setView("list")}
-        >
-          <List />
-        </Button>
+        <ViewToggle view={view} onChange={setView} />
       </div>
       <div className="flex flex-col space-y-4">
         <div className="flex flex-col">
@@ -526,7 +510,7 @@ export default function ChannelBoard({
               </div>
             </div>
           ) : (
-            <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+            <div className="grid items-start gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
               {canContribute ? (
                 <ColumnInput
                   user={user}
@@ -557,7 +541,7 @@ export default function ChannelBoard({
           <div ref={sentinelRef} className="h-1" />
           {loadingMore ? (
             <div className="w-full flex justify-center py-4">
-              <Spinner variant="circle" className="size-6 text-muted-foreground" />
+              <GradientSpin cellSize={4} pattern="arrow-down" />
             </div>
           ) : null}
         </>

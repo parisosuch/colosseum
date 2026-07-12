@@ -5,7 +5,7 @@ import { ACTIVITY_PAGE, type ActivityItem } from "@/lib/colosseum/activity";
 import { timeAgo } from "@/lib/utils";
 import PageHeader from "@/components/page-header";
 import ColumnPreview from "@/components/column-preview";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserProfilePicture } from "@/components/user-profile-picture";
 import { ExploreLoadMore } from "@/components/explore-load-more";
 import { FeedBlockModal } from "@/components/feed-block-modal";
 
@@ -36,10 +36,7 @@ function ChannelFocal({ title, description }: { title: string; description?: str
 function UserFocal({ handle, avatarUrl }: { handle: string; avatarUrl?: string }) {
   return (
     <div className="flex h-full w-full items-center justify-center p-6">
-      <Avatar className="size-40">
-        <AvatarImage src={avatarUrl} alt={`@${handle}`} />
-        <AvatarFallback className="text-4xl">{handle.slice(0, 2).toUpperCase()}</AvatarFallback>
-      </Avatar>
+      <UserProfilePicture avatarUrl={avatarUrl} handle={handle} size="2xl" />
     </div>
   );
 }
@@ -94,13 +91,13 @@ export function ActivityRow({ item, viewerId }: { item: ActivityItem; viewerId: 
   // actor's avatar sits inline right before their handle.
   const handleLink = (
     <A href={userHref}>
-      <span className="inline-flex items-center gap-1.5 align-middle">
-        <Avatar className="size-6">
-          <AvatarImage src={item.avatarUrl} alt="" />
-          <AvatarFallback className="text-[10px]">
-            {item.handle.charAt(0).toUpperCase()}
-          </AvatarFallback>
-        </Avatar>
+      <span className="whitespace-nowrap">
+        {/* inline-block + align-middle centers the avatar on the text line
+            without disturbing the surrounding baseline; the handle stays plain
+            inline text so it sits on the same baseline as the other words. */}
+        <span className="mr-1.5 inline-block align-middle">
+          <UserProfilePicture avatarUrl={item.avatarUrl} handle={item.handle} size="sm" />
+        </span>
         @{item.handle}
       </span>
     </A>
@@ -136,8 +133,10 @@ export function ActivityRow({ item, viewerId }: { item: ActivityItem; viewerId: 
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-4">
-      {/* Attribution leads, in the serif section-title style. */}
-      <div className="flex flex-col items-center gap-1 text-center">
+      {/* Attribution leads, in the serif section-title style. Plain inline text
+          so the handle and connective words share one baseline; the avatar is
+          the only non-text element and floats centered via align-middle. */}
+      <div className="flex flex-col items-center justify-center gap-1 text-center">
         <p className="text-title">{attribution}</p>
         <p className="text-caption">{timeAgo(new Date(item.at))}</p>
       </div>

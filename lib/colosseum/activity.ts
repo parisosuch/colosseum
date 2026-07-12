@@ -113,8 +113,10 @@ export async function getActivityFeed(
   const [blockColumns, shots] = await Promise.all([
     // Enrich channel-columns with their linked channel (title/handle/count) so
     // the feed can render and link them like the channel grid does.
+    // `b.handle` is joined on column.created_by, so it's the creator's handle —
+    // attach it directly rather than re-querying via withCreators.
     withLinkedChannels(
-      blocks.map((b) => toColumn(b.col)),
+      blocks.map((b) => ({ ...toColumn(b.col), created_by_handle: b.handle })),
       viewerId,
     ),
     // Cached screenshots for the url blocks, so their modals show the capture.

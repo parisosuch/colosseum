@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { loadMoreActivity } from "@/app/explore/actions";
-import { Spinner } from "@/components/ui/spinner";
+import { GradientSpin } from "@/components/gradient-spin";
 
 // Infinite scroll for the Explore feed. Renders as flex siblings of the initial
 // rows (so they share the container's gap), appending each server-rendered page
@@ -62,7 +62,11 @@ export function ExploreLoadMore({
       ))}
       {/* Sentinel: loads the next page as it nears the viewport. */}
       <div ref={sentinelRef} className="h-1 w-full" />
-      {loading ? <Spinner variant="circle" className="size-6 text-muted-foreground" /> : null}
+      {loading ? (
+        <div className="flex w-full items-center justify-center">
+          <GradientSpin cellSize={4} pattern="arrow-down" />
+        </div>
+      ) : null}
     </>
   );
 }

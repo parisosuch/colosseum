@@ -13,7 +13,7 @@ import type { Column } from "@/lib/colosseum/column";
 import { imageSrcFromHtml, isURL } from "@/lib/utils";
 import type { SessionUser } from "@/components/channel-board";
 import type { Channel } from "@/lib/colosseum/channel";
-import { Spinner } from "./ui/spinner";
+import { GradientSpin } from "./gradient-spin";
 import { toast } from "sonner";
 
 // Kept in sync with the server-side limits in lib/colosseum/blob.ts.
@@ -323,7 +323,7 @@ export default function ColumnInput({
 
       {loading && (
         <div className="absolute inset-0 flex flex-col gap-2 items-center justify-center bg-gray-100/60 dark:bg-black/50 z-10">
-          <Spinner variant="circle" className="size-10" />
+          <GradientSpin cellSize={8} />
           {uploading > 1 ? (
             <p className="text-xs text-muted-foreground">{uploading} left…</p>
           ) : null}

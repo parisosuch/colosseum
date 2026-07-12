@@ -30,6 +30,9 @@ export type Column = {
   // columns (the stored file is a PDF, served by /api/media with its own mime).
   image?: string;
   created_by: string;
+  // The creator's handle, resolved from `created_by`. Filled by withCreators
+  // (getChannelColumns, getColumn); absent on unenriched fetch paths.
+  created_by_handle?: string;
   channel_id: number;
   // Set for `channel` columns: the channel this column links to.
   linked_channel_id?: number;
@@ -116,6 +119,20 @@ export async function withLinkedChannels(
   });
 }
 
+// Resolve each block's creator handle from `created_by`. Batched so a board of
+// N blocks runs one extra query, not N. A block whose creator has no profile
+// (or was deleted) simply keeps `created_by_handle` undefined.
+export async function withCreators(cols: Column[]): Promise<Column[]> {
+  const ids = [...new Set(cols.map((c) => c.created_by))];
+  if (ids.length === 0) return cols;
+  const rows = await db
+    .select({ user_id: userProfile.user_id, handle: userProfile.handle })
+    .from(userProfile)
+    .where(inArray(userProfile.user_id, ids));
+  const handleById = new Map(rows.map((r) => [r.user_id, r.handle]));
+  return cols.map((c) => ({ ...c, created_by_handle: handleById.get(c.created_by) }));
+}
+
 // Fetch a single block by id. Returns null when it doesn't exist. Visibility is
 // NOT enforced here — callers authorize via the block's channel first.
 export async function getColumn(column_id: number): Promise<Column | null> {
@@ -125,7 +142,9 @@ export async function getColumn(column_id: number): Promise<Column | null> {
     return null;
   }
   const [row] = await db.select().from(column).where(eq(column.id, column_id)).limit(1);
-  return row ? toColumn(row) : null;
+  if (!row) return null;
+  const [enriched] = await withCreators([toColumn(row)]);
+  return enriched;
 }
 
 export type ColumnSort = "newest" | "oldest" | "title_az" | "title_za";
@@ -198,7 +217,7 @@ export async function getChannelColumns(
     .limit(limit ?? Number.MAX_SAFE_INTEGER)
     .offset(offset);
 
-  return withLinkedChannels(rows.map(toColumn), viewerId);
+  return withCreators(await withLinkedChannels(rows.map(toColumn), viewerId));
 }
 
 // The `perChannel` newest blocks for each of `channelIds`, as one windowed query

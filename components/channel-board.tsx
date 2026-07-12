@@ -9,6 +9,7 @@ import ManageChannelButton from "@/components/manage-channel-button";
 import ChannelMembersBar from "@/components/channel-members-bar";
 import ExportChannelButton from "@/components/export-channel-button";
 import { ViewToggle } from "@/components/view-toggle";
+import { PAGE_SIZE } from "@/lib/pagination";
 import ColumnInput from "@/components/column-input";
 import ChannelControls from "@/components/channel-controls";
 import { Badge } from "@/components/ui/badge";
@@ -24,9 +25,6 @@ import { Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-// How many blocks to load per page (initial load and each load-more). Exported
-// so the channel page can server-render exactly the first page.
-export const PAGE_SIZE = 50;
 // Placeholder tiles shown while the first page loads — a few rows' worth.
 const SKELETON_COUNT = 18;
 

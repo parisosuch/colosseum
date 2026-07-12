@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
-import ChannelBoard, { PAGE_SIZE } from "@/components/channel-board";
+import ChannelBoard from "@/components/channel-board";
+import { PAGE_SIZE } from "@/lib/pagination";
 import {
   canContributeChannel,
   canReadChannel,

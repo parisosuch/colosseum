@@ -1,6 +1,26 @@
 import { expect, test } from "bun:test";
 
-import { imageSrcFromHtml } from "./utils";
+import { imageSrcFromHtml, isTweetUrl, tweetIdFromUrl } from "./utils";
+
+test("tweetIdFromUrl extracts the status id from twitter.com / x.com URLs", () => {
+  expect(tweetIdFromUrl("https://twitter.com/jack/status/20")).toBe("20");
+  expect(tweetIdFromUrl("https://x.com/jack/status/1234567890123456789")).toBe(
+    "1234567890123456789",
+  );
+  // No scheme, www/mobile hosts, trailing query/segments.
+  expect(tweetIdFromUrl("x.com/jack/status/42?s=20")).toBe("42");
+  expect(tweetIdFromUrl("www.twitter.com/jack/status/42")).toBe("42");
+  expect(tweetIdFromUrl("https://mobile.twitter.com/jack/status/42/photo/1")).toBe("42");
+});
+
+test("tweetIdFromUrl rejects non-tweet URLs", () => {
+  expect(tweetIdFromUrl("https://x.com/jack")).toBeNull();
+  expect(tweetIdFromUrl("https://example.com/jack/status/20")).toBeNull();
+  expect(tweetIdFromUrl("https://x.com/i/status/notanumber")).toBeNull();
+  expect(tweetIdFromUrl("not a url")).toBeNull();
+  expect(isTweetUrl("https://x.com/jack/status/20")).toBe(true);
+  expect(isTweetUrl("https://example.com")).toBe(false);
+});
 
 test("imageSrcFromHtml pulls the absolute <img> source a browser image-copy drops", () => {
   // What Chrome/Firefox put on the clipboard for a copied GIF.

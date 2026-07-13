@@ -5,8 +5,9 @@ import Link from "next/link";
 import { FileText } from "lucide-react";
 import { Markdown } from "./markdown";
 import type { Column } from "@/lib/colosseum/column";
-import { timeAgo } from "@/lib/utils";
+import { timeAgo, tweetIdFromUrl } from "@/lib/utils";
 import ScreenShotPreview from "./screenshot-preview";
+import TweetBlock from "./tweet-block";
 import { GradientSpin } from "./gradient-spin";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 
@@ -86,6 +87,8 @@ const ColumnComponent = memo(function ColumnComponent({
         <FileText className="size-10" />
         <span className="line-clamp-2 max-w-full break-words text-xs">{column.title || "PDF"}</span>
       </div>
+    ) : column.type === "tweet" ? (
+      <TweetBlock id={tweetIdFromUrl(column.url ?? "") ?? ""} compact />
     ) : loading ? (
       <div className="w-full h-full flex items-center justify-center">
         <GradientSpin cellSize={4} />
@@ -98,7 +101,7 @@ const ColumnComponent = memo(function ColumnComponent({
     // Content column: the domain/path for a link, the text itself for a text
     // block, the linked channel's name for a channel, the title for an image.
     const content =
-      column.type === "url"
+      column.type === "url" || column.type === "tweet"
         ? (column.url ?? "").replace(/^https?:\/\//, "")
         : column.type === "text"
           ? (column.text ?? "")

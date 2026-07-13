@@ -2,8 +2,10 @@ import { FileText } from "lucide-react";
 
 import type { Column } from "@/lib/colosseum/column";
 import { getScreenshot, type ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
+import { tweetIdFromUrl } from "@/lib/utils";
 import { Markdown } from "./markdown";
 import ScreenShotPreview from "./screenshot-preview";
+import TweetBlock from "./tweet-block";
 
 export default async function ColumnPreview({
   column,
@@ -57,6 +59,10 @@ export default async function ColumnPreview({
         <span className="line-clamp-2 max-w-full break-words text-sm">{column.title || "PDF"}</span>
       </div>
     );
+  }
+
+  if (column.type === "tweet") {
+    return <TweetBlock id={tweetIdFromUrl(column.url ?? "") ?? ""} compact />;
   }
 
   // Use the pre-fetched screenshot when a caller passed one (batched list);

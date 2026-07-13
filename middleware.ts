@@ -18,7 +18,22 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (!getSessionCookie(request)) {
+  const hasSession = Boolean(getSessionCookie(request));
+
+  // `/` is the signed-out landing. A signed-in user has no business there —
+  // send them straight to Explore at the edge so the hero never renders and
+  // flashes before the page-level redirect fires. (Explore re-checks the
+  // session for real and routes no-profile users on to onboarding.)
+  if (pathname === "/") {
+    if (hasSession) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/explore";
+      return NextResponse.redirect(url);
+    }
+    return NextResponse.next();
+  }
+
+  if (!hasSession) {
     const url = request.nextUrl.clone();
     url.pathname = "/auth/login";
     return NextResponse.redirect(url);
@@ -27,7 +42,7 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Everything else — the landing page, public profiles (/[handle]), public
-  // channels, and the /auth/* pages — stays open.
-  matcher: ["/invites/:path*", "/settings/:path*", "/api/v1/:path*", "/api/screenshot"],
+  // Everything else — public profiles (/[handle]), public channels, and the
+  // /auth/* pages — stays open.
+  matcher: ["/", "/invites/:path*", "/settings/:path*", "/api/v1/:path*", "/api/screenshot"],
 };

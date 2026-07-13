@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { LayersIcon, PlusIcon } from "lucide-react";
+import { ArrowRight, LayersIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { addChannelColumnAction } from "@/lib/colosseum/actions";
@@ -14,12 +14,13 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
-// Are.na-style "add this channel to one of mine": nests the current (public)
-// channel as a column inside a channel the viewer owns. Renders nothing when
-// there's nowhere to add it (signed out, or the current channel is the viewer's
-// only one). `channels` is the viewer's own channels.
-export default function AddChannelToChannelButton({
+// Are.na-style "connect this channel to one of mine": nests the current
+// (public) channel as a column inside a channel the viewer owns. Renders nothing
+// when there's nowhere to connect it (signed out, or the current channel is the
+// viewer's only one). `channels` is the viewer's own channels.
+export default function ConnectChannelButton({
   channelId,
   channels,
 }: {
@@ -27,38 +28,47 @@ export default function AddChannelToChannelButton({
   channels: PickableChannel[];
 }) {
   const [open, setOpen] = useState(false);
-  const [adding, setAdding] = useState(false);
+  const [connecting, setConnecting] = useState(false);
 
-  // Can't add a channel to itself.
+  // Can't connect a channel to itself.
   const targets = channels.filter((c) => c.id !== channelId);
   if (targets.length === 0) return null;
 
-  const handleAdd = async (hostChannelId: number) => {
-    if (adding) return;
-    setAdding(true);
+  const handleConnect = async (hostChannelId: number) => {
+    if (connecting) return;
+    setConnecting(true);
     try {
       await addChannelColumnAction(channelId, hostChannelId);
       setOpen(false);
-      toast.success("Added to channel.");
+      toast.success("Connected to channel.");
     } catch (e) {
       console.error(e);
-      toast.error("Couldn't add to that channel. Please try again.");
+      toast.error("Couldn't connect to that channel. Please try again.");
     } finally {
-      setAdding(false);
+      setConnecting(false);
     }
   };
 
   return (
     <>
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
-        <PlusIcon />
-        Add to channel
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="secondary"
+            size="icon"
+            aria-label="Connect to another channel"
+            onClick={() => setOpen(true)}
+          >
+            <ArrowRight />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Connect to another channel</TooltipContent>
+      </Tooltip>
       <CommandDialog
         open={open}
         onOpenChange={setOpen}
-        title="Add to channel"
-        description="Add this channel as a column in one of your channels."
+        title="Connect to channel"
+        description="Connect this channel as a column in one of your channels."
       >
         <CommandInput placeholder="Search your channels…" />
         <CommandList>
@@ -68,8 +78,8 @@ export default function AddChannelToChannelButton({
               key={c.id}
               value={`channel-${c.id}`}
               keywords={[c.title]}
-              disabled={adding}
-              onSelect={() => handleAdd(c.id)}
+              disabled={connecting}
+              onSelect={() => handleConnect(c.id)}
             >
               <LayersIcon />
               <span className="truncate">{c.title}</span>

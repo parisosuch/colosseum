@@ -15,13 +15,30 @@ import {
   searchProfilesAction,
 } from "@/lib/colosseum/actions";
 import { cn } from "@/lib/utils";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { UserProfilePicture } from "@/components/user-profile-picture";
 
 // Mirrors MAX_COMMENT_LENGTH in lib/colosseum/comment.ts; kept as a literal so
 // this client file never imports the server-only module. The action re-validates.
 const MAX_COMMENT_LENGTH = 2000;
+
+const formatCommentTime = (createdAt: string) => {
+  const created = new Date(createdAt);
+  const now = new Date();
+  const diffMs = now.getTime() - created.getTime();
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+
+  const absolute = created.toLocaleString();
+
+  if (diffMins < 1) return { relative: "Just now", absolute };
+  if (diffMins < 60) return { relative: `${diffMins}m ago`, absolute };
+  if (diffHours < 24) return { relative: `${diffHours}h ago`, absolute };
+
+  return { relative: created.toLocaleDateString(), absolute };
+};
 
 type ColumnCommentsProps = {
   columnId: number;
@@ -173,12 +190,11 @@ export default function ColumnComments({ columnId, viewerId, isOwner }: ColumnCo
           ) : (
             comments.map((c) => (
               <div key={c.id} className="flex gap-2">
-                <Avatar className="size-6">
-                  <AvatarImage src={c.author_avatar_url} />
-                  <AvatarFallback className="text-[10px]">
-                    {c.author_handle.charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
+                <UserProfilePicture
+                  avatarUrl={c.author_avatar_url}
+                  handle={c.author_handle}
+                  size="sm"
+                />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <Link
@@ -187,9 +203,19 @@ export default function ColumnComments({ columnId, viewerId, isOwner }: ColumnCo
                     >
                       @{c.author_handle}
                     </Link>
-                    <span className="font-mono text-[10px] text-muted-foreground">
-                      {new Date(c.created_at).toLocaleDateString()}
-                    </span>
+                    {(() => {
+                      const { relative, absolute } = formatCommentTime(c.created_at);
+                      return (
+                        <Tooltip delayDuration={100}>
+                          <TooltipTrigger asChild>
+                            <span className="font-mono text-[10px] text-muted-foreground cursor-default">
+                              {relative}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>{absolute}</TooltipContent>
+                        </Tooltip>
+                      );
+                    })()}
                     {viewerId && (isOwner || viewerId === c.author_id) ? (
                       <button
                         type="button"
@@ -230,7 +256,7 @@ export default function ColumnComments({ columnId, viewerId, isOwner }: ColumnCo
                 maxLength={MAX_COMMENT_LENGTH}
                 placeholder="Add a comment…"
                 rows={2}
-                // Enter adds a newline; ⌘/Ctrl+Enter posts. While the @-mention
+                // Enter posts; Shift+Enter adds a newline. While the @-mention
                 // list is open, arrows/Tab/Enter/Escape drive it instead.
                 className="resize-none text-sm [field-sizing:content]"
                 onChange={(e) => {
@@ -274,7 +300,7 @@ export default function ColumnComments({ columnId, viewerId, isOwner }: ColumnCo
                       return;
                     }
                   }
-                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     post();
                   }
@@ -297,12 +323,7 @@ export default function ColumnComments({ columnId, viewerId, isOwner }: ColumnCo
                           i === mentionIndex ? "bg-accent" : "",
                         )}
                       >
-                        <Avatar className="size-5">
-                          <AvatarImage src={p.avatar_url} />
-                          <AvatarFallback className="text-[9px]">
-                            {p.handle.charAt(0).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
+                        <UserProfilePicture avatarUrl={p.avatar_url} handle={p.handle} size="xs" />
                         <span className="truncate">@{p.handle}</span>
                       </button>
                     </li>

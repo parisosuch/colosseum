@@ -12,12 +12,13 @@ import { useState } from "react";
 export function SignUpForm({
   className,
   inviteRequired = true,
+  invite = "",
   ...props
-}: React.ComponentPropsWithoutRef<"div"> & { inviteRequired?: boolean }) {
+}: React.ComponentPropsWithoutRef<"div"> & { inviteRequired?: boolean; invite?: string }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [repeatPassword, setRepeatPassword] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
+  const [inviteCode, setInviteCode] = useState(invite);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 

@@ -1,7 +1,9 @@
 import { getUserProfile } from "@/lib/colosseum/user";
+import { getUserChannels } from "@/lib/colosseum/channel";
 import { getSessionUser } from "@/lib/auth";
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
+import { AddBlockModal } from "./add-block-modal";
 import CommandPalette from "./command-palette";
 import { Logo } from "./logo";
 import SearchBar from "./search-bar";
@@ -30,6 +32,16 @@ export default async function NavBar() {
   // onboarding has no profile yet, so render the nav without the avatar.
   const userProfile = await getUserProfile(user.id);
 
+  // The quick-add drawer needs the viewer's channels to pick a destination;
+  // only onboarded users see it, so skip the query otherwise.
+  const channels = userProfile
+    ? (await getUserChannels(user.id)).map((c) => ({
+        id: c.id,
+        title: c.title,
+        private: c.private,
+      }))
+    : [];
+
   return (
     <nav className="chrome sticky top-0 z-40 w-full flex justify-between p-4">
       <Link href="/">
@@ -37,8 +49,11 @@ export default async function NavBar() {
       </Link>
       {userProfile ? (
         <>
-          <div className="hidden sm:block flex-1 max-w-xs">
-            <SearchBar userId={user.id} />
+          <div className="hidden sm:flex flex-1 max-w-md items-center gap-2">
+            <div className="flex-1 max-w-xs">
+              <SearchBar userId={user.id} />
+            </div>
+            <AddBlockModal channels={channels} label="Add" />
           </div>
           <CommandPalette handle={userProfile.handle} />
         </>

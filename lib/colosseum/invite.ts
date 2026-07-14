@@ -1,4 +1,5 @@
 import { and, desc, eq, lt, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 
 import { db } from "@/lib/db";
 import { inviteCode, inviteRedemption, user, userProfile } from "@/lib/db/schema";
@@ -111,6 +112,65 @@ export async function createInviteCode(params: {
     })
     .returning();
   return toInviteCode(row);
+}
+
+// A node in the invite network: one onboarded member (has a profile/handle).
+export type InviteGraphNode = {
+  user_id: string;
+  handle: string;
+  avatar_url: string | null;
+  // How many people this member has successfully invited (out-degree). Drives
+  // node sizing so prolific inviters read as hubs.
+  invited_count: number;
+};
+
+// A directed edge inviter → invitee: `from` created the code `to` redeemed.
+export type InviteGraphEdge = { from: string; to: string };
+
+export type InviteGraph = { nodes: InviteGraphNode[]; edges: InviteGraphEdge[] };
+
+// The whole invite network: who invited whom. An edge exists for each redeemed
+// code, pointing from the code's creator to the redeemer. Both endpoints are
+// inner-joined to user_profile, so a member still mid-onboarding (no handle) —
+// or a code whose creator has since been deleted (created_by set null) — drops
+// out rather than surfacing as a nameless node. Profiles are public, so the
+// graph is unscoped.
+export async function getInviteGraph(): Promise<InviteGraph> {
+  const inviter = alias(userProfile, "inviter_profile");
+  const invitee = alias(userProfile, "invitee_profile");
+  const rows = await db
+    .select({
+      fromId: inviter.user_id,
+      fromHandle: inviter.handle,
+      fromAvatar: inviter.avatar_url,
+      toId: invitee.user_id,
+      toHandle: invitee.handle,
+      toAvatar: invitee.avatar_url,
+    })
+    .from(inviteRedemption)
+    .innerJoin(inviteCode, eq(inviteCode.code, inviteRedemption.code))
+    .innerJoin(inviter, eq(inviter.user_id, inviteCode.created_by))
+    .innerJoin(invitee, eq(invitee.user_id, inviteRedemption.user_id));
+
+  const nodes = new Map<string, InviteGraphNode>();
+  const ensure = (id: string, handle: string, avatar_url: string | null) => {
+    let node = nodes.get(id);
+    if (!node) {
+      node = { user_id: id, handle, avatar_url, invited_count: 0 };
+      nodes.set(id, node);
+    }
+    return node;
+  };
+
+  const edges: InviteGraphEdge[] = [];
+  for (const row of rows) {
+    const from = ensure(row.fromId, row.fromHandle, row.fromAvatar);
+    ensure(row.toId, row.toHandle, row.toAvatar);
+    from.invited_count += 1;
+    edges.push({ from: row.fromId, to: row.toId });
+  }
+
+  return { nodes: [...nodes.values()], edges };
 }
 
 // Revoke one of the caller's own unused codes. Mirrors the old "delete own

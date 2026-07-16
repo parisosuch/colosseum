@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
 import { blobKey, ensureThumbnail, getMedia, thumbKey } from "@/lib/colosseum/blob";
-import { getObject, publicUrl } from "@/lib/colosseum/storage";
+import { getObject, publicUrl, signedUrl } from "@/lib/colosseum/storage";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -47,13 +47,25 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     }
   }
 
-  // If the backend can serve this object from a CDN/edge, send public traffic
-  // straight there instead of streaming every byte through the app. Private
-  // media never redirects — it always streams so access stays authorized.
+  // Keep the app off the byte path when the backend can serve the object
+  // itself. Public → a cacheable CDN/edge URL. Private → a short-lived signed
+  // URL, minted only after the ownership check above, so access stays gated.
+  // Either falls back to streaming when the backend can't hand out a URL
+  // (local disk, or S3 without a CDN for public).
   if (item.visibility === "public") {
     const url = publicUrl(key);
     if (url) {
       return NextResponse.redirect(url, 302);
+    }
+  } else {
+    const url = await signedUrl(key);
+    if (url) {
+      // The redirect itself must never be cached — the signature expires and
+      // is per-viewer; only the private user who just authorized may follow it.
+      return NextResponse.redirect(url, {
+        status: 302,
+        headers: { "Cache-Control": "private, no-store" },
+      });
     }
   }
 

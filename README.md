@@ -71,10 +71,11 @@ multi-instance deploys, or CDN-backed delivery — set `S3_BUCKET` (and the
 other `S3_*` vars from `.env.example`) in the compose `.env`. Its presence
 switches every blob operation to the bucket; unset, nothing changes.
 
-Set `CDN_URL` to a CDN/edge base URL in front of the bucket and public media
-redirects straight there instead of streaming through the app; private media
-always streams so access stays authorized. After switching backends, run
-`bun run backfill-thumbnails` to warm grid thumbnails.
+With S3 configured the app stays off the byte path: public media redirects to
+`CDN_URL` (or the bucket) and private media redirects to a short-lived signed
+URL minted only after the request is authorized — so private content is served
+straight from the store's edge without a public bucket. After switching
+backends, run `bun run backfill-thumbnails` to warm grid thumbnails.
 
 ## Local development
 

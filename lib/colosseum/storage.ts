@@ -4,8 +4,9 @@
 //   - local disk (default) — bytes at <STORAGE_DIR>/<key>. Self-hosted default,
 //     no config needed. Served by streaming through /api/media.
 //   - S3-compatible (AWS S3, Cloudflare R2, …) — enabled by setting S3_BUCKET.
-//     Optionally fronted by a CDN (CDN_URL) so public blobs redirect straight
-//     to the edge instead of streaming through the app.
+//     Keeps the app off the byte path: public blobs redirect to a CDN (CDN_URL)
+//     or the store; private blobs redirect to a short-lived signed URL minted
+//     only after the serving route authorizes the request.
 //
 // Keys are opaque strings the caller derives from a blob's sha (see blob.ts);
 // this module never interprets them. `putObject` takes bytes; `getObject`
@@ -35,8 +36,13 @@ interface Backend {
   deleteObject(key: string): Promise<void>;
   // A directly-fetchable URL for `key` (CDN/edge), or null when the object can
   // only be reached by streaming through the app. Only ever used for public
-  // blobs — private ones always stream so access stays authorized.
+  // blobs — private ones always stream or use a signed URL so access stays
+  // authorized.
   publicUrl(key: string): string | null;
+  // A short-lived signed URL for `key`, safe to hand a client for a private
+  // blob (the signature is the capability, so no bucket ACL needed), or null
+  // when the backend can't sign (local disk → the app streams instead).
+  signedUrl(key: string): Promise<string | null>;
 }
 
 const STORAGE_DIR = process.env.STORAGE_DIR ?? "./data/storage";
@@ -73,6 +79,9 @@ const localBackend: Backend = {
     await unlink(path.join(STORAGE_DIR, key)).catch(() => {});
   },
   publicUrl() {
+    return null;
+  },
+  async signedUrl() {
     return null;
   },
 };
@@ -127,6 +136,15 @@ function s3Backend(): Backend {
     publicUrl(key) {
       return cdn ? `${cdn}/${encodeURI(key)}` : null;
     },
+    async signedUrl(key) {
+      // Presign a GET against the store endpoint (signQuery moves the SigV4
+      // signature into the query string). Signed for the bucket host, so this
+      // points at the object store's edge, not CDN_URL. TTL bounds the leak.
+      const u = new URL(url(key));
+      u.searchParams.set("X-Amz-Expires", "3600");
+      const signed = await aws.sign(u.toString(), { method: "GET", aws: { signQuery: true } });
+      return signed.url;
+    },
   };
 }
 
@@ -138,3 +156,4 @@ export const getBytes = backend.getBytes;
 export const objectExists = backend.objectExists;
 export const deleteObject = backend.deleteObject;
 export const publicUrl = backend.publicUrl;
+export const signedUrl = backend.signedUrl;

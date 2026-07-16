@@ -74,8 +74,13 @@ switches every blob operation to the bucket; unset, nothing changes.
 With S3 configured the app stays off the byte path: public media redirects to
 `CDN_URL` (or the bucket) and private media redirects to a short-lived signed
 URL minted only after the request is authorized — so private content is served
-straight from the store's edge without a public bucket. After switching
-backends, run `bun run backfill-thumbnails` to warm grid thumbnails.
+straight from the store's edge without a public bucket.
+
+Switching an existing deployment is safe: on the next boot the container copies
+any disk-resident blobs into the bucket (see `scripts/migrate-blobs.ts`, run
+from the entrypoint) before serving, so nothing is orphaned. It's idempotent —
+a marker object makes every later boot a single check — so once it's done you
+can drop the local storage volume.
 
 ## Local development
 

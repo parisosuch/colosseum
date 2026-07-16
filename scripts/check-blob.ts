@@ -1,20 +1,20 @@
-// Minimal self-check for the blob + media layer: put → file on disk + blobs
-// row, identical put dedupes, media references gate the blob's lifetime (GC
-// only when the last reference goes). Needs the local DB running:
+// Minimal self-check for the blob + media layer: put → object in storage +
+// blobs row, identical put dedupes, media references gate the blob's lifetime
+// (GC only when the last reference goes). Runs against the default local
+// backend. Needs the local DB running:
 //   bun --conditions=react-server scripts/check-blob.ts
 
 import { createHash } from "node:crypto";
-import { readFile, stat } from "node:fs/promises";
-import { sep } from "node:path";
 
 import {
-  blobDiskPath,
+  blobKey,
   createMedia,
   deleteMediaByUrl,
   getMedia,
   mediaIdFromUrl,
   putBlob,
 } from "@/lib/colosseum/blob";
+import { getBytes, objectExists } from "@/lib/colosseum/storage";
 import { db } from "@/lib/db";
 import { user } from "@/lib/db/schema";
 
@@ -31,10 +31,11 @@ const sha = await putBlob(data, "text/plain", userId);
 const expected = createHash("sha256").update(data).digest("hex");
 
 if (sha !== expected) throw new Error(`sha mismatch: ${sha} != ${expected}`);
-if (!blobDiskPath(sha).endsWith(`${sha.slice(0, 2)}${sep}${sha}`)) {
-  throw new Error(`bad disk path: ${blobDiskPath(sha)}`);
+if (blobKey(sha) !== `${sha.slice(0, 2)}/${sha}`) {
+  throw new Error(`bad blob key: ${blobKey(sha)}`);
 }
-if (!(await readFile(blobDiskPath(sha))).equals(data)) throw new Error("disk bytes differ");
+const stored = await getBytes(blobKey(sha));
+if (!stored?.equals(data)) throw new Error("stored bytes differ");
 
 // Identical bytes dedupe: same sha, and the second put must not throw.
 const again = await putBlob(data, "text/plain", userId);
@@ -58,10 +59,10 @@ if (pub?.visibility !== "public") throw new Error(`bad public media: ${JSON.stri
 // Dropping one reference must keep the blob; dropping the last one GCs it.
 await deleteMediaByUrl(privateUrl);
 if (!(await getMedia(publicId))) throw new Error("surviving reference lost");
-await stat(blobDiskPath(sha)); // still referenced → file must remain
+if (!(await objectExists(blobKey(sha)))) throw new Error("still-referenced blob deleted");
 await deleteMediaByUrl(publicUrl);
 if (await getMedia(publicId)) throw new Error("deleted reference still resolves");
-if (await stat(blobDiskPath(sha)).catch(() => null)) throw new Error("blob file not GC'd");
+if (await objectExists(blobKey(sha))) throw new Error("blob object not GC'd");
 
 // Deleting a non-media URL is a no-op, not an error.
 await deleteMediaByUrl("https://example.com/image.png");

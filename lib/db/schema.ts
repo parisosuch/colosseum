@@ -228,9 +228,9 @@ export const screenshot = pgTable("screenshot", {
   description: text("description"),
 });
 
-// Content-addressed file metadata. The bytes live on local disk at
-// <sha[0:2]>/<sha> under STORAGE_DIR (see lib/colosseum/blob.ts); identical
-// uploads share one row and one file.
+// Content-addressed file metadata. The bytes live in the pluggable object
+// store keyed <sha[0:2]>/<sha> (local disk or S3; see lib/colosseum/blob.ts);
+// identical uploads share one row and one object.
 export const blobs = pgTable("blobs", {
   sha256: text("sha256").primaryKey(),
   mime: text("mime").notNull(),

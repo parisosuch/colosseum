@@ -7,14 +7,11 @@
 // sync with the owning channel's privacy. Signed URLs stay deferred — a
 // single-container deploy has no shared cache in front of this route.
 
-import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
-import { Readable } from "node:stream";
-
 import { NextRequest, NextResponse } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
-import { blobDiskPath, ensureThumbnail, getMedia } from "@/lib/colosseum/blob";
+import { blobKey, ensureThumbnail, getMedia, thumbKey } from "@/lib/colosseum/blob";
+import { getObject, publicUrl } from "@/lib/colosseum/storage";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -38,20 +35,30 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   }
 
   // `?thumb` serves a downsized webp derived from the same bytes (used by grid
-  // previews). Generation is idempotent + cached on disk; a non-image blob (or
-  // any failure) falls back to the full bytes.
-  let filePath = blobDiskPath(item.sha256);
+  // previews). Generation is idempotent + cached; a non-image blob (or any
+  // failure) falls back to the full bytes.
+  let key = blobKey(item.sha256);
   let contentType = item.mime;
   if (req.nextUrl.searchParams.has("thumb")) {
     const thumb = await ensureThumbnail(item.sha256).catch(() => null);
     if (thumb) {
-      filePath = thumb;
+      key = thumbKey(item.sha256);
       contentType = "image/webp";
     }
   }
 
-  const fileStat = await stat(filePath).catch(() => null);
-  if (!fileStat) {
+  // If the backend can serve this object from a CDN/edge, send public traffic
+  // straight there instead of streaming every byte through the app. Private
+  // media never redirects — it always streams so access stays authorized.
+  if (item.visibility === "public") {
+    const url = publicUrl(key);
+    if (url) {
+      return NextResponse.redirect(url, 302);
+    }
+  }
+
+  const object = await getObject(key);
+  if (!object) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
   }
 
@@ -60,12 +67,10 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const cacheControl =
     item.visibility === "private" ? "private, no-store" : "public, max-age=31536000, immutable";
 
-  // Node's web-stream type doesn't structurally match the DOM lib's, hence
-  // the unknown hop; at runtime they're the same thing.
-  return new Response(Readable.toWeb(createReadStream(filePath)) as unknown as ReadableStream, {
+  return new Response(object.body, {
     headers: {
       "Content-Type": contentType,
-      "Content-Length": String(fileStat.size),
+      "Content-Length": String(object.size),
       "Cache-Control": cacheControl,
     },
   });

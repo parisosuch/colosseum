@@ -82,6 +82,11 @@ from the entrypoint) before serving, so nothing is orphaned. It's idempotent —
 a marker object makes every later boot a single check — so once it's done you
 can drop the local storage volume.
 
+To move **back** to local disk, run `bun run export-blobs` **while S3 is still
+configured** (it reads through the bucket and writes to `STORAGE_DIR`), then
+unset `S3_BUCKET` and redeploy. It's a deliberate one-off, not boot automation,
+because it needs both stores reachable at once.
+
 ## Local development
 
 Auth runs in-process (Better Auth) and the schema is owned by Drizzle

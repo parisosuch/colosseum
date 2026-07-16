@@ -63,6 +63,19 @@ docker run --rm -v colosseum_storage:/data -v "$PWD":/backup alpine \
 docker compose up -d
 ```
 
+### S3 / CDN storage (optional)
+
+By default blobs live on the local `storage` volume. To serve them from
+S3-compatible storage (AWS S3, Cloudflare R2, MinIO) — for stateless or
+multi-instance deploys, or CDN-backed delivery — set `S3_BUCKET` (and the
+other `S3_*` vars from `.env.example`) in the compose `.env`. Its presence
+switches every blob operation to the bucket; unset, nothing changes.
+
+Set `CDN_URL` to a CDN/edge base URL in front of the bucket and public media
+redirects straight there instead of streaming through the app; private media
+always streams so access stays authorized. After switching backends, run
+`bun run backfill-thumbnails` to warm grid thumbnails.
+
 ## Local development
 
 Auth runs in-process (Better Auth) and the schema is owned by Drizzle

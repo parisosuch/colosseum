@@ -8,6 +8,13 @@ release.
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-07-16
+
+### Fixed
+
+- Untitled blocks (such as images) no longer shift the channel grid when
+  hovered — the title line now reserves its height instead of collapsing.
+
 ## [1.6.0] - 2026-07-12
 
 ### Added

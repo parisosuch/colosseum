@@ -162,7 +162,7 @@ const ColumnComponent = memo(function ColumnComponent({
     <div className="group relative w-full">
       <div className="w-full aspect-square border rounded-lg text-left">{thumbnail}</div>
       <p className="group-hover:hidden truncate pt-1 text-caption">{gridTitle}</p>
-      <p className="hidden group-hover:block pt-1 text-caption">
+      <p className="hidden group-hover:block truncate pt-1 text-caption">
         {timeAgo(new Date(column.created_at))}
       </p>
     </div>

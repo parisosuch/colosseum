@@ -23,11 +23,11 @@ export default async function UsersPage() {
   const graph = await getInviteGraph();
 
   return (
-    <div className="w-full p-6 sm:p-12 space-y-8">
+    <div className="w-full flex-1 min-h-0 flex flex-col p-6 sm:p-12 space-y-8">
       <PageHeader crumbs={[{ label: "invites", href: "/invites" }, { label: "users" }]} />
       <p className="text-sm text-muted-foreground max-w-prose">
-        The invite network. Each arrow points from a member to someone they invited — larger nodes
-        have invited more people. Click a member to visit their profile.
+        The invite network. Each line connects a member to someone they invited — larger nodes have
+        invited more people. Hover to trace a member's connections, or click to visit their profile.
       </p>
       <UserGraph graph={graph} />
     </div>

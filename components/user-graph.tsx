@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 
+import { Badge } from "@/components/ui/badge";
 import type { InviteGraph, InviteGraphNode } from "@/lib/colosseum/invite";
 
 // Layout space. The SVG scales to its container via viewBox, so these are
@@ -117,9 +118,10 @@ function layout(graph: InviteGraph): Placed[] {
   }));
 }
 
-// Node radius grows with out-degree so prolific inviters read as hubs.
+// Node radius grows with out-degree so prolific inviters read as hubs. Kept
+// small, Obsidian-style, so labels and links breathe.
 function radiusFor(node: InviteGraphNode): number {
-  return 10 + Math.min(node.invited_count, 12) * 2.5;
+  return 5 + Math.min(node.invited_count, 12) * 1.5;
 }
 
 export default function UserGraph({ graph }: { graph: InviteGraph }) {
@@ -127,14 +129,67 @@ export default function UserGraph({ graph }: { graph: InviteGraph }) {
   const [hovered, setHovered] = useState<string | null>(null);
 
   const byId = useMemo(() => new Map(placed.map((p) => [p.user_id, p])), [placed]);
+  const hoveredNode = hovered ? byId.get(hovered) : null;
+
+  // Pan/zoom, Obsidian-style: a translate+scale transform on the whole graph,
+  // driven by drag-to-pan and wheel-to-zoom. Starts at identity so the server
+  // and client first-render match.
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [view, setView] = useState({ x: 0, y: 0, k: 1 });
+  const pan = useRef<{ px: number; py: number } | null>(null);
+  const moved = useRef(false);
+
+  // Map a client point into viewBox units, undoing the letterboxing that
+  // preserveAspectRatio="meet" adds. `s` is client-px-per-viewBox-unit.
+  const toViewBox = useCallback((clientX: number, clientY: number) => {
+    const rect = svgRef.current!.getBoundingClientRect();
+    const s = Math.min(rect.width / WIDTH, rect.height / HEIGHT);
+    const offX = (rect.width - WIDTH * s) / 2;
+    const offY = (rect.height - HEIGHT * s) / 2;
+    return { x: (clientX - rect.left - offX) / s, y: (clientY - rect.top - offY) / s, s };
+  }, []);
+
+  // Wheel-zoom toward the cursor. Attached natively (not via onWheel) because
+  // React registers wheel as a passive listener, where preventDefault is a
+  // no-op — so the page would scroll instead of the graph zooming.
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const { x: px, y: py } = toViewBox(e.clientX, e.clientY);
+      setView((v) => {
+        const k = Math.min(6, Math.max(0.2, v.k * Math.exp(-e.deltaY * 0.001)));
+        return { k, x: px - (px - v.x) * (k / v.k), y: py - (py - v.y) * (k / v.k) };
+      });
+    };
+    svg.addEventListener("wheel", onWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", onWheel);
+  }, [toViewBox]);
+
+  // No setPointerCapture: capturing on the SVG makes Chrome retarget the
+  // click to the SVG instead of the node's <a>, so node links never fire.
+  // The SVG fills the viewport, so a pan rarely leaves it; onPointerLeave ends
+  // any drag that does.
+  const onPointerDown = (e: React.PointerEvent) => {
+    pan.current = { px: e.clientX, py: e.clientY };
+    moved.current = false;
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!pan.current) return;
+    const { s } = toViewBox(e.clientX, e.clientY);
+    const dxc = e.clientX - pan.current.px;
+    const dyc = e.clientY - pan.current.py;
+    if (Math.hypot(dxc, dyc) > 3) moved.current = true;
+    pan.current = { px: e.clientX, py: e.clientY };
+    setView((v) => ({ ...v, x: v.x + dxc / s, y: v.y + dyc / s }));
+  };
+  const onPointerUp = () => {
+    pan.current = null;
+  };
 
   if (placed.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        No invites redeemed yet. Once someone signs up with an invite code, the network appears
-        here.
-      </p>
-    );
+    return <p className="text-sm text-muted-foreground">No members yet.</p>;
   }
 
   // Which nodes/edges to emphasise on hover: the hovered node and its direct
@@ -148,85 +203,103 @@ export default function UserGraph({ graph }: { graph: InviteGraph }) {
   };
 
   return (
-    <div className="w-full overflow-hidden rounded-lg border bg-card">
+    <div className="min-h-0 w-full flex-1 overflow-hidden rounded-lg border bg-card">
       <svg
+        ref={svgRef}
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-        className="h-auto w-full"
+        className="h-full w-full cursor-grab touch-none active:cursor-grabbing"
         role="img"
         aria-label="Network of members and the invites that connect them"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        onPointerLeave={onPointerUp}
       >
-        <defs>
-          <marker
-            id="invite-arrow"
-            viewBox="0 0 10 10"
-            refX="9"
-            refY="5"
-            markerWidth="6"
-            markerHeight="6"
-            orient="auto-start-reverse"
-          >
-            <path d="M 0 0 L 10 5 L 0 10 z" className="fill-muted-foreground" />
-          </marker>
-        </defs>
+        <g transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
+          {/* Thin, undirected links run straight between node centres — the
+            Obsidian graph look, where the arrow of causality is dropped in
+            favour of a clean web. */}
+          {graph.edges.map((edge, i) => {
+            const from = byId.get(edge.from);
+            const to = byId.get(edge.to);
+            if (!from || !to) return null;
+            const active = !hovered || edge.from === hovered || edge.to === hovered;
+            return (
+              <line
+                key={i}
+                x1={from.x}
+                y1={from.y}
+                x2={to.x}
+                y2={to.y}
+                className="stroke-muted-foreground transition-opacity"
+                strokeWidth={1}
+                opacity={active ? 0.35 : 0.08}
+              />
+            );
+          })}
 
-        {graph.edges.map((edge, i) => {
-          const from = byId.get(edge.from);
-          const to = byId.get(edge.to);
-          if (!from || !to) return null;
-          // Stop the line at the target node's edge so the arrowhead sits on
-          // the rim rather than under the circle.
-          const dx = to.x - from.x;
-          const dy = to.y - from.y;
-          const dist = Math.max(Math.hypot(dx, dy), 0.01);
-          const r = radiusFor(to) + 4;
-          const ex = to.x - (dx / dist) * r;
-          const ey = to.y - (dy / dist) * r;
-          const active = !hovered || edge.from === hovered || edge.to === hovered;
-          return (
-            <line
-              key={i}
-              x1={from.x}
-              y1={from.y}
-              x2={ex}
-              y2={ey}
-              className="stroke-muted-foreground"
-              strokeWidth={1.5}
-              opacity={active ? 0.6 : 0.12}
-              markerEnd="url(#invite-arrow)"
-            />
-          );
-        })}
-
-        {placed.map((node) => {
-          const r = radiusFor(node);
-          const active = isActive(node.user_id);
-          return (
-            <Link key={node.user_id} href={`/${node.handle}`}>
-              <g
-                className="cursor-pointer"
-                opacity={active ? 1 : 0.25}
-                onMouseEnter={() => setHovered(node.user_id)}
-                onMouseLeave={() => setHovered((h) => (h === node.user_id ? null : h))}
+          {placed.map((node) => {
+            const r = radiusFor(node);
+            const active = isActive(node.user_id);
+            return (
+              <Link
+                key={node.user_id}
+                href={`/${node.handle}`}
+                onClick={(e) => {
+                  // A pan that happens to end on a node shouldn't navigate.
+                  if (moved.current) e.preventDefault();
+                }}
               >
-                <circle
-                  cx={node.x}
-                  cy={node.y}
-                  r={r}
-                  className="fill-background stroke-foreground transition-colors hover:fill-accent"
-                  strokeWidth={1.5}
-                />
-                <text
-                  x={node.x}
-                  y={node.y + r + 14}
-                  textAnchor="middle"
-                  className="fill-foreground text-[13px]"
+                <g
+                  className="cursor-pointer transition-opacity"
+                  opacity={active ? 1 : 0.2}
+                  onMouseEnter={() => setHovered(node.user_id)}
+                  onMouseLeave={() => setHovered((h) => (h === node.user_id ? null : h))}
                 >
-                  @{node.handle}
-                </text>
-              </g>
-            </Link>
-          );
-        })}
+                  {/* Solid dot, brightening to the accent when its neighbourhood
+                    is lit — no outline, the way Obsidian renders nodes. */}
+                  <circle
+                    cx={node.x}
+                    cy={node.y}
+                    r={r}
+                    className={
+                      hovered && isActive(node.user_id)
+                        ? "fill-primary transition-colors"
+                        : "fill-muted-foreground transition-colors"
+                    }
+                  />
+                </g>
+              </Link>
+            );
+          })}
+
+          {/* Label for the hovered node only, drawn last so its pill sits above
+              every other dot. Labelling neighbours too piles names on top of
+              each other in a dense hub — hover one to read its name. A wide,
+              centred foreignObject lets the shadcn Badge size to its text. */}
+          {hoveredNode && (
+            // Anchor at the node in graph space, then scale(1/k) so the badge
+            // stays a constant screen size while the graph zooms. The gap below
+            // the dot uses r*k because the dot itself scales with zoom.
+            <g
+              transform={`translate(${hoveredNode.x} ${hoveredNode.y}) scale(${1 / view.k})`}
+              className="pointer-events-none"
+            >
+              <foreignObject
+                x={-100}
+                y={radiusFor(hoveredNode) * view.k + 6}
+                width={200}
+                height={28}
+                className="overflow-visible"
+              >
+                <div className="flex justify-center">
+                  <Badge variant="secondary">@{hoveredNode.handle}</Badge>
+                </div>
+              </foreignObject>
+            </g>
+          )}
+        </g>
       </svg>
     </div>
   );

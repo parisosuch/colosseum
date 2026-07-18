@@ -3,6 +3,7 @@
 import { Dispatch, SetStateAction, useState, useRef } from "react";
 import {
   uploadURLColumnAction,
+  uploadTweetColumnAction,
   uploadTextColumnAction,
   uploadImageColumnAction,
   uploadImageColumnFromUrlAction,
@@ -10,7 +11,7 @@ import {
   updateColumnMetaAction,
 } from "@/lib/colosseum/actions";
 import type { Column } from "@/lib/colosseum/column";
-import { imageSrcFromHtml, isURL } from "@/lib/utils";
+import { imageSrcFromHtml, isTweetUrl, isURL } from "@/lib/utils";
 import type { SessionUser } from "@/components/channel-board";
 import type { Channel } from "@/lib/colosseum/channel";
 import { GradientSpin } from "./gradient-spin";
@@ -198,10 +199,14 @@ export default function ColumnInput({
     const urlText = text.startsWith("https://") ? text : "https://" + text;
 
     // 1) Insert the column row. If this fails, surface it and stop — nothing
-    // was created.
+    // was created. A tweet URL captures its snapshot server-side here (so the
+    // block is deletion-proof); if that tweet can't be fetched the action falls
+    // back to a plain URL block, which the screenshot pass below then handles.
     let column: Column;
     try {
-      if (isUrlInput) {
+      if (isTweetUrl(text)) {
+        column = await uploadTweetColumnAction({ channelId: channel.id, url: urlText });
+      } else if (isUrlInput) {
         column = await uploadURLColumnAction({
           channelId: channel.id,
           text: urlText,
@@ -224,8 +229,10 @@ export default function ColumnInput({
     setText("");
     onBlockAdded();
 
-    if (!isUrlInput) {
-      toast.success("Column added.");
+    // Only plain URL blocks get the async screenshot pass. A tweet block already
+    // carries its snapshot; a text block has nothing to capture.
+    if (column.type !== "url") {
+      toast.success(column.type === "tweet" ? "Tweet added." : "Column added.");
       return;
     }
 

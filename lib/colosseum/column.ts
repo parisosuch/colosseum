@@ -17,11 +17,13 @@ import { db } from "@/lib/db";
 import { channel, channelMember, column, screenshot, userProfile } from "@/lib/db/schema";
 import { sanitizeSearch } from "@/lib/utils";
 import { deleteMediaByUrl } from "./blob";
+import { deleteTweetIfUnreferenced } from "./tweet";
+import { tweetIdFromUrl } from "@/lib/utils";
 
 export type Column = {
   id: number;
   created_at: string;
-  type: "url" | "text" | "image" | "channel" | "pdf";
+  type: "url" | "text" | "image" | "channel" | "pdf" | "tweet";
   title?: string;
   description?: string;
   url?: string;
@@ -323,6 +325,26 @@ export async function uploadURLColumn(input: {
   return toColumn(row);
 }
 
+// A tweet block reuses the `url` field for the tweet's permalink; the persisted
+// snapshot lives in the shared `tweet` table (keyed by the tweet id), captured
+// before this runs. Renders as an embedded tweet from that snapshot.
+export async function uploadTweetColumn(input: {
+  created_by: string;
+  channel_id: number;
+  url: string;
+}): Promise<Column> {
+  const [row] = await db
+    .insert(column)
+    .values({
+      type: "tweet",
+      url: input.url,
+      channel_id: input.channel_id,
+      created_by: input.created_by,
+    })
+    .returning();
+  return toColumn(row);
+}
+
 export async function uploadTextColumn(input: {
   created_by: string;
   channel_id: number;
@@ -458,6 +480,11 @@ export async function deleteColumn(column_id: number): Promise<void> {
   // is gone, GC the cached screenshot and its blob too.
   if (row.type === "url" && row.url) {
     await deleteScreenshotIfUnreferenced(row.url);
+  }
+  // Same story for a tweet block's shared snapshot + self-hosted media.
+  if (row.type === "tweet" && row.url) {
+    const id = tweetIdFromUrl(row.url);
+    if (id) await deleteTweetIfUnreferenced(id, row.url);
   }
 }
 

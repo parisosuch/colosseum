@@ -42,8 +42,11 @@ import {
   uploadImageColumn,
   uploadPdfColumn,
   uploadTextColumn,
+  uploadTweetColumn,
   uploadURLColumn,
 } from "./column";
+import { ingestTweet } from "./tweet";
+import { tweetIdFromUrl } from "@/lib/utils";
 import {
   Comment,
   createComment,
@@ -263,6 +266,28 @@ export async function uploadURLColumnAction(input: {
   const userId = await requireUserId();
   await requireContributableChannel(input.channelId, userId);
   return uploadURLColumn({ created_by: userId, channel_id: input.channelId, text: input.text });
+}
+
+// Add a tweet block. Captures the tweet's snapshot (data + self-hosted media)
+// before the block exists so it's already deletion-proof by the time it renders.
+// If the tweet can't be fetched (deleted, never existed, endpoint down), fall
+// back to a plain URL block so the user still gets a screenshot-backed link.
+export async function uploadTweetColumnAction(input: {
+  channelId: number;
+  url: string;
+}): Promise<Column> {
+  const userId = await requireUserId();
+  await requireContributableChannel(input.channelId, userId);
+  const id = tweetIdFromUrl(input.url);
+  if (id && (await ingestTweet(id, userId))) {
+    // Store a canonical id-based permalink, not the pasted URL: the snapshot is
+    // shared per tweet id, so every block for the same tweet must carry the same
+    // url string for the shared-snapshot GC (deleteTweetIfUnreferenced) to see
+    // its siblings. x.com/i/status/<id> redirects to the real tweet.
+    const url = `https://x.com/i/status/${id}`;
+    return uploadTweetColumn({ created_by: userId, channel_id: input.channelId, url });
+  }
+  return uploadURLColumn({ created_by: userId, channel_id: input.channelId, text: input.url });
 }
 
 export async function uploadTextColumnAction(input: {

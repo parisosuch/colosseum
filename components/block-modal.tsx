@@ -7,6 +7,8 @@ import { ChevronLeft, ChevronRight, GlobeIcon, LayersIcon, LinkIcon } from "luci
 import { toast } from "sonner";
 import ColumnComments from "./column-comments";
 import { Markdown } from "./markdown";
+import TweetBlock from "./tweet-block";
+import { tweetIdFromUrl } from "@/lib/utils";
 import type { Column } from "@/lib/colosseum/column";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import {
@@ -366,6 +368,10 @@ function BlockModalBody({
               Open PDF
             </a>
           </object>
+        ) : column.type === "tweet" ? (
+          <div className="max-h-full w-full max-w-xl overflow-y-auto">
+            <TweetBlock id={tweetIdFromUrl(column.url ?? "") ?? ""} />
+          </div>
         ) : (
           <a href={column.url} target="_blank" className="block w-full max-w-3xl">
             <div className="flex flex-row items-center gap-2 border rounded-md px-2 py-1">

@@ -11,6 +11,7 @@ import {
   Moon,
   ScrollText,
   SettingsIcon,
+  ShieldIcon,
   Sun,
   UserIcon,
 } from "lucide-react";
@@ -28,7 +29,15 @@ import {
 // The mobile avatar opens a bottom drawer of nav links (Profile, Settings,
 // Invites, Developers, Changelog), a theme picker, and Logout — the mobile
 // counterpart to the desktop avatar dropdown (UserMenu).
-export function ProfileDrawer({ handle, avatarUrl }: { handle: string; avatarUrl?: string }) {
+export function ProfileDrawer({
+  handle,
+  avatarUrl,
+  isAdmin,
+}: {
+  handle: string;
+  avatarUrl?: string;
+  isAdmin?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const { theme, setTheme } = useTheme();
@@ -69,6 +78,9 @@ export function ProfileDrawer({ handle, avatarUrl }: { handle: string; avatarUrl
             onClick={() => go("/settings")}
           />
           <NavRow icon={<MailIcon size={18} />} label="Invites" onClick={() => go("/invites")} />
+          {isAdmin ? (
+            <NavRow icon={<ShieldIcon size={18} />} label="Admin" onClick={() => go("/admin")} />
+          ) : null}
           <NavRow icon={<Code size={18} />} label="Developers" onClick={() => go("/developers")} />
           <NavRow
             icon={<ScrollText size={18} />}

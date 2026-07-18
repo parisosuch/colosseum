@@ -12,6 +12,7 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -35,7 +36,30 @@ export const user = pgTable("user", {
   image: text("image"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  // Instance admin (the self-hoster). The first account to sign up is promoted
+  // automatically in lib/auth.ts; admins moderate content and set limits.
+  is_admin: boolean("is_admin").notNull().default(false),
+  // A banned user is treated as signed out by getSessionUser.
+  banned: boolean("banned").notNull().default(false),
+  // Per-user overrides for the global limits in app_settings. null = fall back
+  // to the global default; a set value (0 = none, N = cap) wins over it.
+  invite_limit: integer("invite_limit"),
+  column_limit: integer("column_limit"),
 });
+
+// Instance-wide settings the admin edits at runtime (env vars would need a
+// rebuild). A single row, pinned to id = 1 by a check constraint. Every limit
+// uses the same convention: null = unlimited, 0 = none, N = cap.
+export const appSettings = pgTable(
+  "app_settings",
+  {
+    id: integer("id").primaryKey().default(1),
+    max_invites_per_user: integer("max_invites_per_user"),
+    max_columns_per_user: integer("max_columns_per_user"),
+    updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [check("app_settings_singleton", sql`${t.id} = 1`)],
+);
 
 export const session = pgTable("session", {
   id: uuid("id").primaryKey().defaultRandom(),

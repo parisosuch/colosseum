@@ -12,6 +12,7 @@ import { tweetIdFromUrl } from "@/lib/utils";
 import type { Column } from "@/lib/colosseum/column";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import {
+  adminDeleteColumnAction,
   deleteColumnAction,
   moveColumnAction,
   updateColumnDescriptionAction,
@@ -20,6 +21,7 @@ import {
   updateColumnTitleAction,
 } from "@/lib/colosseum/actions";
 import type { PickableChannel } from "@/components/add-block-drawer";
+import AdminDeleteButton from "@/components/admin-delete-button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -53,6 +55,9 @@ type BlockModalProps = {
   isOwner: boolean;
   // May edit/delete *this* block: the channel owner or the block's own creator.
   canEdit: boolean;
+  // Viewer is an admin moderating a public/open channel (false for private).
+  // Unlocks deleting a block they don't own.
+  isAdmin: boolean;
   handle: string;
   // The signed-in viewer's id, or null when signed out. Drives commenting.
   viewerId: string | null;
@@ -143,6 +148,7 @@ export default function BlockModal({
   onOpenChange,
   isOwner,
   canEdit,
+  isAdmin,
   handle,
   viewerId,
   setColumns,
@@ -184,6 +190,7 @@ export default function BlockModal({
             column={displayColumn}
             isOwner={isOwner}
             canEdit={canEdit}
+            isAdmin={isAdmin}
             handle={handle}
             viewerId={viewerId}
             setColumns={setColumns}
@@ -206,6 +213,7 @@ function BlockModalBody({
   column,
   isOwner,
   canEdit,
+  isAdmin,
   handle,
   viewerId,
   setColumns,
@@ -219,6 +227,7 @@ function BlockModalBody({
   column: Column;
   isOwner: boolean;
   canEdit: boolean;
+  isAdmin: boolean;
   handle: string;
   viewerId: string | null;
   setColumns: Dispatch<SetStateAction<Column[]>>;
@@ -566,6 +575,16 @@ function BlockModalBody({
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
+            ) : isAdmin ? (
+              <AdminDeleteButton
+                label="Delete block"
+                description="Delete this block from a public channel as an admin. This can’t be undone."
+                size="sm"
+                onDelete={async () => {
+                  await adminDeleteColumnAction(column.id);
+                  setColumns((cols) => cols.filter((c) => c.id !== column.id));
+                }}
+              />
             ) : null}
           </div>
         </div>

@@ -9,13 +9,23 @@ import {
   uploadImageColumnFromUrlAction,
   uploadPdfColumnAction,
   updateColumnMetaAction,
+  getColumnQuotaAction,
 } from "@/lib/colosseum/actions";
 import type { Column } from "@/lib/colosseum/column";
+import { columnLimitMessage } from "@/lib/quota";
 import { imageSrcFromHtml, isTweetUrl, isURL } from "@/lib/utils";
 import type { SessionUser } from "@/components/channel-board";
 import type { Channel } from "@/lib/colosseum/channel";
 import { GradientSpin } from "./gradient-spin";
 import { toast } from "sonner";
+
+// On an add failure, prefer a specific "you hit your column limit" message
+// (fetched fresh, since the server-side reason is sanitized in prod) over the
+// generic fallback.
+async function columnLimitToast(fallback: string): Promise<string> {
+  const quota = await getColumnQuotaAction().catch(() => null);
+  return (quota && columnLimitMessage(quota, quota.admins)) || fallback;
+}
 
 // Kept in sync with the server-side limits in lib/colosseum/blob.ts.
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10MB
@@ -160,7 +170,7 @@ export default function ColumnInput({
       }
     } catch (e) {
       console.error(e);
-      toast.error("Couldn't upload one or more files. Please try again.");
+      toast.error(await columnLimitToast("Couldn't upload one or more files. Please try again."));
     } finally {
       setUploading(0);
     }
@@ -219,7 +229,7 @@ export default function ColumnInput({
       }
     } catch (e) {
       console.error(e);
-      toast.error("Couldn't add that column. Please try again.");
+      toast.error(await columnLimitToast("Couldn't add that column. Please try again."));
       return;
     }
 

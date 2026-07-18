@@ -50,6 +50,7 @@ export default async function ChannelPage({ params }: ChannelPageParams) {
   if (!canReadChannel(channel, user?.id ?? null, isMember)) redirect("/");
 
   const isOwner = !!user && channel.owner_id === user.id;
+  const isAdmin = !!user?.is_admin;
   const canContribute = canContributeChannel(channel, user?.id ?? null, isMember);
 
   // Server-render the first page of blocks (plus channel-wide count for the
@@ -98,6 +99,7 @@ export default async function ChannelPage({ params }: ChannelPageParams) {
       channel={channel}
       handle={handle}
       isOwner={isOwner}
+      isAdmin={isAdmin}
       canContribute={canContribute}
       user={user}
       initialCount={totalCount}

@@ -8,8 +8,11 @@
 
 import { inArray } from "drizzle-orm";
 
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import {
+  account,
+  appSettings,
   channel,
   channelMember,
   column,
@@ -187,6 +190,26 @@ export async function seed(): Promise<void> {
       name: u.name,
       email: u.email,
       emailVerified: true,
+      // Alice is the instance admin, mirroring the first-user promotion in
+      // lib/auth.ts so tests have a known admin and a known non-admin (bob).
+      is_admin: u.id === USERS.alice.id,
+    })),
+  );
+  // Instance settings singleton (limits unset = unlimited). Idempotent across
+  // re-seeds; not user-scoped, so the cleanup above leaves it alone.
+  await db.insert(appSettings).values({ id: 1 }).onConflictDoNothing();
+
+  // Credential logins for the two fixture users so `make dev` can actually sign
+  // in — both use the password "password". Hashed with Better Auth's own hasher
+  // so the login flow verifies them. The account rows cascade with the user on
+  // re-seed (deleted above), so no separate cleanup is needed.
+  const passwordHash = await (await auth.$context).password.hash("password");
+  await db.insert(account).values(
+    [USERS.alice, USERS.bob].map((u) => ({
+      accountId: u.id,
+      providerId: "credential",
+      userId: u.id,
+      password: passwordHash,
     })),
   );
   await db

@@ -10,6 +10,7 @@ import {
   Moon,
   ScrollText,
   SettingsIcon,
+  ShieldIcon,
   Sun,
   UserIcon,
 } from "lucide-react";
@@ -39,7 +40,7 @@ function ThemeIcon({ theme }: { theme?: string }) {
 // The desktop avatar menu body: Profile, Settings, Invites, Developers,
 // Changelog, a Theme submenu, and Logout. (The mobile bottom nav mirrors these
 // in ProfileDrawer.)
-export function UserMenuItems({ handle }: { handle: string }) {
+export function UserMenuItems({ handle, isAdmin }: { handle: string; isAdmin?: boolean }) {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
 
@@ -66,6 +67,13 @@ export function UserMenuItems({ handle }: { handle: string }) {
         <MailIcon />
         Invites
       </DropdownMenuItem>
+
+      {isAdmin ? (
+        <DropdownMenuItem onSelect={() => router.push("/admin")}>
+          <ShieldIcon />
+          Admin
+        </DropdownMenuItem>
+      ) : null}
 
       <DropdownMenuItem onSelect={() => router.push("/developers")}>
         <Code />
@@ -109,7 +117,15 @@ export function UserMenuItems({ handle }: { handle: string }) {
 
 // Avatar in the nav opens the shared menu. (Logged-out users get the standalone
 // ThemeSwitcher instead.)
-export function UserMenu({ avatarUrl, handle }: { avatarUrl?: string; handle: string }) {
+export function UserMenu({
+  avatarUrl,
+  handle,
+  isAdmin,
+}: {
+  avatarUrl?: string;
+  handle: string;
+  isAdmin?: boolean;
+}) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -119,7 +135,7 @@ export function UserMenu({ avatarUrl, handle }: { avatarUrl?: string; handle: st
         </Avatar>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <UserMenuItems handle={handle} />
+        <UserMenuItems handle={handle} isAdmin={isAdmin} />
       </DropdownMenuContent>
     </DropdownMenu>
   );

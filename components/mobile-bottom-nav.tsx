@@ -19,6 +19,7 @@ export default async function MobileBottomNav() {
     <MobileBottomBar
       handle={profile.handle}
       avatarUrl={profile.avatar_url}
+      isAdmin={user.is_admin}
       channels={channels.map((c) => ({ id: c.id, title: c.title, private: c.private }))}
     />
   );

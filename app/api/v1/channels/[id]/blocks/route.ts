@@ -9,6 +9,7 @@ import {
   authorizeChannelRead,
   json,
 } from "@/lib/colosseum/api-auth";
+import { assertColumnQuota } from "@/lib/colosseum/admin";
 import { putImageBlobFromUrl } from "@/lib/colosseum/blob";
 import { getChannel } from "@/lib/colosseum/channel";
 import {
@@ -75,6 +76,13 @@ export async function POST(req: Request, { params }: Ctx) {
   const channel = await getChannel(channelId);
   const denied = await authorizeChannelContribute(channel, auth.userId);
   if (denied) return denied;
+
+  // Same per-user block quota the server actions enforce — API uploads count too.
+  try {
+    await assertColumnQuota(auth.userId);
+  } catch (e) {
+    return apiError(e instanceof Error ? e.message : "Block limit reached.", 403);
+  }
 
   let body: Record<string, unknown>;
   try {

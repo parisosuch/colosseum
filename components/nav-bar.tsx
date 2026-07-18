@@ -64,7 +64,11 @@ export default async function NavBar() {
             On mobile the avatar moves to the bottom bar, so hide it here. */}
         {userProfile ? (
           <div className="hidden sm:block">
-            <UserMenu avatarUrl={userProfile.avatar_url} handle={userProfile.handle} />
+            <UserMenu
+              avatarUrl={userProfile.avatar_url}
+              handle={userProfile.handle}
+              isAdmin={user.is_admin}
+            />
           </div>
         ) : (
           <ThemeSwitcher />

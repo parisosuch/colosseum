@@ -12,6 +12,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
+import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { account, session, user, verification } from "@/lib/db/schema";
@@ -28,6 +29,16 @@ export const auth = betterAuth({
   // columns; Postgres generates them via the columns' defaultRandom().
   advanced: {
     database: { generateId: "uuid" },
+  },
+  // Surface the admin flags on the session user. `input: false` keeps them
+  // server-owned — a client can't set them at sign-up. The per-user invite/
+  // column limit overrides aren't declared here; they're read directly via the
+  // admin data layer, not needed on every session.
+  user: {
+    additionalFields: {
+      is_admin: { type: "boolean", input: false, defaultValue: false },
+      banned: { type: "boolean", input: false, defaultValue: false },
+    },
   },
   emailAndPassword: {
     enabled: true,
@@ -68,8 +79,19 @@ export const auth = betterAuth({
             });
           }
         },
-        // Audit trail only — best effort, never fails the sign-up.
+        // Audit trail + first-user promotion — best effort, never fails sign-up.
         after: async (newUser, ctx) => {
+          // The very first account (the self-hoster) becomes the instance admin.
+          // ponytail: "exactly one user row" == first sign-up; safe for the
+          // single-operator case a self-host implies.
+          try {
+            const rows = await db.select({ id: user.id }).from(user).limit(2);
+            if (rows.length === 1) {
+              await db.update(user).set({ is_admin: true }).where(eq(user.id, newUser.id));
+            }
+          } catch (e) {
+            console.error("Failed to promote first user to admin:", e);
+          }
           const raw = (ctx?.body as { inviteCode?: unknown } | undefined)?.inviteCode;
           const code = typeof raw === "string" ? raw.trim() : "";
           if (!code) return;
@@ -91,5 +113,10 @@ export const auth = betterAuth({
 // caller through this.
 export const getSessionUser = cache(async () => {
   const result = await auth.api.getSession({ headers: await headers() });
-  return result?.user ?? null;
+  const sessionUser = result?.user ?? null;
+  // ponytail: a banned user is treated as signed out — every gate already
+  // rejects a null session. Their session row survives until it expires; add
+  // explicit revocation if a hard, immediate kill is ever needed.
+  if (sessionUser?.banned) return null;
+  return sessionUser;
 });

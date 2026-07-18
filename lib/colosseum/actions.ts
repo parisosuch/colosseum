@@ -57,6 +57,22 @@ import {
 } from "./comment";
 import { deleteMediaByUrl, putImageBlob, putImageBlobFromUrl, putPdfBlob } from "./blob";
 import { createInviteCode, InviteCode, revokeInviteCode } from "./invite";
+import {
+  AdminUser,
+  AppSettings,
+  Quota,
+  assertColumnQuota,
+  assertInviteQuota,
+  getAdminHandles,
+  getAppSettings,
+  getColumnQuota,
+  listUsers,
+  requireAdmin,
+  setUserAdmin,
+  setUserBanned,
+  setUserLimits,
+  updateAppSettings,
+} from "./admin";
 import { revokeApiToken } from "./api-token";
 import { getScreenshotsForUrls, ColumnScreenshot } from "./screenshot-data";
 import {
@@ -112,6 +128,10 @@ async function requireContributableChannel(channelId: number, userId: string): P
   if (!canContributeChannel(channel, userId, isMember)) {
     throw new Error("You do not have permission to add to this channel.");
   }
+  // Every content upload routes through here, so the per-user block quota is
+  // enforced once at this choke point (addChannelColumnAction guards separately,
+  // as it owns rather than contributes).
+  await assertColumnQuota(userId);
   return channel;
 }
 
@@ -410,6 +430,7 @@ export async function addChannelColumnAction(
 ): Promise<void> {
   const userId = await requireUserId();
   await requireOwnedChannel(hostChannelId, userId);
+  await assertColumnQuota(userId);
   const linked = await getChannel(linkedChannelId);
   if (!linked || linked.private) {
     throw new Error("Not found.");
@@ -478,16 +499,39 @@ export async function getScreenshotsForUrlsAction(
 // ---------------------------------------------------------------------------
 // Invites
 // ---------------------------------------------------------------------------
+// Discriminated result so the invite reason (limit hit, disabled) rides back as
+// data — thrown server-action errors are sanitized in production.
+export type InviteCreateResult = { ok: true; invite: InviteCode } | { ok: false; message: string };
+
 export async function createInviteCodeAction(input?: {
   max_uses?: number;
   note?: string | null;
-}): Promise<InviteCode> {
+}): Promise<InviteCreateResult> {
   const userId = await requireUserId();
-  return createInviteCode({
+  const max_uses = input?.max_uses ?? 1;
+  try {
+    await assertInviteQuota(userId, max_uses);
+  } catch (e) {
+    return {
+      ok: false,
+      message: e instanceof Error ? e.message : "You can't create more invites.",
+    };
+  }
+  const invite = await createInviteCode({
     created_by: userId,
-    max_uses: input?.max_uses ?? 1,
+    max_uses,
     note: input?.note ?? null,
   });
+  return { ok: true, invite };
+}
+
+// The caller's current column quota plus the admin handles to ask — used by the
+// add-block flows to explain a limit rejection in the UI (the server still
+// enforces it authoritatively).
+export async function getColumnQuotaAction(): Promise<Quota & { admins: string[] }> {
+  const userId = await requireUserId();
+  const [quota, admins] = await Promise.all([getColumnQuota(userId), getAdminHandles()]);
+  return { ...quota, admins };
 }
 
 export async function revokeInviteCodeAction(code: string): Promise<void> {
@@ -583,4 +627,61 @@ export async function updateUserProfileAction(updates: {
     }
     throw e;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Admin — instance moderation and limits. Every action gates on requireAdmin
+// (which also rejects banned users, since getSessionUser nulls them).
+// ---------------------------------------------------------------------------
+
+// Delete any block in a public/open channel. Private channels stay owner-only —
+// admins don't reach into members-only spaces.
+export async function adminDeleteColumnAction(columnId: number): Promise<void> {
+  await requireAdmin();
+  const col = await getColumn(columnId);
+  if (!col) throw new Error("Not found.");
+  const channel = await getChannel(col.channel_id);
+  if (!channel || channel.private) throw new Error("Not found.");
+  await deleteColumn(columnId);
+}
+
+// Delete any public/open channel outright.
+export async function adminDeleteChannelAction(channelId: number): Promise<void> {
+  await requireAdmin();
+  const channel = await getChannel(channelId);
+  if (!channel || channel.private) throw new Error("Not found.");
+  await deleteChannel(channelId);
+}
+
+export async function listUsersAction(): Promise<AdminUser[]> {
+  await requireAdmin();
+  return listUsers();
+}
+
+export async function getAppSettingsAction(): Promise<AppSettings> {
+  await requireAdmin();
+  return getAppSettings();
+}
+
+export async function updateAppSettingsAction(settings: AppSettings): Promise<void> {
+  await requireAdmin();
+  await updateAppSettings(settings);
+}
+
+export async function setUserBannedAction(userId: string, banned: boolean): Promise<void> {
+  await requireAdmin();
+  await setUserBanned(userId, banned);
+}
+
+export async function setUserAdminAction(userId: string, isAdmin: boolean): Promise<void> {
+  await requireAdmin();
+  await setUserAdmin(userId, isAdmin);
+}
+
+export async function setUserLimitsAction(
+  userId: string,
+  limits: { invite_limit: number | null; column_limit: number | null },
+): Promise<void> {
+  await requireAdmin();
+  await setUserLimits(userId, limits);
 }

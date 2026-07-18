@@ -187,6 +187,27 @@ const ColumnComponent = memo(function ColumnComponent({
     );
   }
 
+  // Tweet embeds render their own <button> (copy link), so the card can't be a
+  // real <button> without nesting them (invalid HTML). Use a role=button div.
+  if (column.type === "tweet") {
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => onOpen(column.id)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onOpen(column.id);
+          }
+        }}
+        className={`cv-card aspect-square w-full overflow-hidden text-left ${cardPress}`}
+      >
+        {gridInner}
+      </div>
+    );
+  }
+
   return (
     <button
       type="button"

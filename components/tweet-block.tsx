@@ -26,7 +26,7 @@ export default function TweetBlock({ id, compact = false }: { id: string; compac
     // is the click target that opens the modal.
     return (
       <div
-        className="pointer-events-none h-full w-full overflow-hidden [&_.react-tweet-theme]:m-0"
+        className="pointer-events-none h-full w-full overflow-hidden [&_.react-tweet-theme]:m-0 [&_.react-tweet-theme]:[--tweet-body-font-size:0.8125rem] [&_.react-tweet-theme]:[--tweet-body-line-height:1.1rem] [&_.react-tweet-theme]:[--tweet-header-font-size:0.8125rem] [&_.react-tweet-theme]:[--tweet-header-line-height:1rem] [&_.react-tweet-theme]:[--tweet-info-font-size:0.75rem] [&_[class*='videoButton']]:hidden [&_[class*='watchOnTwitter']]:hidden"
         style={{ ["--tweet-container-margin" as string]: "0" }}
       >
         {inner}

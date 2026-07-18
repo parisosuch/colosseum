@@ -440,6 +440,38 @@ export async function moveColumn(column_id: number, channel_id: number): Promise
   await db.update(column).set({ channel_id }).where(eq(column.id, column_id));
 }
 
+// Duplicate a block into another channel, leaving the source untouched. The new
+// row copies every content field but gets a new channel/creator and its own
+// `image` (the action passes a fresh media reference for media blocks, so the
+// copy and the original don't share a media row — deleting one mustn't dangle
+// the other). Authorization is enforced by the action.
+export async function copyColumn(input: {
+  source: Column;
+  channel_id: number;
+  created_by: string;
+  // Media URL for the copy: a fresh media reference for media blocks, the
+  // source's external URL for url/external-image blocks, or null.
+  image: string | null;
+}): Promise<Column> {
+  const { source } = input;
+  const [row] = await db
+    .insert(column)
+    .values({
+      type: source.type,
+      title: source.title,
+      description: source.description,
+      url: source.url,
+      text: source.text,
+      image: input.image,
+      linked_channel_id: source.linked_channel_id,
+      tags: source.tags,
+      channel_id: input.channel_id,
+      created_by: input.created_by,
+    })
+    .returning();
+  return toColumn(row);
+}
+
 // Set title and/or description in one update — used to pre-fill a URL block
 // from its page metadata after capture.
 export async function updateColumnMeta(

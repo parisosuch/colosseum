@@ -3,7 +3,15 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, GlobeIcon, LayersIcon, LinkIcon } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  FolderInput,
+  GlobeIcon,
+  LayersIcon,
+  LinkIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 import ColumnComments from "./column-comments";
 import { Markdown } from "./markdown";
@@ -13,6 +21,7 @@ import type { Column } from "@/lib/colosseum/column";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import {
   adminDeleteColumnAction,
+  copyColumnAction,
   deleteColumnAction,
   moveColumnAction,
   updateColumnDescriptionAction,
@@ -35,6 +44,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   CommandDialog,
   CommandEmpty,
@@ -348,6 +358,26 @@ function BlockModalBody({
     }
   };
 
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [copying, setCopying] = useState(false);
+
+  // Copy leaves the source in place, so — unlike move — the current board is
+  // untouched; the duplicate lands in the target channel.
+  const handleCopy = async (targetChannelId: number) => {
+    if (copying) return;
+    setCopying(true);
+    try {
+      await copyColumnAction(column.id, targetChannelId);
+      setCopyOpen(false);
+      toast.success("Copied.");
+    } catch (e) {
+      console.error(e);
+      toast.error("Couldn't copy that column. Please try again.");
+    } finally {
+      setCopying(false);
+    }
+  };
+
   const handleSave = async () => {
     try {
       await handleTitleChange();
@@ -507,15 +537,35 @@ function BlockModalBody({
             ) : null}
             {isOwner && moveTargets.length > 0 ? (
               <>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={moving}
-                  onClick={() => setMoveOpen(true)}
-                >
-                  Move
-                </Button>
-                {/* Searchable picker so it scales past a handful of channels. */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Move to another channel"
+                      disabled={moving}
+                      onClick={() => setMoveOpen(true)}
+                    >
+                      <FolderInput />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Move to another channel</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Copy to another channel"
+                      disabled={copying}
+                      onClick={() => setCopyOpen(true)}
+                    >
+                      <Copy />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Copy to another channel</TooltipContent>
+                </Tooltip>
+                {/* Searchable pickers so they scale past a handful of channels. */}
                 <CommandDialog
                   open={moveOpen}
                   onOpenChange={setMoveOpen}
@@ -532,6 +582,34 @@ function BlockModalBody({
                         keywords={[c.title]}
                         disabled={moving}
                         onSelect={() => handleMove(c.id)}
+                      >
+                        <LayersIcon />
+                        <span className="truncate">{c.title}</span>
+                        {c.private ? (
+                          <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                            private
+                          </span>
+                        ) : null}
+                      </CommandItem>
+                    ))}
+                  </CommandList>
+                </CommandDialog>
+                <CommandDialog
+                  open={copyOpen}
+                  onOpenChange={setCopyOpen}
+                  title="Copy to channel"
+                  description="Search your channels and copy this column into one of them."
+                >
+                  <CommandInput placeholder="Search channels…" />
+                  <CommandList>
+                    <CommandEmpty>No channels found.</CommandEmpty>
+                    {moveTargets.map((c) => (
+                      <CommandItem
+                        key={c.id}
+                        value={`channel-${c.id}`}
+                        keywords={[c.title]}
+                        disabled={copying}
+                        onSelect={() => handleCopy(c.id)}
                       >
                         <LayersIcon />
                         <span className="truncate">{c.title}</span>

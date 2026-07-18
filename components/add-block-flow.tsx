@@ -16,6 +16,22 @@ import { Button } from "@/components/ui/button";
 
 export type PickableChannel = { id: number; title: string; private: boolean };
 
+// Per-type upload caps, kept in sync with the server limits in
+// lib/colosseum/blob.ts (and the next.config server-action body limit, which
+// must sit above the largest of these). Validated client-side so an oversized
+// file gets a clear toast instead of an opaque server-action body error.
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_PDF_BYTES = 25 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
+
+function fileTooLargeMessage(file: File): string | null {
+  const isVideo = file.type.startsWith("video/");
+  const isPdf = file.type === "application/pdf";
+  const cap = isVideo ? MAX_VIDEO_BYTES : isPdf ? MAX_PDF_BYTES : MAX_IMAGE_BYTES;
+  if (file.size <= cap) return null;
+  return `That file is too large (max ${isVideo ? "100MB" : isPdf ? "25MB" : "10MB"}).`;
+}
+
 // Shared state machine for the quick-add flow: paste/type block content,
 // Continue, then pick which channel to drop it in. A URL becomes a link block
 // (and kicks off a screenshot), an image/video/PDF becomes a media block, anything
@@ -54,6 +70,11 @@ export function useAddBlockFlow(channels: PickableChannel[]) {
       selected.type !== "application/pdf"
     ) {
       toast.error("That's not an image, video, or PDF.");
+      return;
+    }
+    const tooLarge = fileTooLargeMessage(selected);
+    if (tooLarge) {
+      toast.error(tooLarge);
       return;
     }
     setFile(selected);

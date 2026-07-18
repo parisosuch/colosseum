@@ -7,6 +7,28 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// A twitter.com / x.com status URL → its snowflake id, or null for anything
+// else. Pure string parsing (no server-only deps) so client components can
+// classify a pasted URL as a tweet.
+export function tweetIdFromUrl(url: string): string | null {
+  let u: URL;
+  try {
+    u = new URL(url.startsWith("http") ? url : `https://${url}`);
+  } catch {
+    return null;
+  }
+  const host = u.hostname.replace(/^www\./, "");
+  if (host !== "twitter.com" && host !== "x.com" && host !== "mobile.twitter.com") {
+    return null;
+  }
+  const m = /^\/[^/]+\/status\/(\d+)/.exec(u.pathname);
+  return m?.[1] ?? null;
+}
+
+export function isTweetUrl(url: string): boolean {
+  return tweetIdFromUrl(url) !== null;
+}
+
 export function isURL(text: string): boolean {
   let url: URL;
   try {

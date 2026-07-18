@@ -5,12 +5,14 @@ import { ChevronLeftIcon, ImageIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import {
+  getColumnQuotaAction,
   uploadImageColumnAction,
   uploadPdfColumnAction,
   uploadTextColumnAction,
   uploadURLColumnAction,
   uploadVideoColumnAction,
 } from "@/lib/colosseum/actions";
+import { columnLimitMessage } from "@/lib/quota";
 import { isURL } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -111,7 +113,11 @@ export function useAddBlockFlow(channels: PickableChannel[]) {
       onOpenChange(false);
     } catch (e) {
       console.error(e);
-      toast.error("Couldn't add that column. Please try again.");
+      const quota = await getColumnQuotaAction().catch(() => null);
+      toast.error(
+        (quota && columnLimitMessage(quota, quota.admins)) ||
+          "Couldn't add that column. Please try again.",
+      );
       setSubmitting(false);
     }
   };

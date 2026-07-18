@@ -7,14 +7,11 @@
 // sync with the owning channel's privacy. Signed URLs stay deferred — a
 // single-container deploy has no shared cache in front of this route.
 
-import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
-import { Readable } from "node:stream";
-
 import { NextRequest, NextResponse } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
-import { blobDiskPath, ensureThumbnail, getMedia } from "@/lib/colosseum/blob";
+import { blobKey, ensureThumbnail, getMedia, thumbKey } from "@/lib/colosseum/blob";
+import { getObject, objectSize, publicUrl, signedUrl } from "@/lib/colosseum/storage";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -38,21 +35,38 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   }
 
   // `?thumb` serves a downsized webp derived from the same bytes (used by grid
-  // previews). Generation is idempotent + cached on disk; a non-image blob (or
-  // any failure) falls back to the full bytes.
-  let filePath = blobDiskPath(item.sha256);
+  // previews). Generation is idempotent + cached; a non-image blob (or any
+  // failure) falls back to the full bytes.
+  let key = blobKey(item.sha256);
   let contentType = item.mime;
   if (req.nextUrl.searchParams.has("thumb")) {
     const thumb = await ensureThumbnail(item.sha256).catch(() => null);
     if (thumb) {
-      filePath = thumb;
+      key = thumbKey(item.sha256);
       contentType = "image/webp";
     }
   }
 
-  const fileStat = await stat(filePath).catch(() => null);
-  if (!fileStat) {
-    return NextResponse.json({ error: "Not found." }, { status: 404 });
+  // Keep the app off the byte path when the backend can serve the object
+  // itself. Public → a cacheable CDN/edge URL. Private → a short-lived signed
+  // URL, minted only after the ownership check above, so access stays gated.
+  // Either falls back to streaming when the backend can't hand out a URL
+  // (local disk, or S3 without a CDN for public).
+  if (item.visibility === "public") {
+    const url = publicUrl(key);
+    if (url) {
+      return NextResponse.redirect(url, 302);
+    }
+  } else {
+    const url = await signedUrl(key);
+    if (url) {
+      // The redirect itself must never be cached — the signature expires and
+      // is per-viewer; only the private user who just authorized may follow it.
+      return NextResponse.redirect(url, {
+        status: 302,
+        headers: { "Cache-Control": "private, no-store" },
+      });
+    }
   }
 
   // A media id's bytes never change, so public responses cache forever;
@@ -61,41 +75,48 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     item.visibility === "private" ? "private, no-store" : "public, max-age=31536000, immutable";
 
   // Honor a byte-range request (video seeking; Safari won't play a video at all
-  // without it). Absent/unparseable Range → full 200 as before. `?thumb` bytes
-  // are tiny, so range there just falls through to the full response.
-  const size = fileStat.size;
+  // without one). Only reached on the streaming path — CDN/signed-URL redirects
+  // above hand range off to the object store's own edge. Unparseable/absent
+  // Range falls through to the full 200.
   const range = req.headers.get("range");
   const match = range ? /^bytes=(\d*)-(\d*)$/.exec(range.trim()) : null;
   if (match && (match[1] || match[2])) {
-    const start = match[1] ? Number(match[1]) : size - Number(match[2]);
-    const end = match[1] && match[2] ? Number(match[2]) : size - 1;
-    if (start > end || start < 0 || end >= size) {
+    const total = await objectSize(key);
+    if (total == null) {
+      return NextResponse.json({ error: "Not found." }, { status: 404 });
+    }
+    const start = match[1] ? Number(match[1]) : total - Number(match[2]);
+    const end = match[1] && match[2] ? Number(match[2]) : total - 1;
+    if (start > end || start < 0 || end >= total) {
       return new NextResponse(null, {
         status: 416,
-        headers: { "Content-Range": `bytes */${size}`, "Accept-Ranges": "bytes" },
+        headers: { "Content-Range": `bytes */${total}`, "Accept-Ranges": "bytes" },
       });
     }
-    return new Response(
-      Readable.toWeb(createReadStream(filePath, { start, end })) as unknown as ReadableStream,
-      {
-        status: 206,
-        headers: {
-          "Content-Type": contentType,
-          "Content-Length": String(end - start + 1),
-          "Content-Range": `bytes ${start}-${end}/${size}`,
-          "Accept-Ranges": "bytes",
-          "Cache-Control": cacheControl,
-        },
+    const slice = await getObject(key, { start, end });
+    if (!slice) {
+      return NextResponse.json({ error: "Not found." }, { status: 404 });
+    }
+    return new Response(slice.body, {
+      status: 206,
+      headers: {
+        "Content-Type": contentType,
+        "Content-Length": String(end - start + 1),
+        "Content-Range": `bytes ${start}-${end}/${total}`,
+        "Accept-Ranges": "bytes",
+        "Cache-Control": cacheControl,
       },
-    );
+    });
   }
 
-  // Node's web-stream type doesn't structurally match the DOM lib's, hence
-  // the unknown hop; at runtime they're the same thing.
-  return new Response(Readable.toWeb(createReadStream(filePath)) as unknown as ReadableStream, {
+  const object = await getObject(key);
+  if (!object) {
+    return NextResponse.json({ error: "Not found." }, { status: 404 });
+  }
+  return new Response(object.body, {
     headers: {
       "Content-Type": contentType,
-      "Content-Length": String(size),
+      "Content-Length": String(object.size),
       "Accept-Ranges": "bytes",
       "Cache-Control": cacheControl,
     },

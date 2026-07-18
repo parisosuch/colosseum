@@ -3,19 +3,30 @@
 import { Dispatch, SetStateAction, useEffect, useState, useRef } from "react";
 import {
   uploadURLColumnAction,
+  uploadTweetColumnAction,
   uploadTextColumnAction,
   uploadImageColumnAction,
   uploadImageColumnFromUrlAction,
   uploadPdfColumnAction,
   updateColumnMetaAction,
+  getColumnQuotaAction,
 } from "@/lib/colosseum/actions";
 import type { Column } from "@/lib/colosseum/column";
-import { imageSrcFromHtml, isURL } from "@/lib/utils";
+import { columnLimitMessage } from "@/lib/quota";
+import { imageSrcFromHtml, isTweetUrl, isURL } from "@/lib/utils";
 import { resumeVideoUploads, startVideoUpload, type UploadHandlers } from "@/lib/resumable-upload";
 import type { SessionUser } from "@/components/channel-board";
 import type { Channel } from "@/lib/colosseum/channel";
 import { GradientSpin } from "./gradient-spin";
 import { toast } from "sonner";
+
+// On an add failure, prefer a specific "you hit your column limit" message
+// (fetched fresh, since the server-side reason is sanitized in prod) over the
+// generic fallback.
+async function columnLimitToast(fallback: string): Promise<string> {
+  const quota = await getColumnQuotaAction().catch(() => null);
+  return (quota && columnLimitMessage(quota, quota.admins)) || fallback;
+}
 
 // Kept in sync with the server-side limits in lib/colosseum/blob.ts.
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10MB
@@ -228,7 +239,7 @@ export default function ColumnInput({
       }
     } catch (e) {
       console.error(e);
-      toast.error("Couldn't upload one or more files. Please try again.");
+      toast.error(await columnLimitToast("Couldn't upload one or more files. Please try again."));
     } finally {
       setUploading(0);
     }
@@ -267,10 +278,14 @@ export default function ColumnInput({
     const urlText = text.startsWith("https://") ? text : "https://" + text;
 
     // 1) Insert the column row. If this fails, surface it and stop — nothing
-    // was created.
+    // was created. A tweet URL captures its snapshot server-side here (so the
+    // block is deletion-proof); if that tweet can't be fetched the action falls
+    // back to a plain URL block, which the screenshot pass below then handles.
     let column: Column;
     try {
-      if (isUrlInput) {
+      if (isTweetUrl(text)) {
+        column = await uploadTweetColumnAction({ channelId: channel.id, url: urlText });
+      } else if (isUrlInput) {
         column = await uploadURLColumnAction({
           channelId: channel.id,
           text: urlText,
@@ -283,7 +298,7 @@ export default function ColumnInput({
       }
     } catch (e) {
       console.error(e);
-      toast.error("Couldn't add that column. Please try again.");
+      toast.error(await columnLimitToast("Couldn't add that column. Please try again."));
       return;
     }
 
@@ -293,8 +308,10 @@ export default function ColumnInput({
     setText("");
     onBlockAdded();
 
-    if (!isUrlInput) {
-      toast.success("Column added.");
+    // Only plain URL blocks get the async screenshot pass. A tweet block already
+    // carries its snapshot; a text block has nothing to capture.
+    if (column.type !== "url") {
+      toast.success(column.type === "tweet" ? "Tweet added." : "Column added.");
       return;
     }
 

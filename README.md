@@ -63,6 +63,30 @@ docker run --rm -v colosseum_storage:/data -v "$PWD":/backup alpine \
 docker compose up -d
 ```
 
+### S3 / CDN storage (optional)
+
+By default blobs live on the local `storage` volume. To serve them from
+S3-compatible storage (AWS S3, Cloudflare R2, MinIO) — for stateless or
+multi-instance deploys, or CDN-backed delivery — set `S3_BUCKET` (and the
+other `S3_*` vars from `.env.example`) in the compose `.env`. Its presence
+switches every blob operation to the bucket; unset, nothing changes.
+
+With S3 configured the app stays off the byte path: public media redirects to
+`CDN_URL` (or the bucket) and private media redirects to a short-lived signed
+URL minted only after the request is authorized — so private content is served
+straight from the store's edge without a public bucket.
+
+Switching an existing deployment is safe: on the next boot the container copies
+any disk-resident blobs into the bucket (see `scripts/migrate-blobs.ts`, run
+from the entrypoint) before serving, so nothing is orphaned. It's idempotent —
+a marker object makes every later boot a single check — so once it's done you
+can drop the local storage volume.
+
+To move **back** to local disk, run `bun run export-blobs` **while S3 is still
+configured** (it reads through the bucket and writes to `STORAGE_DIR`), then
+unset `S3_BUCKET` and redeploy. It's a deliberate one-off, not boot automation,
+because it needs both stores reachable at once.
+
 ## Local development
 
 Auth runs in-process (Better Auth) and the schema is owned by Drizzle

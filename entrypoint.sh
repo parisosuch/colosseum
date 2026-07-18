@@ -9,5 +9,11 @@ set -e
 echo "Applying database migrations..."
 bun run db:migrate:drizzle
 
+# Copy any disk-resident blobs into the object store when S3 is configured, so
+# switching an existing deployment to S3 doesn't orphan its images. No-op (one
+# HEAD) once done, and no-op entirely on the local-disk default.
+echo "Syncing blobs to object storage..."
+bun --conditions=react-server scripts/migrate-blobs.ts
+
 echo "Starting server..."
 exec bun run start

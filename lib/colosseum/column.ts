@@ -17,11 +17,13 @@ import { db } from "@/lib/db";
 import { channel, channelMember, column, screenshot, userProfile } from "@/lib/db/schema";
 import { sanitizeSearch } from "@/lib/utils";
 import { deleteMediaByUrl } from "./blob";
+import { deleteTweetIfUnreferenced } from "./tweet";
+import { tweetIdFromUrl } from "@/lib/utils";
 
 export type Column = {
   id: number;
   created_at: string;
-  type: "url" | "text" | "image" | "channel" | "pdf" | "video";
+  type: "url" | "text" | "image" | "channel" | "pdf" | "video" | "tweet";
   title?: string;
   description?: string;
   url?: string;
@@ -323,6 +325,26 @@ export async function uploadURLColumn(input: {
   return toColumn(row);
 }
 
+// A tweet block reuses the `url` field for the tweet's permalink; the persisted
+// snapshot lives in the shared `tweet` table (keyed by the tweet id), captured
+// before this runs. Renders as an embedded tweet from that snapshot.
+export async function uploadTweetColumn(input: {
+  created_by: string;
+  channel_id: number;
+  url: string;
+}): Promise<Column> {
+  const [row] = await db
+    .insert(column)
+    .values({
+      type: "tweet",
+      url: input.url,
+      channel_id: input.channel_id,
+      created_by: input.created_by,
+    })
+    .returning();
+  return toColumn(row);
+}
+
 export async function uploadTextColumn(input: {
   created_by: string;
   channel_id: number;
@@ -436,6 +458,38 @@ export async function moveColumn(column_id: number, channel_id: number): Promise
   await db.update(column).set({ channel_id }).where(eq(column.id, column_id));
 }
 
+// Duplicate a block into another channel, leaving the source untouched. The new
+// row copies every content field but gets a new channel/creator and its own
+// `image` (the action passes a fresh media reference for media blocks, so the
+// copy and the original don't share a media row — deleting one mustn't dangle
+// the other). Authorization is enforced by the action.
+export async function copyColumn(input: {
+  source: Column;
+  channel_id: number;
+  created_by: string;
+  // Media URL for the copy: a fresh media reference for media blocks, the
+  // source's external URL for url/external-image blocks, or null.
+  image: string | null;
+}): Promise<Column> {
+  const { source } = input;
+  const [row] = await db
+    .insert(column)
+    .values({
+      type: source.type,
+      title: source.title,
+      description: source.description,
+      url: source.url,
+      text: source.text,
+      image: input.image,
+      linked_channel_id: source.linked_channel_id,
+      tags: source.tags,
+      channel_id: input.channel_id,
+      created_by: input.created_by,
+    })
+    .returning();
+  return toColumn(row);
+}
+
 // Set title and/or description in one update — used to pre-fill a URL block
 // from its page metadata after capture.
 export async function updateColumnMeta(
@@ -476,6 +530,11 @@ export async function deleteColumn(column_id: number): Promise<void> {
   // is gone, GC the cached screenshot and its blob too.
   if (row.type === "url" && row.url) {
     await deleteScreenshotIfUnreferenced(row.url);
+  }
+  // Same story for a tweet block's shared snapshot + self-hosted media.
+  if (row.type === "tweet" && row.url) {
+    const id = tweetIdFromUrl(row.url);
+    if (id) await deleteTweetIfUnreferenced(id, row.url);
   }
 }
 

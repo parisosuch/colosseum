@@ -47,6 +47,7 @@ export function FeedBlockModal({
         onOpenChange={setOpen}
         isOwner={false}
         canEdit={false}
+        isAdmin={false}
         handle={handle}
         viewerId={viewerId}
         setColumns={noop}

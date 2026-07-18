@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import PageHeader from "@/components/page-header";
@@ -26,7 +27,11 @@ export default async function InvitesPage() {
       <PageHeader crumbs={[{ label: "invites" }]} />
       <p className="text-sm text-muted-foreground max-w-prose">
         Colosseum is invite only. Share a code with someone you want to invite — each code is good
-        for one sign-up.
+        for one sign-up.{" "}
+        <Link href="/users" className="link-subtle underline">
+          See the invite network
+        </Link>
+        .
       </p>
       <InviteManager userId={user.id} initialCodes={codes} />
     </div>

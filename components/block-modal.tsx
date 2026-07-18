@@ -72,7 +72,8 @@ type BlockModalProps = {
   // The signed-in viewer's id, or null when signed out. Drives commenting.
   viewerId: string | null;
   setColumns: Dispatch<SetStateAction<Column[]>>;
-  // The owner's channels, for the "Move" picker. Empty for non-owners.
+  // The viewer's own channels, for the "Move" (owner-only) and "Copy" (any
+  // viewer) pickers. Empty when signed out.
   channels: PickableChannel[];
   screenshot?: ColumnScreenshot;
   onPrev: () => void;
@@ -336,8 +337,10 @@ function BlockModalBody({
     }
   };
 
-  // Channels the block can move to: the owner's, minus the one it's already in.
+  // Channels the block can move/copy to: the viewer's own, minus the one it's
+  // already in. (On someone else's channel, none is excluded — it isn't yours.)
   const moveTargets = channels.filter((c) => c.id !== column.channel_id);
+  const copyTargets = moveTargets;
   const [moveOpen, setMoveOpen] = useState(false);
   const [moving, setMoving] = useState(false);
 
@@ -535,6 +538,7 @@ function BlockModalBody({
                 Save
               </Button>
             ) : null}
+            {/* Move is owner-only (it removes the block from this channel). */}
             {isOwner && moveTargets.length > 0 ? (
               <>
                 <Tooltip>
@@ -551,21 +555,7 @@ function BlockModalBody({
                   </TooltipTrigger>
                   <TooltipContent>Move to another channel</TooltipContent>
                 </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Copy to another channel"
-                      disabled={copying}
-                      onClick={() => setCopyOpen(true)}
-                    >
-                      <Copy />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Copy to another channel</TooltipContent>
-                </Tooltip>
-                {/* Searchable pickers so they scale past a handful of channels. */}
+                {/* Searchable picker so it scales past a handful of channels. */}
                 <CommandDialog
                   open={moveOpen}
                   onOpenChange={setMoveOpen}
@@ -594,6 +584,27 @@ function BlockModalBody({
                     ))}
                   </CommandList>
                 </CommandDialog>
+              </>
+            ) : null}
+            {/* Copy needs only read access to this block, so any signed-in viewer
+                with a channel of their own to copy into gets it — including on
+                someone else's channel. */}
+            {copyTargets.length > 0 ? (
+              <>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Copy to another channel"
+                      disabled={copying}
+                      onClick={() => setCopyOpen(true)}
+                    >
+                      <Copy />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Copy to one of your channels</TooltipContent>
+                </Tooltip>
                 <CommandDialog
                   open={copyOpen}
                   onOpenChange={setCopyOpen}
@@ -603,7 +614,7 @@ function BlockModalBody({
                   <CommandInput placeholder="Search channels…" />
                   <CommandList>
                     <CommandEmpty>No channels found.</CommandEmpty>
-                    {moveTargets.map((c) => (
+                    {copyTargets.map((c) => (
                       <CommandItem
                         key={c.id}
                         value={`channel-${c.id}`}

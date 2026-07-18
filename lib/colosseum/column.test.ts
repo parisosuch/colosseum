@@ -17,21 +17,22 @@ beforeAll(async () => {
   await seed();
 });
 
-test("copyColumn duplicates content into another channel; the copy owns its media", async () => {
-  const src = await createChannel({ title: "Src", access: "public", owner_id: USERS.alice.id });
+test("copyColumn duplicates another user's block into your channel; the copy owns its media", async () => {
+  // Bob owns the source block; Alice copies it into a channel of hers.
+  const src = await createChannel({ title: "Src", access: "public", owner_id: USERS.bob.id });
   const dst = await createChannel({ title: "Dst", access: "public", owner_id: USERS.alice.id });
 
   // An image block backed by a real blob + media reference.
-  const sha = await putBlob(Buffer.from("copy-test-bytes"), "image/png", USERS.alice.id);
-  const srcUrl = await createMedia(sha, USERS.alice.id, "public");
+  const sha = await putBlob(Buffer.from("copy-test-bytes"), "image/png", USERS.bob.id);
+  const srcUrl = await createMedia(sha, USERS.bob.id, "public");
   const source = {
-    ...(await uploadImageColumn({ created_by: USERS.alice.id, channel_id: src.id, image: srcUrl })),
+    ...(await uploadImageColumn({ created_by: USERS.bob.id, channel_id: src.id, image: srcUrl })),
     title: "Pic",
     description: "desc",
     tags: ["a", "b"],
   };
 
-  // The action mints a fresh media reference for the copy; pass it through.
+  // The action mints a fresh media reference (owned by the copier) for the copy.
   const copyUrl = await createMedia(sha, USERS.alice.id, "public");
   expect(copyUrl).not.toBe(srcUrl);
   const copy = await copyColumn({
@@ -43,6 +44,7 @@ test("copyColumn duplicates content into another channel; the copy owns its medi
 
   expect(copy.id).not.toBe(source.id);
   expect(copy.channel_id).toBe(dst.id);
+  expect(copy.created_by).toBe(USERS.alice.id); // the copier owns the copy
   expect(copy.type).toBe("image");
   expect(copy.title).toBe("Pic");
   expect(copy.description).toBe("desc");

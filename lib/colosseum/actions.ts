@@ -430,14 +430,15 @@ export async function moveColumnAction(columnId: number, targetChannelId: number
 }
 
 // Copy a block into another channel, leaving the original in place. The caller
-// must be able to write the source block and must be able to contribute to the
-// target (which also enforces the per-user block quota — a copy is a new block).
-// For media blocks, mint a fresh media reference to the same bytes so the copy
-// owns its own media row: deleting either column later won't dangle the other's
-// image. The new reference inherits the target channel's privacy.
+// only needs to *read* the source (so you can copy anyone's block from a channel
+// visible to you), and must be able to contribute to the target (which also
+// enforces the per-user block quota — a copy is a new block). For media blocks,
+// mint a fresh media reference to the same bytes so the copy owns its own media
+// row: deleting either column later won't dangle the other's image. The new
+// reference inherits the target channel's privacy.
 export async function copyColumnAction(columnId: number, targetChannelId: number): Promise<Column> {
   const userId = await requireUserId();
-  const source = await requireWritableBlock(columnId, userId);
+  const { column: source } = await requireReadableBlock(columnId);
   const channel = await requireContributableChannel(targetChannelId, userId);
 
   let image = source.image ?? null;

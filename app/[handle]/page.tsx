@@ -2,7 +2,13 @@ import PageHeader from "@/components/page-header";
 import ColumnPreview from "@/components/column-preview";
 import CreateChannelButton from "@/components/create-channel-button";
 import { ChannelsView } from "@/components/channels-view";
-import { Channel, getUserChannels, getVisibleUserChannels } from "@/lib/colosseum/channel";
+import {
+  Channel,
+  getMemberChannels,
+  getUserChannels,
+  getVisibleUserChannels,
+} from "@/lib/colosseum/channel";
+import { MemberChannels } from "@/components/member-channels";
 import { Column, getChannelColumnCounts, getTopColumnsByChannel } from "@/lib/colosseum/column";
 import { getScreenshotsForUrls, type ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import { getPublicUserProfile } from "@/lib/colosseum/user";
@@ -84,6 +90,10 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
   const channels: Channel[] = match
     ? await getUserChannels(user!.id)
     : await getVisibleUserChannels(userProfile.user_id, user?.id ?? null);
+
+  // Only on your own profile: the channels you've been invited to (not owned),
+  // with a self-service Leave.
+  const memberChannels = match ? await getMemberChannels(user!.id) : [];
 
   // Counts and previews for every channel in one query each (not one per
   // channel): a grouped count(*) and a single windowed top-N fetch. Counts are
@@ -176,6 +186,17 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
           channels={channelRows}
         />
       )}
+
+      {match ? (
+        <MemberChannels
+          channels={memberChannels.map((c) => ({
+            id: c.id,
+            title: c.title,
+            handle: c.handle,
+            private: c.private,
+          }))}
+        />
+      ) : null}
     </div>
   );
 }

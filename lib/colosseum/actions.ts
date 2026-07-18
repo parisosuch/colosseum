@@ -268,6 +268,14 @@ export async function removeChannelMemberAction(
   await removeChannelMember(channelId, memberUserId);
 }
 
+// Leave a channel you're a member of — a self-service remove, so it needs no
+// ownership check (you're only ever removing your own membership row). A no-op
+// if you weren't a member.
+export async function leaveChannelAction(channelId: number): Promise<void> {
+  const userId = await requireUserId();
+  await removeChannelMember(channelId, userId);
+}
+
 // ---------------------------------------------------------------------------
 // Blocks
 // ---------------------------------------------------------------------------

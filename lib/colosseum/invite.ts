@@ -1,4 +1,5 @@
 import { and, desc, eq, lt, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 
 import { db } from "@/lib/db";
 import { inviteCode, inviteRedemption, user, userProfile } from "@/lib/db/schema";
@@ -111,6 +112,59 @@ export async function createInviteCode(params: {
     })
     .returning();
   return toInviteCode(row);
+}
+
+// A node in the invite network: one onboarded member (has a profile/handle).
+export type InviteGraphNode = {
+  user_id: string;
+  handle: string;
+  avatar_url: string | null;
+  // How many people this member has successfully invited (out-degree). Drives
+  // node sizing so prolific inviters read as hubs.
+  invited_count: number;
+};
+
+// A directed edge inviter → invitee: `from` created the code `to` redeemed.
+export type InviteGraphEdge = { from: string; to: string };
+
+export type InviteGraph = { nodes: InviteGraphNode[]; edges: InviteGraphEdge[] };
+
+// The whole invite network: every onboarded member is a node, and an edge runs
+// from a code's creator to each redeemer. Members who neither invited nor were
+// invited (via a surviving code) still appear, as disconnected dots. Edges are
+// inner-joined to user_profile on both ends, so a redeemer still mid-onboarding
+// — or a code whose creator has since been deleted (created_by set null) — just
+// contributes no edge. Profiles are public, so the graph is unscoped.
+export async function getInviteGraph(): Promise<InviteGraph> {
+  const profiles = await db
+    .select({
+      user_id: userProfile.user_id,
+      handle: userProfile.handle,
+      avatar_url: userProfile.avatar_url,
+    })
+    .from(userProfile);
+
+  const nodes = new Map<string, InviteGraphNode>(
+    profiles.map((p) => [p.user_id, { ...p, invited_count: 0 }]),
+  );
+
+  const inviter = alias(userProfile, "inviter_profile");
+  const invitee = alias(userProfile, "invitee_profile");
+  const rows = await db
+    .select({ fromId: inviter.user_id, toId: invitee.user_id })
+    .from(inviteRedemption)
+    .innerJoin(inviteCode, eq(inviteCode.code, inviteRedemption.code))
+    .innerJoin(inviter, eq(inviter.user_id, inviteCode.created_by))
+    .innerJoin(invitee, eq(invitee.user_id, inviteRedemption.user_id));
+
+  const edges: InviteGraphEdge[] = [];
+  for (const row of rows) {
+    const from = nodes.get(row.fromId);
+    if (from) from.invited_count += 1;
+    edges.push({ from: row.fromId, to: row.toId });
+  }
+
+  return { nodes: [...nodes.values()], edges };
 }
 
 // Revoke one of the caller's own unused codes. Mirrors the old "delete own

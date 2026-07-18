@@ -14,6 +14,7 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
@@ -154,7 +155,7 @@ export const column = pgTable(
   {
     id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    type: text("type", { enum: ["url", "text", "image", "channel", "pdf"] }).notNull(),
+    type: text("type", { enum: ["url", "text", "image", "channel", "pdf", "tweet"] }).notNull(),
     title: text("title"),
     description: text("description"),
     url: text("url"),
@@ -226,6 +227,20 @@ export const screenshot = pgTable("screenshot", {
   title: text("title"),
   captured_at: timestamp("captured_at", { withTimezone: true }).notNull().defaultNow(),
   description: text("description"),
+});
+
+// Deletion-resilient snapshot of an embedded tweet, keyed by its snowflake id
+// and shared across every `tweet` column that links it (like `screenshot` is
+// shared per URL). Captured once when a tweet block is first added, then served
+// from here forever — we never re-fetch, so a later deletion on X can't
+// overwrite the copy. `data` is the react-tweet `Tweet` object with its media
+// URLs already rewritten to self-hosted `/api/media/<id>` blobs; `media_urls`
+// lists those references so they can be GC'd when the last block is removed.
+export const tweet = pgTable("tweet", {
+  id: text("id").primaryKey(),
+  data: jsonb("data").notNull(),
+  media_urls: text("media_urls").array().notNull().default([]),
+  captured_at: timestamp("captured_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // Content-addressed file metadata. The bytes live in the pluggable object

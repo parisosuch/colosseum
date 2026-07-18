@@ -5,8 +5,9 @@ import Link from "next/link";
 import { FileText } from "lucide-react";
 import { Markdown } from "./markdown";
 import type { Column } from "@/lib/colosseum/column";
-import { timeAgo } from "@/lib/utils";
+import { timeAgo, tweetIdFromUrl } from "@/lib/utils";
 import ScreenShotPreview from "./screenshot-preview";
+import TweetBlock from "./tweet-block";
 import { GradientSpin } from "./gradient-spin";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 
@@ -86,6 +87,8 @@ const ColumnComponent = memo(function ColumnComponent({
         <FileText className="size-10" />
         <span className="line-clamp-2 max-w-full break-words text-xs">{column.title || "PDF"}</span>
       </div>
+    ) : column.type === "tweet" ? (
+      <TweetBlock id={tweetIdFromUrl(column.url ?? "") ?? ""} compact />
     ) : loading ? (
       <div className="w-full h-full flex items-center justify-center">
         <GradientSpin cellSize={4} />
@@ -98,7 +101,7 @@ const ColumnComponent = memo(function ColumnComponent({
     // Content column: the domain/path for a link, the text itself for a text
     // block, the linked channel's name for a channel, the title for an image.
     const content =
-      column.type === "url"
+      column.type === "url" || column.type === "tweet"
         ? (column.url ?? "").replace(/^https?:\/\//, "")
         : column.type === "text"
           ? (column.text ?? "")
@@ -153,16 +156,18 @@ const ColumnComponent = memo(function ColumnComponent({
   }
 
   // The block's title under the card, for every type (falls back to the URL
-  // screenshot's title). A single space is reserved when untitled so the block
-  // isn't a line shorter than its siblings (or its own hover state, which swaps
-  // in the timestamp) and doesn't visibly shift.
-  const gridTitle = column.title || urlTitle || " ";
+  // screenshot's title). A non-breaking space is reserved when untitled so the
+  // block isn't a line shorter than its siblings (or its own hover state, which
+  // swaps in the timestamp) and doesn't visibly shift. A plain " " collapses to
+  // zero height, so untitled blocks (e.g. images) would jump when hover reveals
+  // the timestamp.
+  const gridTitle = column.title || urlTitle || " ";
 
   const gridInner = (
     <div className="group relative w-full">
       <div className="w-full aspect-square border rounded-lg text-left">{thumbnail}</div>
       <p className="group-hover:hidden truncate pt-1 text-caption">{gridTitle}</p>
-      <p className="hidden group-hover:block pt-1 text-caption">
+      <p className="hidden group-hover:block truncate pt-1 text-caption">
         {timeAgo(new Date(column.created_at))}
       </p>
     </div>
@@ -179,6 +184,27 @@ const ColumnComponent = memo(function ColumnComponent({
       </Link>
     ) : (
       <div className="cv-card w-full text-left">{gridInner}</div>
+    );
+  }
+
+  // Tweet embeds render their own <button> (copy link), so the card can't be a
+  // real <button> without nesting them (invalid HTML). Use a role=button div.
+  if (column.type === "tweet") {
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => onOpen(column.id)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onOpen(column.id);
+          }
+        }}
+        className={`cv-card aspect-square w-full overflow-hidden text-left ${cardPress}`}
+      >
+        {gridInner}
+      </div>
     );
   }
 

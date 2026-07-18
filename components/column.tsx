@@ -2,7 +2,7 @@
 
 import { memo } from "react";
 import Link from "next/link";
-import { FileText } from "lucide-react";
+import { FileText, Play } from "lucide-react";
 import { Markdown } from "./markdown";
 import type { Column } from "@/lib/colosseum/column";
 import { timeAgo } from "@/lib/utils";
@@ -86,6 +86,21 @@ const ColumnComponent = memo(function ColumnComponent({
         <FileText className="size-10" />
         <span className="line-clamp-2 max-w-full break-words text-xs">{column.title || "PDF"}</span>
       </div>
+    ) : column.type === "video" ? (
+      <div className="relative h-full w-full">
+        <video
+          src={column.image}
+          preload="metadata"
+          muted
+          playsInline
+          className="h-full w-full rounded-lg object-cover"
+        />
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <span className="rounded-full bg-black/50 p-2 text-white">
+            <Play className="size-4 fill-current" />
+          </span>
+        </div>
+      </div>
     ) : loading ? (
       <div className="w-full h-full flex items-center justify-center">
         <GradientSpin cellSize={4} />
@@ -104,7 +119,8 @@ const ColumnComponent = memo(function ColumnComponent({
           ? (column.text ?? "")
           : column.type === "channel"
             ? (column.linked_channel?.title ?? "Channel")
-            : column.title || (column.type === "pdf" ? "PDF" : "Image");
+            : column.title ||
+              (column.type === "pdf" ? "PDF" : column.type === "video" ? "Video" : "Image");
     const title = column.title || urlTitle || "";
 
     const rowClass = `w-full border-b px-2 py-2 text-left hover:bg-muted/50 ${LIST_GRID}`;

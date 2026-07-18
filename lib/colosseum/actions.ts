@@ -41,6 +41,7 @@ import {
   updateColumnTitle,
   uploadImageColumn,
   uploadPdfColumn,
+  uploadVideoColumn,
   uploadTextColumn,
   uploadURLColumn,
 } from "./column";
@@ -52,7 +53,13 @@ import {
   getCommentAuthorization,
   MAX_COMMENT_LENGTH,
 } from "./comment";
-import { deleteMediaByUrl, putImageBlob, putImageBlobFromUrl, putPdfBlob } from "./blob";
+import {
+  deleteMediaByUrl,
+  putImageBlob,
+  putImageBlobFromUrl,
+  putPdfBlob,
+  putVideoBlob,
+} from "./blob";
 import { createInviteCode, InviteCode, revokeInviteCode } from "./invite";
 import { revokeApiToken } from "./api-token";
 import { getScreenshotsForUrls, ColumnScreenshot } from "./screenshot-data";
@@ -302,6 +309,20 @@ export async function uploadPdfColumnAction(formData: FormData): Promise<Column>
   const channel = await requireContributableChannel(channelId, userId);
   const image = await putPdfBlob(file, userId, channel.private ? "private" : "public");
   return uploadPdfColumn({ created_by: userId, channel_id: channelId, image });
+}
+
+// Same shape as the image/PDF upload, for a dropped/picked video. The stored
+// media inherits the channel's privacy.
+export async function uploadVideoColumnAction(formData: FormData): Promise<Column> {
+  const userId = await requireUserId();
+  const channelId = Number(formData.get("channelId"));
+  const file = formData.get("file");
+  if (!Number.isInteger(channelId) || !(file instanceof File)) {
+    throw new Error("Bad request.");
+  }
+  const channel = await requireContributableChannel(channelId, userId);
+  const image = await putVideoBlob(file, userId, channel.private ? "private" : "public");
+  return uploadVideoColumn({ created_by: userId, channel_id: channelId, image });
 }
 
 // Create an image column from a remote image URL. Used by the paste flow: a

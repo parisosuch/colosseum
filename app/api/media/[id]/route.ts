@@ -60,12 +60,43 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const cacheControl =
     item.visibility === "private" ? "private, no-store" : "public, max-age=31536000, immutable";
 
+  // Honor a byte-range request (video seeking; Safari won't play a video at all
+  // without it). Absent/unparseable Range → full 200 as before. `?thumb` bytes
+  // are tiny, so range there just falls through to the full response.
+  const size = fileStat.size;
+  const range = req.headers.get("range");
+  const match = range ? /^bytes=(\d*)-(\d*)$/.exec(range.trim()) : null;
+  if (match && (match[1] || match[2])) {
+    const start = match[1] ? Number(match[1]) : size - Number(match[2]);
+    const end = match[1] && match[2] ? Number(match[2]) : size - 1;
+    if (start > end || start < 0 || end >= size) {
+      return new NextResponse(null, {
+        status: 416,
+        headers: { "Content-Range": `bytes */${size}`, "Accept-Ranges": "bytes" },
+      });
+    }
+    return new Response(
+      Readable.toWeb(createReadStream(filePath, { start, end })) as unknown as ReadableStream,
+      {
+        status: 206,
+        headers: {
+          "Content-Type": contentType,
+          "Content-Length": String(end - start + 1),
+          "Content-Range": `bytes ${start}-${end}/${size}`,
+          "Accept-Ranges": "bytes",
+          "Cache-Control": cacheControl,
+        },
+      },
+    );
+  }
+
   // Node's web-stream type doesn't structurally match the DOM lib's, hence
   // the unknown hop; at runtime they're the same thing.
   return new Response(Readable.toWeb(createReadStream(filePath)) as unknown as ReadableStream, {
     headers: {
       "Content-Type": contentType,
-      "Content-Length": String(fileStat.size),
+      "Content-Length": String(size),
+      "Accept-Ranges": "bytes",
       "Cache-Control": cacheControl,
     },
   });

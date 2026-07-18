@@ -7,6 +7,7 @@ import {
   uploadImageColumnAction,
   uploadImageColumnFromUrlAction,
   uploadPdfColumnAction,
+  uploadVideoColumnAction,
   updateColumnMetaAction,
 } from "@/lib/colosseum/actions";
 import type { Column } from "@/lib/colosseum/column";
@@ -21,6 +22,8 @@ const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10MB
 const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"];
 const MAX_PDF_BYTES = 25 * 1024 * 1024; // 25MB
 const PDF_TYPE = "application/pdf";
+const MAX_VIDEO_BYTES = 100 * 1024 * 1024; // 100MB
+const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/webm", "video/quicktime", "video/ogg"];
 // A dropped .md file becomes a (markdown) text block. Cap the source and reject
 // anything that isn't plain text.
 const MAX_MD_BYTES = 256 * 1024; // 256KB
@@ -104,8 +107,8 @@ export default function ColumnInput({
     await handleFilesUpload(files);
   };
 
-  // Upload one or more dropped/picked files, creating a block per file: images
-  // and PDFs go to blob storage as image/pdf blocks; .md files become markdown
+  // Upload one or more dropped/picked files, creating a block per file: images,
+  // videos, and PDFs go to blob storage as image/video/pdf blocks; .md files become markdown
   // text blocks. Type/size are validated here for fast feedback (blobs are
   // re-checked server-side). Invalid files are reported and skipped; valid ones
   // process sequentially so a big multi-drop doesn't fire dozens of requests at
@@ -117,15 +120,24 @@ export default function ColumnInput({
     for (const f of Array.from(fileList)) {
       const isImage = ALLOWED_IMAGE_TYPES.includes(f.type);
       const isPdf = f.type === PDF_TYPE;
+      const isVideo = ALLOWED_VIDEO_TYPES.includes(f.type);
       const isMd = isMarkdownFile(f);
-      if (!isImage && !isPdf && !isMd) {
+      if (!isImage && !isPdf && !isVideo && !isMd) {
         toast.error(
-          `${f.name}: only image files (PNG, JPEG, GIF, WebP, AVIF), PDFs, or Markdown (.md) files are supported.`,
+          `${f.name}: only image files (PNG, JPEG, GIF, WebP, AVIF), videos (MP4, WebM, MOV, OGG), PDFs, or Markdown (.md) files are supported.`,
         );
       } else if (
-        isMd ? f.size > MAX_MD_BYTES : isPdf ? f.size > MAX_PDF_BYTES : f.size > MAX_IMAGE_BYTES
+        isMd
+          ? f.size > MAX_MD_BYTES
+          : isPdf
+            ? f.size > MAX_PDF_BYTES
+            : isVideo
+              ? f.size > MAX_VIDEO_BYTES
+              : f.size > MAX_IMAGE_BYTES
       ) {
-        toast.error(`${f.name} is too large (max ${isMd ? "256KB" : isPdf ? "25MB" : "10MB"}).`);
+        toast.error(
+          `${f.name} is too large (max ${isMd ? "256KB" : isPdf ? "25MB" : isVideo ? "100MB" : "10MB"}).`,
+        );
       } else {
         valid.push(f);
       }
@@ -152,7 +164,9 @@ export default function ColumnInput({
           created.push(
             f.type === PDF_TYPE
               ? await uploadPdfColumnAction(formData)
-              : await uploadImageColumnAction(formData),
+              : ALLOWED_VIDEO_TYPES.includes(f.type)
+                ? await uploadVideoColumnAction(formData)
+                : await uploadImageColumnAction(formData),
           );
         }
         setUploading((n) => n - 1);
@@ -310,7 +324,7 @@ export default function ColumnInput({
               upload
               <input
                 type="file"
-                accept="image/*,application/pdf,.md,.markdown,text/markdown"
+                accept="image/*,video/mp4,video/webm,video/quicktime,video/ogg,application/pdf,.md,.markdown,text/markdown"
                 multiple
                 className="hidden"
                 onChange={handleFileChange}

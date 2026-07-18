@@ -366,6 +366,16 @@ function BlockModalBody({
               Open PDF
             </a>
           </object>
+        ) : column.type === "video" ? (
+          <video
+            src={column.image}
+            controls
+            playsInline
+            className="max-h-[70vh] md:max-h-full max-w-full rounded-md"
+          >
+            {/* User uploads carry no caption file; empty track satisfies a11y. */}
+            <track kind="captions" />
+          </video>
         ) : (
           <a href={column.url} target="_blank" className="block w-full max-w-3xl">
             <div className="flex flex-row items-center gap-2 border rounded-md px-2 py-1">

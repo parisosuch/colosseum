@@ -9,6 +9,7 @@ import {
   uploadPdfColumnAction,
   uploadTextColumnAction,
   uploadURLColumnAction,
+  uploadVideoColumnAction,
 } from "@/lib/colosseum/actions";
 import { isURL } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -17,7 +18,7 @@ export type PickableChannel = { id: number; title: string; private: boolean };
 
 // Shared state machine for the quick-add flow: paste/type block content,
 // Continue, then pick which channel to drop it in. A URL becomes a link block
-// (and kicks off a screenshot), an image/PDF becomes a media block, anything
+// (and kicks off a screenshot), an image/video/PDF becomes a media block, anything
 // else a text block. Both the mobile drawer and the desktop modal drive this
 // exact hook + body, so the behaviour can never drift — only the shell differs.
 export function useAddBlockFlow(channels: PickableChannel[]) {
@@ -47,8 +48,12 @@ export function useAddBlockFlow(channels: PickableChannel[]) {
 
   const pickFile = (selected: File | undefined) => {
     if (!selected) return;
-    if (!selected.type.startsWith("image/") && selected.type !== "application/pdf") {
-      toast.error("That's not an image or PDF.");
+    if (
+      !selected.type.startsWith("image/") &&
+      !selected.type.startsWith("video/") &&
+      selected.type !== "application/pdf"
+    ) {
+      toast.error("That's not an image, video, or PDF.");
       return;
     }
     setFile(selected);
@@ -65,6 +70,8 @@ export function useAddBlockFlow(channels: PickableChannel[]) {
         formData.set("file", file);
         if (file.type === "application/pdf") {
           await uploadPdfColumnAction(formData);
+        } else if (file.type.startsWith("video/")) {
+          await uploadVideoColumnAction(formData);
         } else {
           await uploadImageColumnAction(formData);
         }
@@ -177,10 +184,10 @@ export function AddBlockBody({
         ) : (
           <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-muted-foreground underline">
             <ImageIcon size={16} />
-            Upload an image or PDF
+            Upload an image, video, or PDF
             <input
               type="file"
-              accept="image/*,application/pdf"
+              accept="image/*,video/mp4,video/webm,video/quicktime,video/ogg,application/pdf"
               className="hidden"
               onChange={(e) => {
                 pickFile(e.target.files?.[0]);

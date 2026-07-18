@@ -190,6 +190,29 @@ export async function putPdfBlob(
   return createMedia(sha256, createdBy, visibility);
 }
 
+// Videos are the heaviest upload, so the roomiest cap. Served through the same
+// /api/media route, which honors Range requests so playback can seek.
+export const MAX_VIDEO_BYTES = 100 * 1024 * 1024; // 100MB
+export const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/webm", "video/quicktime", "video/ogg"];
+
+// Validate + store a user-uploaded video, returning the media URL to persist.
+// No thumbnail (sharp can't rasterize a video); the block renders the video
+// element itself, which shows its first frame in the grid.
+export async function putVideoBlob(
+  file: File,
+  createdBy: string,
+  visibility: MediaVisibility,
+): Promise<string> {
+  if (!ALLOWED_VIDEO_TYPES.includes(file.type)) {
+    throw new Error("Only video files (MP4, WebM, MOV, OGG) are supported.");
+  }
+  if (file.size > MAX_VIDEO_BYTES) {
+    throw new Error("That video is too large (max 100MB).");
+  }
+  const sha256 = await putBlob(Buffer.from(await file.arrayBuffer()), file.type, createdBy);
+  return createMedia(sha256, createdBy, visibility);
+}
+
 // Everything the serving route needs to authorize and stream one media id.
 export async function getMedia(
   id: string,

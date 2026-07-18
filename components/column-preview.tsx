@@ -1,4 +1,4 @@
-import { FileText } from "lucide-react";
+import { FileText, Play } from "lucide-react";
 
 import type { Column } from "@/lib/colosseum/column";
 import { getScreenshot, type ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
@@ -55,6 +55,27 @@ export default async function ColumnPreview({
       <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center text-muted-foreground">
         <FileText className="size-10" />
         <span className="line-clamp-2 max-w-full break-words text-sm">{column.title || "PDF"}</span>
+      </div>
+    );
+  }
+
+  if (column.type === "video") {
+    // preload="metadata" renders the first frame as a still; the play badge
+    // signals it's a video (the real controls live in the modal / block page).
+    return (
+      <div className="relative h-full w-full">
+        <video
+          src={column.image}
+          preload="metadata"
+          muted
+          playsInline
+          className="h-full w-full rounded-md object-cover"
+        />
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <span className="rounded-full bg-black/50 p-2 text-white">
+            <Play className="size-5 fill-current" />
+          </span>
+        </div>
       </div>
     );
   }

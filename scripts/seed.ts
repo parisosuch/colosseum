@@ -215,19 +215,20 @@ export async function seed(): Promise<void> {
   ]);
   await db.insert(inviteRedemption).values({ code: INVITE_CODES.used, user_id: USERS.bob.id });
 
-  // A single invite tree so the /users network graph matches how the app
-  // actually works: alice is the root (the first account, invited by nobody),
-  // bob descends from her (fixture code above), and every bulk member redeems a
-  // code minted by someone who onboarded strictly earlier — so all 62 members
-  // form one connected tree rooted at alice, with no orphan clusters. One
-  // redemption per invitee respects the unique(user_id) constraint.
-  const invitePool = [USERS.alice, USERS.bob, ...bulk];
+  // An invite subtree over the bulk members so the /users network graph has a
+  // realistic cluster to draw: the first bulk member roots it, and every later
+  // member redeems a code minted by an earlier bulk member — one connected
+  // component, one redemption per invitee (respecting unique(user_id)).
+  //
+  // The fixture users alice/bob are deliberately NOT inviters here. Their invite
+  // state is pinned by the explicit fixtures above (alice minted two codes and
+  // invited only bob; bob minted none), and the invite tests assert exactly
+  // that — pulling them into this pool would break those invariants.
   const treeCodes: (typeof inviteCode.$inferInsert)[] = [];
   const treeRedemptions: (typeof inviteRedemption.$inferInsert)[] = [];
   bulk.forEach((member, i) => {
-    // invitePool[i + 2] is `member`; pick any strictly earlier participant,
-    // already connected to the root, so the tree stays one component.
-    const inviter = invitePool[randInt(0, i + 1)];
+    if (i === 0) return; // first bulk member roots the subtree; redeems nothing
+    const inviter = bulk[randInt(0, i - 1)]; // any strictly-earlier bulk member
     const code = `TREESEED${String(i + 1).padStart(4, "0")}`;
     treeCodes.push({
       code,

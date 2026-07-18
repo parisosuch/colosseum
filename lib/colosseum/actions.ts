@@ -33,6 +33,7 @@ import {
   getChannelColumns,
   getColumn,
   moveColumn,
+  copyColumn,
   searchColumns,
   updateColumnDescription,
   updateColumnMeta,
@@ -55,7 +56,15 @@ import {
   getCommentAuthorization,
   MAX_COMMENT_LENGTH,
 } from "./comment";
-import { deleteMediaByUrl, putImageBlob, putImageBlobFromUrl, putPdfBlob } from "./blob";
+import {
+  createMedia,
+  deleteMediaByUrl,
+  getMedia,
+  mediaIdFromUrl,
+  putImageBlob,
+  putImageBlobFromUrl,
+  putPdfBlob,
+} from "./blob";
 import { createInviteCode, InviteCode, revokeInviteCode } from "./invite";
 import {
   AdminUser,
@@ -418,6 +427,30 @@ export async function moveColumnAction(columnId: number, targetChannelId: number
   await requireWritableBlock(columnId, userId);
   await requireOwnedChannel(targetChannelId, userId);
   await moveColumn(columnId, targetChannelId);
+}
+
+// Copy a block into another channel, leaving the original in place. The caller
+// only needs to *read* the source (so you can copy anyone's block from a channel
+// visible to you), and must be able to contribute to the target (which also
+// enforces the per-user block quota — a copy is a new block). For media blocks,
+// mint a fresh media reference to the same bytes so the copy owns its own media
+// row: deleting either column later won't dangle the other's image. The new
+// reference inherits the target channel's privacy.
+export async function copyColumnAction(columnId: number, targetChannelId: number): Promise<Column> {
+  const userId = await requireUserId();
+  const { column: source } = await requireReadableBlock(columnId);
+  const channel = await requireContributableChannel(targetChannelId, userId);
+
+  let image = source.image ?? null;
+  const mediaId = image ? mediaIdFromUrl(image) : null;
+  if (mediaId) {
+    const media = await getMedia(mediaId);
+    if (media) {
+      image = await createMedia(media.sha256, userId, channel.private ? "private" : "public");
+    }
+  }
+
+  return copyColumn({ source, channel_id: targetChannelId, created_by: userId, image });
 }
 
 // Add a channel as a column inside one of the caller's channels (Are.na-style).

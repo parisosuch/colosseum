@@ -8,6 +8,43 @@ release.
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-07-16
+
+### Fixed
+
+- Untitled blocks (such as images) no longer shift the channel grid when
+  hovered — the title line now reserves its height instead of collapsing.
+
+## [1.6.0] - 2026-07-12
+
+### Added
+
+- Channels can be shared with invite links that let people join directly.
+- A gradient "matrix" loading spinner now appears on the Explore feed and when
+  loading more blocks on a channel.
+- The block modal shows who created a block, and channel cards show column
+  titles.
+- Member avatars now appear on profile pages.
+
+### Changed
+
+- Grid and list views are now a single sliding toggle.
+- The add-column flow is reachable from the top navigation.
+
+### Fixed
+
+- Channels with more than 50 blocks now paginate correctly instead of loading
+  every block at once.
+- Fixed a hydration error in the channel loading skeleton.
+
+## [1.5.4] - 2026-07-11
+
+### Fixed
+
+- The mobile add-column drawer now opens to a consistent taller height, so the
+  channel picker has room to scroll — previously it stayed stuck at the first
+  step's shorter height.
+
 ## [1.5.3] - 2026-07-11
 
 ### Fixed

@@ -156,16 +156,18 @@ const ColumnComponent = memo(function ColumnComponent({
   }
 
   // The block's title under the card, for every type (falls back to the URL
-  // screenshot's title). A single space is reserved when untitled so the block
-  // isn't a line shorter than its siblings (or its own hover state, which swaps
-  // in the timestamp) and doesn't visibly shift.
-  const gridTitle = column.title || urlTitle || " ";
+  // screenshot's title). A non-breaking space is reserved when untitled so the
+  // block isn't a line shorter than its siblings (or its own hover state, which
+  // swaps in the timestamp) and doesn't visibly shift. A plain " " collapses to
+  // zero height, so untitled blocks (e.g. images) would jump when hover reveals
+  // the timestamp.
+  const gridTitle = column.title || urlTitle || " ";
 
   const gridInner = (
     <div className="group relative w-full">
       <div className="w-full aspect-square border rounded-lg text-left">{thumbnail}</div>
       <p className="group-hover:hidden truncate pt-1 text-caption">{gridTitle}</p>
-      <p className="hidden group-hover:block pt-1 text-caption">
+      <p className="hidden group-hover:block truncate pt-1 text-caption">
         {timeAgo(new Date(column.created_at))}
       </p>
     </div>

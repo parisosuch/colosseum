@@ -1,7 +1,7 @@
 import { beforeAll, expect, test } from "bun:test";
 
 import { INVITE_CODES, seed, USERS } from "@/scripts/seed";
-import { claimInviteCode, getMyInviteCodes } from "./invite";
+import { claimInviteCode, getInviteGraph, getMyInviteCodes } from "./invite";
 
 beforeAll(async () => {
   await seed();
@@ -24,4 +24,19 @@ test("claimInviteCode fails on a spent single-use code", async () => {
 
 test("claimInviteCode fails on an unknown code", async () => {
   expect(await claimInviteCode("NOSUCHCODE")).toBe(false);
+});
+
+test("getInviteGraph maps redeemed codes to inviter → invitee edges", async () => {
+  const graph = await getInviteGraph();
+
+  // Seed: alice created the code bob redeemed, so the network holds that edge.
+  expect(graph.edges).toContainEqual({ from: USERS.alice.id, to: USERS.bob.id });
+
+  const byId = new Map(graph.nodes.map((n) => [n.user_id, n]));
+  // Both endpoints surface as nodes, carrying their handles.
+  expect(byId.get(USERS.alice.id)?.handle).toBe("alice");
+  expect(byId.get(USERS.bob.id)?.handle).toBe("bob");
+  // Out-degree counts the people a member invited.
+  expect(byId.get(USERS.alice.id)?.invited_count).toBe(1);
+  expect(byId.get(USERS.bob.id)?.invited_count).toBe(0);
 });

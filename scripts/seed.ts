@@ -151,7 +151,6 @@ const COMMENT_BODIES = [
 export async function seed(): Promise<void> {
   const bulk = bulkUsers();
   const userIds = [...Object.values(USERS).map((u) => u.id), ...bulk.map((u) => u.id)];
-  const codes = Object.values(INVITE_CODES);
 
   // A small deterministic RNG (reset every call) so bulk data is varied but
   // reproducible within a run and never touches Math.random.
@@ -176,9 +175,10 @@ export async function seed(): Promise<void> {
 
   // Clear prior seed rows. Deleting the users cascades to their profiles,
   // channels (→ columns, members, comments), and redemptions; invite codes are
-  // set-null on user delete, so drop them explicitly by code first (that
-  // cascades redemptions).
-  await db.delete(inviteCode).where(inArray(inviteCode.code, codes));
+  // set-null on user delete, so drop them explicitly first (by creator, which
+  // covers both the fixture codes and the generated invite tree — that delete
+  // cascades their redemptions).
+  await db.delete(inviteCode).where(inArray(inviteCode.created_by, userIds));
   await db.delete(user).where(inArray(user.id, userIds));
 
   await db.insert(user).values(
@@ -214,6 +214,32 @@ export async function seed(): Promise<void> {
     },
   ]);
   await db.insert(inviteRedemption).values({ code: INVITE_CODES.used, user_id: USERS.bob.id });
+
+  // A single invite tree so the /users network graph matches how the app
+  // actually works: alice is the root (the first account, invited by nobody),
+  // bob descends from her (fixture code above), and every bulk member redeems a
+  // code minted by someone who onboarded strictly earlier — so all 62 members
+  // form one connected tree rooted at alice, with no orphan clusters. One
+  // redemption per invitee respects the unique(user_id) constraint.
+  const invitePool = [USERS.alice, USERS.bob, ...bulk];
+  const treeCodes: (typeof inviteCode.$inferInsert)[] = [];
+  const treeRedemptions: (typeof inviteRedemption.$inferInsert)[] = [];
+  bulk.forEach((member, i) => {
+    // invitePool[i + 2] is `member`; pick any strictly earlier participant,
+    // already connected to the root, so the tree stays one component.
+    const inviter = invitePool[randInt(0, i + 1)];
+    const code = `TREESEED${String(i + 1).padStart(4, "0")}`;
+    treeCodes.push({
+      code,
+      created_by: inviter.id,
+      max_uses: 1,
+      uses: 1,
+      note: "Seed invite tree",
+    });
+    treeRedemptions.push({ code, user_id: member.id });
+  });
+  await db.insert(inviteCode).values(treeCodes);
+  await db.insert(inviteRedemption).values(treeRedemptions);
 
   const [aliceDesign] = await db
     .insert(channel)

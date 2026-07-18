@@ -129,44 +129,38 @@ export type InviteGraphEdge = { from: string; to: string };
 
 export type InviteGraph = { nodes: InviteGraphNode[]; edges: InviteGraphEdge[] };
 
-// The whole invite network: who invited whom. An edge exists for each redeemed
-// code, pointing from the code's creator to the redeemer. Both endpoints are
-// inner-joined to user_profile, so a member still mid-onboarding (no handle) —
-// or a code whose creator has since been deleted (created_by set null) — drops
-// out rather than surfacing as a nameless node. Profiles are public, so the
-// graph is unscoped.
+// The whole invite network: every onboarded member is a node, and an edge runs
+// from a code's creator to each redeemer. Members who neither invited nor were
+// invited (via a surviving code) still appear, as disconnected dots. Edges are
+// inner-joined to user_profile on both ends, so a redeemer still mid-onboarding
+// — or a code whose creator has since been deleted (created_by set null) — just
+// contributes no edge. Profiles are public, so the graph is unscoped.
 export async function getInviteGraph(): Promise<InviteGraph> {
+  const profiles = await db
+    .select({
+      user_id: userProfile.user_id,
+      handle: userProfile.handle,
+      avatar_url: userProfile.avatar_url,
+    })
+    .from(userProfile);
+
+  const nodes = new Map<string, InviteGraphNode>(
+    profiles.map((p) => [p.user_id, { ...p, invited_count: 0 }]),
+  );
+
   const inviter = alias(userProfile, "inviter_profile");
   const invitee = alias(userProfile, "invitee_profile");
   const rows = await db
-    .select({
-      fromId: inviter.user_id,
-      fromHandle: inviter.handle,
-      fromAvatar: inviter.avatar_url,
-      toId: invitee.user_id,
-      toHandle: invitee.handle,
-      toAvatar: invitee.avatar_url,
-    })
+    .select({ fromId: inviter.user_id, toId: invitee.user_id })
     .from(inviteRedemption)
     .innerJoin(inviteCode, eq(inviteCode.code, inviteRedemption.code))
     .innerJoin(inviter, eq(inviter.user_id, inviteCode.created_by))
     .innerJoin(invitee, eq(invitee.user_id, inviteRedemption.user_id));
 
-  const nodes = new Map<string, InviteGraphNode>();
-  const ensure = (id: string, handle: string, avatar_url: string | null) => {
-    let node = nodes.get(id);
-    if (!node) {
-      node = { user_id: id, handle, avatar_url, invited_count: 0 };
-      nodes.set(id, node);
-    }
-    return node;
-  };
-
   const edges: InviteGraphEdge[] = [];
   for (const row of rows) {
-    const from = ensure(row.fromId, row.fromHandle, row.fromAvatar);
-    ensure(row.toId, row.toHandle, row.toAvatar);
-    from.invited_count += 1;
+    const from = nodes.get(row.fromId);
+    if (from) from.invited_count += 1;
     edges.push({ from: row.fromId, to: row.toId });
   }
 

@@ -9,4 +9,8 @@ CREATE TABLE "app_settings" (
 ALTER TABLE "user" ADD COLUMN "is_admin" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 ALTER TABLE "user" ADD COLUMN "banned" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 ALTER TABLE "user" ADD COLUMN "invite_limit" integer;--> statement-breakpoint
-ALTER TABLE "user" ADD COLUMN "column_limit" integer;
+ALTER TABLE "user" ADD COLUMN "column_limit" integer;--> statement-breakpoint
+-- Existing installs have users but no admin (the sign-up promotion only fires
+-- for a brand-new instance). Promote the earliest account so upgrading doesn't
+-- lock the instance out of the admin surface. No-op on a fresh DB (0 rows).
+UPDATE "user" SET "is_admin" = true WHERE "id" = (SELECT "id" FROM "user" ORDER BY "created_at" ASC LIMIT 1);

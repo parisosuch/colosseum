@@ -16,7 +16,8 @@ import { toast } from "sonner";
 import ColumnComments from "./column-comments";
 import { Markdown } from "./markdown";
 import TweetBlock from "./tweet-block";
-import { tweetIdFromUrl } from "@/lib/utils";
+import YouTubeBlock from "./youtube-block";
+import { tweetIdFromUrl, youtubeIdFromUrl } from "@/lib/utils";
 import type { Column } from "@/lib/colosseum/column";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import {
@@ -434,6 +435,10 @@ function BlockModalBody({
         ) : column.type === "tweet" ? (
           <div className="max-h-full w-full max-w-xl overflow-y-auto">
             <TweetBlock id={tweetIdFromUrl(column.url ?? "") ?? ""} />
+          </div>
+        ) : column.type === "youtube" ? (
+          <div className="w-full max-w-3xl">
+            <YouTubeBlock id={youtubeIdFromUrl(column.url ?? "") ?? ""} />
           </div>
         ) : column.type === "channel" ? (
           <Link

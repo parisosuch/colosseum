@@ -4,9 +4,10 @@ import { memo } from "react";
 import { FileText, Play } from "lucide-react";
 import { Markdown } from "./markdown";
 import type { Column } from "@/lib/colosseum/column";
-import { timeAgo, tweetIdFromUrl } from "@/lib/utils";
+import { timeAgo, tweetIdFromUrl, youtubeIdFromUrl } from "@/lib/utils";
 import ScreenShotPreview from "./screenshot-preview";
 import TweetBlock from "./tweet-block";
+import YouTubeBlock from "./youtube-block";
 import { GradientSpin } from "./gradient-spin";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 
@@ -96,6 +97,8 @@ const ColumnComponent = memo(function ColumnComponent({
       </div>
     ) : column.type === "tweet" ? (
       <TweetBlock id={tweetIdFromUrl(column.url ?? "") ?? ""} compact />
+    ) : column.type === "youtube" ? (
+      <YouTubeBlock id={youtubeIdFromUrl(column.url ?? "") ?? ""} compact />
     ) : loading ? (
       <div className="w-full h-full flex items-center justify-center">
         <GradientSpin cellSize={4} />
@@ -108,7 +111,7 @@ const ColumnComponent = memo(function ColumnComponent({
     // Content column: the domain/path for a link, the text itself for a text
     // block, the linked channel's name for a channel, the title for an image.
     const content =
-      column.type === "url" || column.type === "tweet"
+      column.type === "url" || column.type === "tweet" || column.type === "youtube"
         ? (column.url ?? "").replace(/^https?:\/\//, "")
         : column.type === "text"
           ? (column.text ?? "")

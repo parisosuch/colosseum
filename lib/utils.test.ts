@@ -1,6 +1,12 @@
 import { expect, test } from "bun:test";
 
-import { imageSrcFromHtml, isTweetUrl, tweetIdFromUrl } from "./utils";
+import {
+  imageSrcFromHtml,
+  isTweetUrl,
+  isYouTubeUrl,
+  tweetIdFromUrl,
+  youtubeIdFromUrl,
+} from "./utils";
 
 test("tweetIdFromUrl extracts the status id from twitter.com / x.com URLs", () => {
   expect(tweetIdFromUrl("https://twitter.com/jack/status/20")).toBe("20");
@@ -20,6 +26,25 @@ test("tweetIdFromUrl rejects non-tweet URLs", () => {
   expect(tweetIdFromUrl("not a url")).toBeNull();
   expect(isTweetUrl("https://x.com/jack/status/20")).toBe(true);
   expect(isTweetUrl("https://example.com")).toBe(false);
+});
+
+test("youtubeIdFromUrl extracts the video id from the various YouTube URL forms", () => {
+  expect(youtubeIdFromUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ")).toBe("dQw4w9WgXcQ");
+  expect(youtubeIdFromUrl("https://youtu.be/dQw4w9WgXcQ")).toBe("dQw4w9WgXcQ");
+  expect(youtubeIdFromUrl("https://www.youtube.com/shorts/dQw4w9WgXcQ")).toBe("dQw4w9WgXcQ");
+  expect(youtubeIdFromUrl("https://www.youtube.com/embed/dQw4w9WgXcQ")).toBe("dQw4w9WgXcQ");
+  // No scheme, m./music. hosts, extra query params.
+  expect(youtubeIdFromUrl("youtu.be/dQw4w9WgXcQ?t=30")).toBe("dQw4w9WgXcQ");
+  expect(youtubeIdFromUrl("https://m.youtube.com/watch?v=dQw4w9WgXcQ&list=x")).toBe("dQw4w9WgXcQ");
+});
+
+test("youtubeIdFromUrl rejects non-YouTube and malformed URLs", () => {
+  expect(youtubeIdFromUrl("https://youtube.com/watch?v=short")).toBeNull();
+  expect(youtubeIdFromUrl("https://www.youtube.com/@channel")).toBeNull();
+  expect(youtubeIdFromUrl("https://example.com/watch?v=dQw4w9WgXcQ")).toBeNull();
+  expect(youtubeIdFromUrl("not a url")).toBeNull();
+  expect(isYouTubeUrl("https://youtu.be/dQw4w9WgXcQ")).toBe(true);
+  expect(isYouTubeUrl("https://example.com")).toBe(false);
 });
 
 test("imageSrcFromHtml pulls the absolute <img> source a browser image-copy drops", () => {

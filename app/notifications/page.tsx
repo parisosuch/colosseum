@@ -16,7 +16,7 @@ export default async function NotificationsPage() {
   const items = await listNotifications(user.id);
 
   return (
-    <div className="w-full max-w-xl p-6 sm:p-12 space-y-8">
+    <div className="w-full max-w-2xl p-6 sm:p-12 space-y-8">
       <PageHeader crumbs={[{ label: "notifications" }]} />
       <NotificationList initial={items} pageSize={NOTIFICATION_PAGE} />
     </div>

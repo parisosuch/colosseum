@@ -1,9 +1,10 @@
 import { beforeAll, expect, test } from "bun:test";
 
 import { BLOCKS, CHANNELS, seed, USERS } from "@/scripts/seed";
-import { createMedia, putBlob } from "./blob";
+import { createMedia, mediaIdFromUrl, putBlob } from "./blob";
 import {
   canContributeChannel,
+  canReadMedia,
   createChannel,
   deleteChannel,
   getUserChannels,
@@ -12,7 +13,7 @@ import {
   searchChannels,
 } from "./channel";
 import { isChannelMember } from "./member";
-import { searchColumns, uploadURLColumn } from "./column";
+import { searchColumns, uploadImageColumn, uploadURLColumn } from "./column";
 import { getScreenshot, upsertScreenshot } from "./screenshot-data";
 
 beforeAll(async () => {
@@ -100,6 +101,23 @@ test("a private group member can read and contribute; the membership row backs i
   expect(canContributeChannel(group, USERS.alice.id, aliceIsMember)).toBe(true);
   // A non-member (no session / not invited) can neither read nor contribute.
   expect(canContributeChannel(group, USERS.bob.id, false)).toBe(true); // owner
+});
+
+test("canReadMedia lets a private channel's members view its images, not outsiders", async () => {
+  const [group] = await getVisibleUserChannels(USERS.bob.id, USERS.alice.id).then((cs) =>
+    cs.filter((c) => c.title === CHANNELS.bobGroup.title),
+  );
+  // A private image uploaded into bob's private group.
+  const sha = await putBlob(Buffer.from("private-group-image"), "image/png", USERS.bob.id);
+  const url = await createMedia(sha, USERS.bob.id, "private");
+  await uploadImageColumn({ created_by: USERS.bob.id, channel_id: group.id, image: url });
+  const mediaId = mediaIdFromUrl(url)!;
+
+  expect(await canReadMedia(mediaId, USERS.bob.id)).toBe(true); // owner
+  expect(await canReadMedia(mediaId, USERS.alice.id)).toBe(true); // member — the bug
+  // An outsider (not the owner, not a member) and a signed-out viewer cannot.
+  expect(await canReadMedia(mediaId, "99999999-9999-4999-8999-999999999999")).toBe(false);
+  expect(await canReadMedia(mediaId, null)).toBe(false);
 });
 
 test("searchChannels matches by title and returns nothing for an empty query", async () => {

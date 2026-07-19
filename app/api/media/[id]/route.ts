@@ -2,8 +2,8 @@
 // This is the only route that serves blob bytes; nothing serves them by hash,
 // so dedup can never leak a private image through a public URL.
 //
-// Private media is owner-only, which matches channel access today: private
-// channels are readable only by their owner, and media visibility is kept in
+// Private media is readable by anyone who can read a channel that embeds it —
+// the owner, and the members of a private channel. Media visibility is kept in
 // sync with the owning channel's privacy. Signed URLs stay deferred — a
 // single-container deploy has no shared cache in front of this route.
 
@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
 import { blobKey, ensureThumbnail, getMedia, thumbKey } from "@/lib/colosseum/blob";
+import { canReadMedia } from "@/lib/colosseum/channel";
 import { getObject, objectSize, publicUrl, signedUrl } from "@/lib/colosseum/storage";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -28,8 +29,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
 
   if (item.visibility === "private") {
     const user = await getSessionUser();
-    // 404, not 403, so a private image's existence never leaks.
-    if (user?.id !== item.owner_id) {
+    // Owner always; otherwise anyone who can read a channel that embeds it (a
+    // private channel's members, not just its owner). 404, not 403, so a
+    // private image's existence never leaks.
+    const allowed = user?.id === item.owner_id || (await canReadMedia(id, user?.id ?? null));
+    if (!allowed) {
       return NextResponse.json({ error: "Not found." }, { status: 404 });
     }
   }

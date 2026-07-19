@@ -19,6 +19,9 @@ release.
   episode, or show) to add a block. Grid cards show the cover art; the modal and
   block page embed the live Spotify player. The block's title and cover art come
   from Spotify; nothing else is persisted, so the block reflects the live item.
+- Profile channel lists can now be sorted (recently added to, name, or column
+  count) and filtered by access (public / open / private) and — on your own
+  profile — whether you're a member of the channel.
 
 ## [1.7.4] - 2026-07-19
 

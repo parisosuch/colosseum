@@ -149,6 +149,7 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
     id: c.id,
     title: c.title,
     description: c.description,
+    access: c.access,
     private: c.private,
     created_at: c.created_at,
     count: countById.get(c.id) ?? 0,

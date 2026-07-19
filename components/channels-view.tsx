@@ -2,16 +2,40 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { LayersIcon, SearchIcon } from "lucide-react";
+import { ArrowUpDown, LayersIcon, ListFilter, SearchIcon } from "lucide-react";
 
 import { LIST_GRID } from "./column";
 import { timeAgo } from "@/lib/utils";
 import CreateChannelButton from "./create-channel-button";
+import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 import { ViewToggle } from "./view-toggle";
-import { channelMatches, type ChannelRow } from "./channel-filter";
+import {
+  filterSortChannels,
+  type ChannelAccess,
+  type ChannelRow,
+  type ChannelSort,
+} from "./channel-filter";
 
 export type { ChannelRow };
+
+const SORT_LABELS: Record<ChannelSort, string> = {
+  recent: "Recently added to",
+  name: "Name",
+  count: "Column count",
+};
+
+const ACCESS_MODES: ChannelAccess[] = ["public", "open", "private"];
 
 // The profile's channel listing with a search box and grid/list toggle,
 // mirroring the channel board's block search and view switcher. Each grid card
@@ -32,15 +56,25 @@ export function ChannelsView({
 }) {
   const [view, setView] = useState<"grid" | "list">("grid");
   const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<ChannelSort>("recent");
+  const [access, setAccess] = useState<ChannelAccess[]>([]);
+  const [memberOf, setMemberOf] = useState(false);
 
-  // No debounce: the list is already in memory, so filtering on every keystroke
-  // is cheap and keeps the search feeling instant.
-  const visibleIds = useMemo(
-    () => new Set(channels.filter((c) => channelMatches(c, search)).map((c) => c.id)),
-    [channels, search],
+  const toggleAccess = (mode: ChannelAccess) =>
+    setAccess((prev) => (prev.includes(mode) ? prev.filter((m) => m !== mode) : [...prev, mode]));
+
+  // The number of active filters, shown as a badge on the Filter button.
+  const activeFilters = access.length + (memberOf ? 1 : 0);
+
+  // No debounce: the list is already in memory, so filtering/sorting on every
+  // keystroke or toggle is cheap and keeps it feeling instant.
+  const visibleChannels = useMemo(
+    () => filterSortChannels(channels, { search, access, memberOf }, sort),
+    [channels, search, access, memberOf, sort],
   );
-  const visibleChannels = channels.filter((c) => visibleIds.has(c.id));
-  const visibleCards = gridCards.filter((c) => visibleIds.has(c.id));
+  // Reorder the server-fetched grid cards to match the filtered/sorted list.
+  const cardById = useMemo(() => new Map(gridCards.map((c) => [c.id, c.node])), [gridCards]);
+  const visibleCards = visibleChannels.map((c) => ({ id: c.id, node: cardById.get(c.id) }));
 
   return (
     <div className="space-y-4">
@@ -58,12 +92,72 @@ export function ChannelsView({
           />
         </div>
         <div className="ml-auto flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <ArrowUpDown className="size-4" />
+                <span className="hidden sm:inline">{SORT_LABELS[sort]}</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+              <DropdownMenuRadioGroup value={sort} onValueChange={(v) => setSort(v as ChannelSort)}>
+                {(Object.keys(SORT_LABELS) as ChannelSort[]).map((key) => (
+                  <DropdownMenuRadioItem key={key} value={key}>
+                    {SORT_LABELS[key]}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <ListFilter className="size-4" />
+                <span className="hidden sm:inline">Filter</span>
+                {activeFilters > 0 ? (
+                  <span className="grid size-4 place-items-center rounded-full bg-primary text-[10px] font-medium text-primary-foreground">
+                    {activeFilters}
+                  </span>
+                ) : null}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Access</DropdownMenuLabel>
+              {ACCESS_MODES.map((mode) => (
+                <DropdownMenuCheckboxItem
+                  key={mode}
+                  checked={access.includes(mode)}
+                  // Keep the menu open so several filters can be toggled at once.
+                  onSelect={(e) => e.preventDefault()}
+                  onCheckedChange={() => toggleAccess(mode)}
+                  className="capitalize"
+                >
+                  {mode}
+                </DropdownMenuCheckboxItem>
+              ))}
+              {isOwner ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuCheckboxItem
+                    checked={memberOf}
+                    onSelect={(e) => e.preventDefault()}
+                    onCheckedChange={(v) => setMemberOf(v === true)}
+                  >
+                    Member of
+                  </DropdownMenuCheckboxItem>
+                </>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <ViewToggle view={view} onChange={setView} />
         </div>
       </div>
 
       {visibleChannels.length === 0 ? (
-        <p className="text-muted-foreground">No channels match your search.</p>
+        <p className="text-muted-foreground">No channels match your filters.</p>
       ) : view === "grid" ? (
         <div className="grid grid-cols-2 gap-4 md:flex md:flex-col md:space-y-4 md:gap-0">
           {visibleCards.map((card) => (

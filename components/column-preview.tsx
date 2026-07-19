@@ -2,11 +2,12 @@ import { FileText, Play } from "lucide-react";
 
 import type { Column } from "@/lib/colosseum/column";
 import { getScreenshot, type ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
-import { tweetIdFromUrl, youtubeIdFromUrl } from "@/lib/utils";
+import { spotifyEmbedRef, tweetIdFromUrl, youtubeIdFromUrl } from "@/lib/utils";
 import { Markdown } from "./markdown";
 import ScreenShotPreview from "./screenshot-preview";
 import TweetBlock from "./tweet-block";
 import YouTubeBlock from "./youtube-block";
+import SpotifyBlock from "./spotify-block";
 
 export default async function ColumnPreview({
   column,
@@ -89,6 +90,11 @@ export default async function ColumnPreview({
 
   if (column.type === "youtube") {
     return <YouTubeBlock id={youtubeIdFromUrl(column.url ?? "") ?? ""} compact />;
+  }
+
+  if (column.type === "spotify") {
+    const ref = spotifyEmbedRef(column.url ?? "");
+    return <SpotifyBlock type={ref?.type ?? ""} id={ref?.id ?? ""} image={column.image} compact />;
   }
 
   // Use the pre-fetched screenshot when a caller passed one (batched list);

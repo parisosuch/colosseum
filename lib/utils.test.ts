@@ -2,8 +2,10 @@ import { expect, test } from "bun:test";
 
 import {
   imageSrcFromHtml,
+  isSpotifyUrl,
   isTweetUrl,
   isYouTubeUrl,
+  spotifyEmbedRef,
   tweetIdFromUrl,
   youtubeIdFromUrl,
 } from "./utils";
@@ -45,6 +47,35 @@ test("youtubeIdFromUrl rejects non-YouTube and malformed URLs", () => {
   expect(youtubeIdFromUrl("not a url")).toBeNull();
   expect(isYouTubeUrl("https://youtu.be/dQw4w9WgXcQ")).toBe(true);
   expect(isYouTubeUrl("https://example.com")).toBe(false);
+});
+
+test("spotifyEmbedRef extracts the type and id from open.spotify.com URLs", () => {
+  expect(spotifyEmbedRef("https://open.spotify.com/track/6rqhFgbbKwnb9MLmUQDhG6")).toEqual({
+    type: "track",
+    id: "6rqhFgbbKwnb9MLmUQDhG6",
+  });
+  expect(spotifyEmbedRef("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M")).toEqual({
+    type: "playlist",
+    id: "37i9dQZF1DXcBWIGoYBM5M",
+  });
+  // Locale prefix and ?si= tracking query are ignored.
+  expect(spotifyEmbedRef("https://open.spotify.com/intl-de/album/1234abcd?si=xyz")).toEqual({
+    type: "album",
+    id: "1234abcd",
+  });
+  expect(spotifyEmbedRef("open.spotify.com/artist/0OdUWJ0sBjDrqHygGUXeCF")).toEqual({
+    type: "artist",
+    id: "0OdUWJ0sBjDrqHygGUXeCF",
+  });
+});
+
+test("spotifyEmbedRef rejects non-Spotify and unsupported URLs", () => {
+  expect(spotifyEmbedRef("https://open.spotify.com/user/someone")).toBeNull(); // unsupported type
+  expect(spotifyEmbedRef("https://open.spotify.com/track/")).toBeNull(); // no id
+  expect(spotifyEmbedRef("https://spotify.com/track/abc")).toBeNull(); // wrong host
+  expect(spotifyEmbedRef("not a url")).toBeNull();
+  expect(isSpotifyUrl("https://open.spotify.com/track/6rqhFgbbKwnb9MLmUQDhG6")).toBe(true);
+  expect(isSpotifyUrl("https://example.com")).toBe(false);
 });
 
 test("imageSrcFromHtml pulls the absolute <img> source a browser image-copy drops", () => {

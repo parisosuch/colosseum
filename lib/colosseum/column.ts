@@ -23,7 +23,7 @@ import { tweetIdFromUrl } from "@/lib/utils";
 export type Column = {
   id: number;
   created_at: string;
-  type: "url" | "text" | "image" | "channel" | "pdf" | "video" | "tweet" | "youtube";
+  type: "url" | "text" | "image" | "channel" | "pdf" | "video" | "tweet" | "youtube" | "spotify";
   title?: string;
   description?: string;
   url?: string;
@@ -361,6 +361,31 @@ export async function uploadYouTubeColumn(input: {
       type: "youtube",
       url: input.url,
       title: input.title,
+      channel_id: input.channel_id,
+      created_by: input.created_by,
+    })
+    .returning();
+  return toColumn(row);
+}
+
+// A Spotify block reuses the `url` field for the open.spotify.com URL, storing
+// the item's title as the block title and its cover-art URL in `image` (an
+// external URL, like a link-image block — deleteMediaByUrl no-ops on it). The
+// player renders live from Spotify's iframe; nothing else is captured.
+export async function uploadSpotifyColumn(input: {
+  created_by: string;
+  channel_id: number;
+  url: string;
+  title?: string;
+  image?: string;
+}): Promise<Column> {
+  const [row] = await db
+    .insert(column)
+    .values({
+      type: "spotify",
+      url: input.url,
+      title: input.title,
+      image: input.image,
       channel_id: input.channel_id,
       created_by: input.created_by,
     })

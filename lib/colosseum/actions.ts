@@ -49,6 +49,7 @@ import {
   uploadURLColumn,
 } from "./column";
 import { ingestTweet } from "./tweet";
+import { logError } from "@/lib/log";
 import { tweetIdFromUrl } from "@/lib/utils";
 import {
   Comment,
@@ -330,15 +331,40 @@ export async function uploadTweetColumnAction(input: {
   return uploadURLColumn({ created_by: userId, channel_id: input.channelId, text: input.url });
 }
 
-// Add a YouTube block. Just stores the URL — the embed renders live from
-// YouTube, nothing is captured (persisting the video would be too costly).
+// The video's title via YouTube's public oEmbed endpoint (no API key, returns
+// only metadata — not the video itself, so it stays within "don't persist the
+// video"). Best-effort: null if the lookup fails, and the block is created
+// untitled rather than failing the add.
+async function youtubeTitle(url: string): Promise<string | undefined> {
+  try {
+    const res = await fetch(
+      `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`,
+    );
+    if (!res.ok) return undefined;
+    const data = (await res.json()) as { title?: string };
+    return data.title || undefined;
+  } catch (e) {
+    logError("youtube.oembed", `title lookup failed for ${url}`, e);
+    return undefined;
+  }
+}
+
+// Add a YouTube block. Stores the URL and the video's title; the embed renders
+// live from YouTube, nothing else is captured (persisting the video would be
+// too costly).
 export async function uploadYouTubeColumnAction(input: {
   channelId: number;
   url: string;
 }): Promise<Column> {
   const userId = await requireUserId();
   await requireContributableChannel(input.channelId, userId);
-  return uploadYouTubeColumn({ created_by: userId, channel_id: input.channelId, url: input.url });
+  const title = await youtubeTitle(input.url);
+  return uploadYouTubeColumn({
+    created_by: userId,
+    channel_id: input.channelId,
+    url: input.url,
+    title,
+  });
 }
 
 export async function uploadTextColumnAction(input: {

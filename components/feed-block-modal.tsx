@@ -33,14 +33,25 @@ export function FeedBlockModal({
 
   return (
     <>
-      <button
-        type="button"
+      {/* A tweet card renders its own <button> (copy link), so this trigger
+          can't be a real <button> without nesting them (invalid HTML that
+          breaks hydration). Use a role=button div, mirroring the channel grid
+          (components/column.tsx). */}
+      <div
+        role="button"
+        tabIndex={0}
         aria-label={aria}
         onClick={() => setOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setOpen(true);
+          }
+        }}
         className="group block w-full text-left"
       >
         {children}
-      </button>
+      </div>
       <BlockModal
         column={column}
         open={open}

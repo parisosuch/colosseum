@@ -55,6 +55,7 @@ export function blockLabel(b: {
   if (b.type === "text") return b.text ? b.text.slice(0, 60) : "a note";
   if (b.type === "image") return "an image";
   if (b.type === "pdf") return "a PDF";
+  if (b.type === "video") return "a video";
   if (b.type === "channel") return "a channel";
   return "a column";
 }

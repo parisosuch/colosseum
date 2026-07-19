@@ -21,6 +21,7 @@ function blockLabel(column: Column): string {
   if (column.type === "url") return column.url ?? "Link";
   if (column.type === "text") return "Text column";
   if (column.type === "pdf") return "PDF column";
+  if (column.type === "video") return "Video column";
   return "Column";
 }
 
@@ -117,6 +118,11 @@ export default async function BlockPage({ params }: BlockPageParams) {
                 Open PDF
               </a>
             </object>
+          ) : column.type === "video" && column.image ? (
+            <video src={column.image} controls playsInline className="w-full rounded-lg">
+              {/* User uploads carry no caption file; empty track satisfies a11y. */}
+              <track kind="captions" />
+            </video>
           ) : (
             <a
               href={column.url}

@@ -30,8 +30,9 @@ test("text without title is truncated", () => {
   expect(blockLabel(b({ type: "text", text: "x".repeat(80) }))).toBe("x".repeat(60));
 });
 
-test("image and channel fall back to a noun", () => {
+test("image, video, and channel fall back to a noun", () => {
   expect(blockLabel(b({ type: "image" }))).toBe("an image");
+  expect(blockLabel(b({ type: "video" }))).toBe("a video");
   expect(blockLabel(b({ type: "channel" }))).toBe("a channel");
 });
 

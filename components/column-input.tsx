@@ -1,6 +1,6 @@
 "use client";
 
-import { Dispatch, SetStateAction, useState, useRef } from "react";
+import { Dispatch, SetStateAction, useEffect, useState, useRef } from "react";
 import {
   uploadURLColumnAction,
   uploadTweetColumnAction,
@@ -14,6 +14,7 @@ import {
 import type { Column } from "@/lib/colosseum/column";
 import { columnLimitMessage } from "@/lib/quota";
 import { imageSrcFromHtml, isTweetUrl, isURL } from "@/lib/utils";
+import { resumeVideoUploads, startVideoUpload, type UploadHandlers } from "@/lib/resumable-upload";
 import type { SessionUser } from "@/components/channel-board";
 import type { Channel } from "@/lib/colosseum/channel";
 import { GradientSpin } from "./gradient-spin";
@@ -32,6 +33,8 @@ const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10MB
 const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"];
 const MAX_PDF_BYTES = 25 * 1024 * 1024; // 25MB
 const PDF_TYPE = "application/pdf";
+const MAX_VIDEO_BYTES = 100 * 1024 * 1024; // 100MB
+const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/webm", "video/quicktime", "video/ogg"];
 // A dropped .md file becomes a (markdown) text block. Cap the source and reject
 // anything that isn't plain text.
 const MAX_MD_BYTES = 256 * 1024; // 256KB
@@ -66,6 +69,53 @@ export default function ColumnInput({
   const loading = uploading > 0;
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Active resumable video uploads, keyed by fingerprint. Videos upload in the
+  // background (they can be large) with a progress row, instead of blocking the
+  // sequential file loop like image/PDF do.
+  type ActiveUpload = { filename: string; sent: number; total: number; error?: string };
+  const [videoUploads, setVideoUploads] = useState<Record<string, ActiveUpload>>({});
+
+  // Latest handlers in a ref so the resume effect can read them without
+  // re-running when a parent callback changes identity.
+  const uploadHandlersRef = useRef<UploadHandlers>({});
+  uploadHandlersRef.current = {
+    onStart: (fp, filename, total) =>
+      setVideoUploads((u) => ({ ...u, [fp]: { filename, sent: u[fp]?.sent ?? 0, total } })),
+    onProgress: (fp, sent, total) =>
+      setVideoUploads((u) => ({
+        ...u,
+        [fp]: { filename: u[fp]?.filename ?? "", sent, total },
+      })),
+    onComplete: (fp, column) => {
+      setVideoUploads((u) => {
+        const next = { ...u };
+        delete next[fp];
+        return next;
+      });
+      setColumns((prev) => [column, ...prev]);
+      onBlockAdded();
+      toast.success("Video uploaded.");
+    },
+    onError: (fp, message) =>
+      setVideoUploads((u) => ({
+        ...u,
+        [fp]: {
+          filename: u[fp]?.filename ?? "",
+          sent: u[fp]?.sent ?? 0,
+          total: u[fp]?.total ?? 0,
+          error: message,
+        },
+      })),
+  };
+
+  // On mount / channel change, resume any video upload this browser left pending
+  // (a refresh or navigation mid-upload) for this channel.
+  const channelId = channel?.id ?? null;
+  useEffect(() => {
+    if (channelId == null || !user?.id) return;
+    resumeVideoUploads(channelId, uploadHandlersRef.current);
+  }, [channelId, user?.id]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.length) handleFilesUpload(e.target.files);
@@ -115,8 +165,8 @@ export default function ColumnInput({
     await handleFilesUpload(files);
   };
 
-  // Upload one or more dropped/picked files, creating a block per file: images
-  // and PDFs go to blob storage as image/pdf blocks; .md files become markdown
+  // Upload one or more dropped/picked files, creating a block per file: images,
+  // videos, and PDFs go to blob storage as image/video/pdf blocks; .md files become markdown
   // text blocks. Type/size are validated here for fast feedback (blobs are
   // re-checked server-side). Invalid files are reported and skipped; valid ones
   // process sequentially so a big multi-drop doesn't fire dozens of requests at
@@ -128,25 +178,44 @@ export default function ColumnInput({
     for (const f of Array.from(fileList)) {
       const isImage = ALLOWED_IMAGE_TYPES.includes(f.type);
       const isPdf = f.type === PDF_TYPE;
+      const isVideo = ALLOWED_VIDEO_TYPES.includes(f.type);
       const isMd = isMarkdownFile(f);
-      if (!isImage && !isPdf && !isMd) {
+      if (!isImage && !isPdf && !isVideo && !isMd) {
         toast.error(
-          `${f.name}: only image files (PNG, JPEG, GIF, WebP, AVIF), PDFs, or Markdown (.md) files are supported.`,
+          `${f.name}: only image files (PNG, JPEG, GIF, WebP, AVIF), videos (MP4, WebM, MOV, OGG), PDFs, or Markdown (.md) files are supported.`,
         );
       } else if (
-        isMd ? f.size > MAX_MD_BYTES : isPdf ? f.size > MAX_PDF_BYTES : f.size > MAX_IMAGE_BYTES
+        isMd
+          ? f.size > MAX_MD_BYTES
+          : isPdf
+            ? f.size > MAX_PDF_BYTES
+            : isVideo
+              ? f.size > MAX_VIDEO_BYTES
+              : f.size > MAX_IMAGE_BYTES
       ) {
-        toast.error(`${f.name} is too large (max ${isMd ? "256KB" : isPdf ? "25MB" : "10MB"}).`);
+        toast.error(
+          `${f.name} is too large (max ${isMd ? "256KB" : isPdf ? "25MB" : isVideo ? "100MB" : "10MB"}).`,
+        );
       } else {
         valid.push(f);
       }
     }
     if (valid.length === 0) return;
 
-    setUploading(valid.length);
+    // Videos upload in the background via the resumable endpoint (chunked, so a
+    // refresh resumes them) — they don't block the sequential loop below.
+    const videos = valid.filter((f) => ALLOWED_VIDEO_TYPES.includes(f.type));
+    for (const f of videos) {
+      void startVideoUpload(f, channel.id, uploadHandlersRef.current);
+    }
+
+    const rest = valid.filter((f) => !ALLOWED_VIDEO_TYPES.includes(f.type));
+    if (rest.length === 0) return;
+
+    setUploading(rest.length);
     const created: Column[] = [];
     try {
-      for (const f of valid) {
+      for (const f of rest) {
         if (isMarkdownFile(f)) {
           const md = await f.text();
           // A binary file renamed .md reads as garbage with NUL bytes — reject
@@ -327,7 +396,7 @@ export default function ColumnInput({
               upload
               <input
                 type="file"
-                accept="image/*,application/pdf,.md,.markdown,text/markdown"
+                accept="image/*,video/mp4,video/webm,video/quicktime,video/ogg,application/pdf,.md,.markdown,text/markdown"
                 multiple
                 className="hidden"
                 onChange={handleFileChange}
@@ -344,6 +413,34 @@ export default function ColumnInput({
           {uploading > 1 ? (
             <p className="text-xs text-muted-foreground">{uploading} left…</p>
           ) : null}
+        </div>
+      )}
+
+      {/* Background video uploads: a progress row per file. Survives a refresh —
+          resumeVideoUploads repopulates this on mount. */}
+      {Object.keys(videoUploads).length > 0 && (
+        <div className="absolute inset-x-0 bottom-0 z-20 flex flex-col gap-1 p-2">
+          {Object.entries(videoUploads).map(([fp, u]) => {
+            const pct = u.total ? Math.min(100, Math.round((u.sent / u.total) * 100)) : 0;
+            return (
+              <div key={fp} className="rounded-md border bg-background/90 px-2 py-1 backdrop-blur">
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span className="truncate">{u.filename || "Video"}</span>
+                  <span className={u.error ? "text-destructive" : "text-muted-foreground"}>
+                    {u.error ? "Failed" : `${pct}%`}
+                  </span>
+                </div>
+                {!u.error && (
+                  <div className="mt-1 h-1 w-full overflow-hidden rounded bg-muted">
+                    <div
+                      className="h-full bg-primary transition-[width]"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

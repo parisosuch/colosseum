@@ -8,6 +8,15 @@ release.
 
 ## [Unreleased]
 
+## [1.7.4] - 2026-07-19
+
+### Fixed
+
+- Opening a tweet block from the Explore feed no longer triggers a hydration
+  error. The feed wrapped each block's card in a `<button>`, and a tweet card
+  renders its own "Copy link" `<button>` inside — nesting them is invalid HTML.
+  The feed trigger is now a `role="button"` element, matching the channel grid.
+
 ## [1.7.3] - 2026-07-19
 
 ### Fixed

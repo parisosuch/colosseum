@@ -47,6 +47,21 @@ export const user = pgTable("user", {
   column_limit: integer("column_limit"),
 });
 
+// Outbound-email configuration, stored alongside the other runtime settings so
+// an admin can point the instance at Resend or an SMTP server without a
+// rebuild. `provider = null` (or missing config) logs mail to the console.
+// Secrets (resend_api_key, smtp_pass) live here; the admin API redacts them
+// before they reach the browser (see lib/colosseum/admin.ts).
+export type EmailSettings = {
+  provider: "resend" | "smtp" | null;
+  from: string;
+  resend_api_key: string;
+  smtp_host: string;
+  smtp_port: number | null;
+  smtp_user: string;
+  smtp_pass: string;
+};
+
 // Instance-wide settings the admin edits at runtime (env vars would need a
 // rebuild). A single row, pinned to id = 1 by a check constraint. Every limit
 // uses the same convention: null = unlimited, 0 = none, N = cap.
@@ -56,6 +71,7 @@ export const appSettings = pgTable(
     id: integer("id").primaryKey().default(1),
     max_invites_per_user: integer("max_invites_per_user"),
     max_columns_per_user: integer("max_columns_per_user"),
+    email: jsonb("email").$type<EmailSettings>(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check("app_settings_singleton", sql`${t.id} = 1`)],

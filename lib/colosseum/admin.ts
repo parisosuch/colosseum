@@ -3,33 +3,50 @@ import { eq, sql } from "drizzle-orm";
 import { getSessionUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { appSettings, column, inviteCode, user, userProfile } from "@/lib/db/schema";
+import type { EmailSettings } from "@/lib/db/schema";
 
 // Instance-wide limits. null = unlimited, 0 = none, N = cap. Stored as a single
-// pinned row (id = 1); see the app_settings table in lib/db/schema.ts.
+// pinned row (id = 1); see the app_settings table in lib/db/schema.ts. The email
+// config (secrets included) is returned as stored — the admin page is the only
+// caller and it sits behind requireAdmin.
 export type AppSettings = {
   max_invites_per_user: number | null;
   max_columns_per_user: number | null;
+  email: EmailSettings;
 };
 
-const DEFAULT_SETTINGS: AppSettings = {
-  max_invites_per_user: null,
-  max_columns_per_user: null,
+const DEFAULT_EMAIL: EmailSettings = {
+  provider: null,
+  from: "",
+  resend_api_key: "",
+  smtp_host: "",
+  smtp_port: null,
+  smtp_user: "",
+  smtp_pass: "",
 };
 
 export async function getAppSettings(): Promise<AppSettings> {
   const [row] = await db.select().from(appSettings).where(eq(appSettings.id, 1)).limit(1);
-  if (!row) return DEFAULT_SETTINGS;
   return {
-    max_invites_per_user: row.max_invites_per_user,
-    max_columns_per_user: row.max_columns_per_user,
+    max_invites_per_user: row?.max_invites_per_user ?? null,
+    max_columns_per_user: row?.max_columns_per_user ?? null,
+    email: row?.email ?? DEFAULT_EMAIL,
   };
 }
 
-export async function updateAppSettings(input: AppSettings): Promise<void> {
+export async function updateAppSettings(
+  input: Omit<AppSettings, "email"> & { email?: EmailSettings },
+): Promise<void> {
+  const cols = {
+    max_invites_per_user: input.max_invites_per_user,
+    max_columns_per_user: input.max_columns_per_user,
+    // Omitted email keeps what's stored (limit-only callers); otherwise replace.
+    ...(input.email ? { email: input.email } : {}),
+  };
   await db
     .insert(appSettings)
-    .values({ id: 1, ...input })
-    .onConflictDoUpdate({ target: appSettings.id, set: { ...input, updated_at: new Date() } });
+    .values({ id: 1, email: DEFAULT_EMAIL, ...cols })
+    .onConflictDoUpdate({ target: appSettings.id, set: { ...cols, updated_at: new Date() } });
 }
 
 // A per-user override wins over the global default when set; otherwise the

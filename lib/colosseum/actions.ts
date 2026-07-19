@@ -50,6 +50,7 @@ import {
   uploadURLColumn,
 } from "./column";
 import { ingestTweet } from "./tweet";
+import { renderEmail, sendEmail } from "@/lib/email";
 import { logError } from "@/lib/log";
 import { tweetIdFromUrl } from "@/lib/utils";
 import {
@@ -794,6 +795,24 @@ export async function getAppSettingsAction(): Promise<AppSettings> {
 export async function updateAppSettingsAction(settings: AppSettings): Promise<void> {
   await requireAdmin();
   await updateAppSettings(settings);
+}
+
+// Sends a test email to the admin clicking the button, using the saved config,
+// so they can confirm the provider works. Returns the address it went to.
+// Throws (surfaced in the UI) if email is off or the provider rejects it.
+export async function sendTestEmailAction(): Promise<string> {
+  const admin = await requireAdmin();
+  const { email } = await getAppSettings();
+  if (email.provider === null) {
+    throw new Error("Email is off — choose a provider and save before sending a test.");
+  }
+  const { html, text } = renderEmail({
+    heading: "Test email",
+    body: "This is a test email from your Colosseum instance. If you're reading it, outbound email is working.",
+    footnote: "Sent from your admin settings.",
+  });
+  await sendEmail({ to: admin.email, subject: "Colosseum test email", text, html });
+  return admin.email;
 }
 
 export async function setUserBannedAction(userId: string, banned: boolean): Promise<void> {

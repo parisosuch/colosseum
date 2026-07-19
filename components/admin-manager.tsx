@@ -2,6 +2,7 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
+import { toast } from "sonner";
 import {
   ArrowDown,
   ArrowUp,
@@ -10,6 +11,9 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronsUpDown,
+  Eye,
+  EyeOff,
+  Send,
   Shield,
   ShieldOff,
   Undo2,
@@ -17,12 +21,14 @@ import {
 
 import {
   getAppSettingsAction,
+  sendTestEmailAction,
   setUserAdminAction,
   setUserBannedAction,
   setUserLimitsAction,
   updateAppSettingsAction,
 } from "@/lib/colosseum/actions";
 import type { AdminUser, AppSettings } from "@/lib/colosseum/admin";
+import type { EmailSettings } from "@/lib/db/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -77,6 +83,42 @@ function IconAction({
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
+  );
+}
+
+// Password field with a show/hide toggle — reveals the saved secret so an admin
+// can verify or copy it, or check a new key while typing.
+function SecretInput({
+  id,
+  value,
+  placeholder,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative">
+      <Input
+        id={id}
+        type={show ? "text" : "password"}
+        className="w-full pr-9"
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      <button
+        type="button"
+        onClick={() => setShow((s) => !s)}
+        aria-label={show ? "Hide" : "Show"}
+        className="absolute inset-y-0 right-0 flex items-center px-2.5 text-muted-foreground hover:text-foreground"
+      >
+        {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+      </button>
+    </div>
   );
 }
 
@@ -156,9 +198,18 @@ export default function AdminManager({
     fromLimit(initialSettings.max_columns_per_user),
   );
   const [savingSettings, setSavingSettings] = useState(false);
+  const [testingEmail, setTestingEmail] = useState(false);
+
+  // Email config. Secrets arrive blank (redacted); an edited field overwrites,
+  // a blank one keeps what's stored. Compared as JSON for the dirty check.
+  const [email, setEmail] = useState<EmailSettings>(initialSettings.email);
+  const [savedEmail, setSavedEmail] = useState(initialSettings.email);
+  const patchEmail = (patch: Partial<EmailSettings>) => setEmail((e) => ({ ...e, ...patch }));
+
   const settingsDirty =
     toLimit(invitesGlobal) !== savedSettings.max_invites_per_user ||
-    toLimit(columnsGlobal) !== savedSettings.max_columns_per_user;
+    toLimit(columnsGlobal) !== savedSettings.max_columns_per_user ||
+    JSON.stringify(email) !== JSON.stringify(savedEmail);
 
   const saveSettings = async () => {
     setSavingSettings(true);
@@ -167,16 +218,34 @@ export default function AdminManager({
       await updateAppSettingsAction({
         max_invites_per_user: toLimit(invitesGlobal),
         max_columns_per_user: toLimit(columnsGlobal),
+        email,
       });
       const fresh = await getAppSettingsAction();
       setSavedSettings(fresh);
       setInvitesGlobal(fromLimit(fresh.max_invites_per_user));
       setColumnsGlobal(fromLimit(fresh.max_columns_per_user));
+      setEmail(fresh.email);
+      setSavedEmail(fresh.email);
     } catch (e) {
       console.error(e);
       setError("Couldn't save settings.");
     } finally {
       setSavingSettings(false);
+    }
+  };
+
+  // Sends a test email to the signed-in admin using the saved config, so the
+  // provider can be verified end-to-end. Uses what's persisted, not the current
+  // form — hence disabled while there are unsaved changes.
+  const sendTest = async () => {
+    setTestingEmail(true);
+    try {
+      const sentTo = await sendTestEmailAction();
+      toast.success(`Test email sent to ${sentTo}.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't send test email.");
+    } finally {
+      setTestingEmail(false);
     }
   };
 
@@ -243,10 +312,134 @@ export default function AdminManager({
                 onChange={(e) => setColumnsGlobal(e.target.value)}
               />
             </div>
-            <Button onClick={saveSettings} disabled={savingSettings || !settingsDirty}>
-              <Check />
-              {savingSettings ? "Saving..." : "Save limits"}
-            </Button>
+          </div>
+        </section>
+
+        {/* Outbound email */}
+        <section className="space-y-4">
+          <h2 className="text-heading">Email</h2>
+          <p className="text-caption max-w-prose">
+            Used for password resets and notifications. Choose a provider and save — while it’s off,
+            no email is sent. Secrets are write-only: leave a saved field blank to keep it.
+          </p>
+          <div className="max-w-sm space-y-4">
+            <div className="space-y-1">
+              <Label htmlFor="email-provider">Provider</Label>
+              <select
+                id="email-provider"
+                className="h-9 w-full rounded-md border bg-transparent px-3 text-sm"
+                value={email.provider ?? ""}
+                onChange={(e) =>
+                  patchEmail({
+                    provider: (e.target.value || null) as EmailSettings["provider"],
+                  })
+                }
+              >
+                <option value="">Off — don’t send email</option>
+                <option value="resend">Resend</option>
+                <option value="smtp">SMTP</option>
+              </select>
+            </div>
+
+            {email.provider !== null ? (
+              <div className="space-y-1">
+                <Label htmlFor="email-from">From</Label>
+                <Input
+                  id="email-from"
+                  className="w-full"
+                  placeholder="Colosseum <noreply@your-domain.com>"
+                  value={email.from}
+                  onChange={(e) => patchEmail({ from: e.target.value })}
+                />
+              </div>
+            ) : null}
+
+            {email.provider === "resend" ? (
+              <div className="space-y-1">
+                <Label htmlFor="resend-key">Resend API key</Label>
+                <SecretInput
+                  id="resend-key"
+                  placeholder="re_..."
+                  value={email.resend_api_key}
+                  onChange={(v) => patchEmail({ resend_api_key: v })}
+                />
+              </div>
+            ) : null}
+
+            {email.provider === "smtp" ? (
+              <>
+                <div className="grid grid-cols-[1fr_5rem] gap-4">
+                  <div className="space-y-1">
+                    <Label htmlFor="smtp-host">Host</Label>
+                    <Input
+                      id="smtp-host"
+                      className="w-full"
+                      placeholder="smtp.example.com"
+                      value={email.smtp_host}
+                      onChange={(e) => patchEmail({ smtp_host: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="smtp-port">Port</Label>
+                    <Input
+                      id="smtp-port"
+                      inputMode="numeric"
+                      className="w-full"
+                      placeholder="587"
+                      value={email.smtp_port === null ? "" : String(email.smtp_port)}
+                      onChange={(e) => patchEmail({ smtp_port: toLimit(e.target.value) })}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <Label htmlFor="smtp-user">Username</Label>
+                    <Input
+                      id="smtp-user"
+                      className="w-full"
+                      placeholder="optional"
+                      value={email.smtp_user}
+                      onChange={(e) => patchEmail({ smtp_user: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="smtp-pass">Password</Label>
+                    <SecretInput
+                      id="smtp-pass"
+                      placeholder="optional"
+                      value={email.smtp_pass}
+                      onChange={(v) => patchEmail({ smtp_pass: v })}
+                    />
+                  </div>
+                </div>
+              </>
+            ) : null}
+
+            <div className="flex gap-2">
+              <Button
+                className="flex-1"
+                onClick={saveSettings}
+                disabled={savingSettings || !settingsDirty}
+              >
+                <Check />
+                {savingSettings ? "Saving..." : "Save settings"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={sendTest}
+                disabled={testingEmail || settingsDirty || savedEmail.provider === null}
+                title={
+                  settingsDirty
+                    ? "Save your changes first"
+                    : savedEmail.provider === null
+                      ? "Turn on a provider first"
+                      : undefined
+                }
+              >
+                <Send />
+                {testingEmail ? "Sending..." : "Send test"}
+              </Button>
+            </div>
           </div>
         </section>
 

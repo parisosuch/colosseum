@@ -15,6 +15,7 @@ import { nextCookies } from "better-auth/next-js";
 import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/db";
+import { renderEmail, sendEmail } from "@/lib/email";
 import { account, session, user, verification } from "@/lib/db/schema";
 import { signupsDisabled } from "@/lib/colosseum/config";
 import { claimInviteCode, inviteRequired, recordInviteRedemption } from "@/lib/colosseum/invite";
@@ -42,11 +43,17 @@ export const auth = betterAuth({
   },
   emailAndPassword: {
     enabled: true,
-    // ponytail: no mail provider is wired up, so the reset link is logged to
-    // the server console — enough for a self-hoster to recover an account.
-    // Swap in a real email sender here when SMTP exists.
+    // Delivered through whichever provider lib/email.ts finds configured
+    // (Resend, SMTP, or console when neither is set up).
     sendResetPassword: async ({ user, url }) => {
-      console.log(`Password reset requested for ${user.email}: ${url}`);
+      const { html, text } = renderEmail({
+        heading: "Reset your password",
+        body: "We received a request to reset your Colosseum password. Use the button below to choose a new one — the link expires shortly.",
+        buttonLabel: "Reset password",
+        buttonUrl: url,
+        footnote: "If you didn't request this, you can safely ignore this email.",
+      });
+      await sendEmail({ to: user.email, subject: "Reset your Colosseum password", text, html });
     },
   },
   databaseHooks: {

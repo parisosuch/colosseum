@@ -104,6 +104,22 @@ export async function getUserChannels(user_id: string): Promise<Channel[]> {
   return rows.map(toChannel);
 }
 
+// Channels the user is an explicit member of (never ones they own — the owner
+// is an implicit member with no row). Joined to the owner's handle so the
+// profile can link each to /handle/id. Newest activity first.
+export async function getMemberChannels(
+  user_id: string,
+): Promise<(Channel & { handle: string })[]> {
+  const rows = await db
+    .select({ ch: channel, handle: userProfile.handle })
+    .from(channelMember)
+    .innerJoin(channel, eq(channel.id, channelMember.channel_id))
+    .innerJoin(userProfile, eq(userProfile.user_id, channel.owner_id))
+    .where(and(eq(channelMember.user_id, user_id), ne(channel.owner_id, user_id)))
+    .orderBy(desc(lastBlockAddedAt));
+  return rows.map(({ ch, handle }) => ({ ...toChannel(ch), handle }));
+}
+
 // The owner's channels as visible to `viewer_id`: every public/open one, plus
 // private ones the viewer owns or is a member of. Backs the profile grid so an
 // invited member sees the private group channels they belong to.

@@ -81,7 +81,7 @@ export function ChannelsView({
           {visibleChannels.map((channel) => (
             <Link
               key={channel.id}
-              href={`/${handle}/${channel.id}`}
+              href={`/${channel.handle ?? handle}/${channel.id}`}
               className={`w-full border-b px-2 py-2 text-left hover:bg-muted/50 ${LIST_GRID}`}
             >
               <div className="flex min-w-0 items-center gap-2">
@@ -91,6 +91,9 @@ export function ChannelsView({
                 <span className="truncate text-sm">{channel.title}</span>
                 {channel.private ? (
                   <span className="shrink-0 text-xs text-muted-foreground">private</span>
+                ) : null}
+                {channel.memberOf ? (
+                  <span className="shrink-0 text-xs text-muted-foreground">member of</span>
                 ) : null}
               </div>
               <span className="truncate text-sm text-muted-foreground">

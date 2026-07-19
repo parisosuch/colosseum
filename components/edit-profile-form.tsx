@@ -81,6 +81,13 @@ export function EditProfileForm({ profile }: { profile: UserProfile }) {
     }
   };
 
+  // Save stays disabled until something actually changes, so it reads as the
+  // profile form's own control (the notification toggles below save instantly).
+  const dirty =
+    normalizeHandle(handle) !== profile.handle ||
+    about !== (profile.about ?? "") ||
+    avatarFile !== null;
+
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-6 max-w-md">
       <div className="flex items-center gap-4">
@@ -128,7 +135,7 @@ export function EditProfileForm({ profile }: { profile: UserProfile }) {
         />
       </div>
 
-      <Button type="submit" disabled={isLoading}>
+      <Button type="submit" disabled={isLoading || !dirty}>
         {isLoading ? "Saving..." : "Save changes"}
       </Button>
     </form>

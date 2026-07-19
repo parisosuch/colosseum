@@ -1,5 +1,6 @@
 import PageHeader from "@/components/page-header";
 import { EditProfileForm } from "@/components/edit-profile-form";
+import NotificationSettings from "@/components/notification-settings";
 import ApiTokenManager from "@/components/api-token-manager";
 import { getUserProfile } from "@/lib/colosseum/user";
 import { getMyApiTokens } from "@/lib/colosseum/api-token";
@@ -25,6 +26,7 @@ export default async function SettingsPage() {
     <div className="w-full max-w-xl p-6 sm:p-12 space-y-8">
       <PageHeader crumbs={[{ label: "settings" }]} />
       <EditProfileForm profile={profile} />
+      <NotificationSettings initial={profile.email_notifications} />
       <ApiTokenManager userId={user.id} initialTokens={apiTokens} />
     </div>
   );

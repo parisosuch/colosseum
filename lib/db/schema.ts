@@ -121,6 +121,23 @@ export const verification = pgTable("verification", {
 // App tables
 // ---------------------------------------------------------------------------
 
+// Per-type email toggles. In-app notifications are always recorded; each flag
+// only gates whether that notification type is also emailed. Keys mirror the
+// notification `type` enum; every type defaults on.
+export type EmailNotificationPrefs = {
+  comment: boolean;
+  mention: boolean;
+  connect: boolean;
+  member: boolean;
+};
+
+export const DEFAULT_EMAIL_NOTIFICATION_PREFS: EmailNotificationPrefs = {
+  comment: true,
+  mention: true,
+  connect: true,
+  member: true,
+};
+
 export const userProfile = pgTable(
   "user_profile",
   {
@@ -131,6 +148,10 @@ export const userProfile = pgTable(
     handle: text("handle").notNull().unique(),
     avatar_url: text("avatar_url"),
     about: text("about"),
+    email_notifications: jsonb("email_notifications")
+      .$type<EmailNotificationPrefs>()
+      .notNull()
+      .default(DEFAULT_EMAIL_NOTIFICATION_PREFS),
   },
   (t) => [
     // Explore feed orders new members by join time.
@@ -259,6 +280,39 @@ export const comment = pgTable(
   },
   // A block's comment thread is fetched by column_id, oldest first.
   (t) => [index("comment_column_id_created_at_idx").on(t.column_id, t.created_at)],
+);
+
+// In-app notifications: someone (actor) did something to the recipient's
+// content. `type` says what; `column_id`/`channel_id` point at the subject when
+// relevant (both nullable, cascade so a notification vanishes with its subject).
+// `read_at` null = unread. Actor cascades too, so removing a user clears the
+// notifications they caused.
+export const notification = pgTable(
+  "notification",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    recipient_id: uuid("recipient_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    actor_id: uuid("actor_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    type: text("type", { enum: ["comment", "mention", "connect", "member"] }).notNull(),
+    // Every notification is about a channel (or a block within one), so this is
+    // always set; column_id is set only for comment/mention.
+    channel_id: bigint("channel_id", { mode: "number" })
+      .notNull()
+      .references(() => channel.id, { onDelete: "cascade" }),
+    column_id: bigint("column_id", { mode: "number" }).references(() => column.id, {
+      onDelete: "cascade",
+    }),
+    read_at: timestamp("read_at", { withTimezone: true }),
+  },
+  // The bell feed and unread count both scan one recipient's rows, newest first.
+  (t) => [
+    index("notification_recipient_id_created_at_idx").on(t.recipient_id, t.created_at.desc()),
+  ],
 );
 
 export const screenshot = pgTable("screenshot", {

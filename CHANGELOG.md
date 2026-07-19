@@ -12,8 +12,18 @@ release.
 
 - YouTube blocks: paste a YouTube URL (watch, `youtu.be`, Shorts, or embed
   form) to add a video block. Grid cards show the video thumbnail; the modal and
-  block page embed the live player. Nothing is persisted — the embed renders
-  from YouTube, so the block reflects the live video.
+  block page embed the live player. The block's title is set to the video's
+  title. Nothing else is persisted — the embed renders from YouTube, so the
+  block reflects the live video.
+
+## [1.7.4] - 2026-07-19
+
+### Fixed
+
+- Opening a tweet block from the Explore feed no longer triggers a hydration
+  error. The feed wrapped each block's card in a `<button>`, and a tweet card
+  renders its own "Copy link" `<button>` inside — nesting them is invalid HTML.
+  The feed trigger is now a `role="button"` element, matching the channel grid.
 
 ## [1.7.3] - 2026-07-19
 

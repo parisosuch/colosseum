@@ -37,15 +37,17 @@ export default function SpotifyBlock({
     );
   }
 
-  // 352px is Spotify's standard embed height — a full track player with artwork,
-  // or a scrollable tracklist for albums/playlists/artists.
+  // A track/episode is a single-item player (352px with full artwork); an
+  // album/playlist/artist/show shows a scrollable tracklist that wants more room
+  // than the 352px default, else only ~3 rows are visible before it scrolls.
+  const listType = type !== "track" && type !== "episode";
   return (
     <iframe
       src={`https://open.spotify.com/embed/${type}/${id}`}
       title="Spotify player"
       allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
       loading="lazy"
-      className="h-[352px] w-full rounded-md border-0"
+      className={`w-full rounded-md border-0 ${listType ? "h-[560px]" : "h-[352px]"}`}
     />
   );
 }

@@ -442,7 +442,7 @@ function BlockModalBody({
             <YouTubeBlock id={youtubeIdFromUrl(column.url ?? "") ?? ""} />
           </div>
         ) : column.type === "spotify" ? (
-          <div className="w-full max-w-xl">
+          <div className="w-full max-w-2xl">
             <SpotifyBlock
               type={spotifyEmbedRef(column.url ?? "")?.type ?? ""}
               id={spotifyEmbedRef(column.url ?? "")?.id ?? ""}

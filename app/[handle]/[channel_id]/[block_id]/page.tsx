@@ -131,7 +131,7 @@ export default async function BlockPage({ params }: BlockPageParams) {
           ) : column.type === "youtube" ? (
             <YouTubeBlock id={youtubeIdFromUrl(column.url ?? "") ?? ""} />
           ) : column.type === "spotify" ? (
-            <div className="w-full max-w-xl mx-auto">
+            <div className="w-full max-w-2xl mx-auto">
               <SpotifyBlock
                 type={spotifyEmbedRef(column.url ?? "")?.type ?? ""}
                 id={spotifyEmbedRef(column.url ?? "")?.id ?? ""}

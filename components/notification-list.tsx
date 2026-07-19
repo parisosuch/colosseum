@@ -43,25 +43,25 @@ function groupByBucket(items: NotificationItem[]): [string, NotificationItem[]][
   return out;
 }
 
-function Row({ n }: { n: NotificationItem }) {
+function Card({ n }: { n: NotificationItem }) {
   const Icon = ICON[n.type];
   return (
-    <li
-      className={cn(
-        "transition-colors",
-        n.read ? "hover:bg-muted/50" : "bg-primary/[0.04] hover:bg-primary/[0.07]",
-      )}
-    >
-      <Link href={n.href} className="flex items-start gap-3 px-4 py-3">
-        <span
-          aria-hidden
-          className={cn(
-            "mt-2 size-2 shrink-0 rounded-full",
-            n.read ? "bg-transparent" : "bg-primary",
+    <li>
+      <Link
+        href={n.href}
+        className={cn(
+          "flex h-full gap-3 rounded-xl border p-3.5 transition-colors",
+          n.read
+            ? "hover:bg-muted/50"
+            : "border-primary/25 bg-primary/[0.04] hover:bg-primary/[0.08]",
+        )}
+      >
+        <div className="relative shrink-0">
+          <UserProfilePicture avatarUrl={n.actor_avatar_url} handle={n.actor_handle} size="md" />
+          {n.read ? null : (
+            <span className="absolute -right-0.5 -top-0.5 size-2.5 rounded-full bg-primary ring-2 ring-background" />
           )}
-        />
-        {n.read ? null : <span className="sr-only">Unread. </span>}
-        <UserProfilePicture avatarUrl={n.actor_avatar_url} handle={n.actor_handle} size="md" />
+        </div>
         <div className="min-w-0 flex-1">
           <p
             className={cn(
@@ -69,12 +69,9 @@ function Row({ n }: { n: NotificationItem }) {
               n.read ? "text-muted-foreground" : "text-foreground",
             )}
           >
-            <span className={cn("font-semibold", !n.read && "text-foreground")}>
-              @{n.actor_handle}
-            </span>{" "}
-            {n.message}
+            <span className="font-semibold text-foreground">@{n.actor_handle}</span> {n.message}
           </p>
-          <div className="mt-1 flex items-center gap-1.5 text-muted-foreground">
+          <div className="mt-1.5 flex items-center gap-1.5 text-muted-foreground">
             <Icon className="size-3.5 shrink-0" />
             <span className="text-xs tabular-nums">{timeAgo(new Date(n.created_at))}</span>
           </div>
@@ -86,7 +83,7 @@ function Row({ n }: { n: NotificationItem }) {
 
 function EmptyState({ filter }: { filter: Filter }) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed py-16 text-center">
+    <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed py-20 text-center">
       <Bell className="size-8 text-muted-foreground" />
       <div className="space-y-1">
         <p className="font-medium">
@@ -131,9 +128,9 @@ export default function NotificationList({
     }
   };
 
-  // Auto-load the next page when the sentinel scrolls into view — no stranded
-  // "load more" button floating in empty space. Only paginates the full list
-  // (the Unread filter works off already-loaded items).
+  // Auto-load the next page as the sentinel nears view — the list keeps filling
+  // the viewport as you scroll, no stranded button. Only the full list paginates
+  // (Unread filters already-loaded items).
   useEffect(() => {
     if (filter !== "all" || !hasMore || loading) return;
     const el = sentinelRef.current;
@@ -142,18 +139,12 @@ export default function NotificationList({
       (entries) => {
         if (entries[0].isIntersecting) loadMore();
       },
-      { rootMargin: "400px" },
+      { rootMargin: "600px" },
     );
     obs.observe(el);
     return () => obs.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter, hasMore, loading, items.length]);
-
-  const markAllRead = async () => {
-    setItems((cur) => cur.map((n) => ({ ...n, read: true })));
-    await markNotificationsReadAction();
-    router.refresh(); // drop the nav-bar bell badge
-  };
 
   return (
     <div className="space-y-6">
@@ -196,15 +187,15 @@ export default function NotificationList({
       {shown.length === 0 ? (
         <EmptyState filter={filter} />
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-8">
           {groups.map(([label, group]) => (
-            <section key={label} className="space-y-2">
-              <h3 className="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <section key={label} className="space-y-3">
+              <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 {label}
               </h3>
-              <ul className="divide-y overflow-hidden rounded-xl border">
+              <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                 {group.map((n) => (
-                  <Row key={n.id} n={n} />
+                  <Card key={n.id} n={n} />
                 ))}
               </ul>
             </section>
@@ -218,4 +209,10 @@ export default function NotificationList({
       )}
     </div>
   );
+
+  async function markAllRead() {
+    setItems((cur) => cur.map((n) => ({ ...n, read: true })));
+    await markNotificationsReadAction();
+    router.refresh();
+  }
 }

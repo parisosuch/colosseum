@@ -8,6 +8,8 @@ release.
 
 ## [Unreleased]
 
+## [1.7.4] - 2026-07-19
+
 ### Fixed
 
 - Opening a tweet block from the Explore feed no longer triggers a hydration

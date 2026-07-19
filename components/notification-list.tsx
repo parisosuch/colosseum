@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AtSign, Bell, CheckCheck, Link2, MessageSquare, UserPlus } from "lucide-react";
@@ -114,6 +114,7 @@ export default function NotificationList({
   const [hasMore, setHasMore] = useState(initial.length === pageSize);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   const unreadCount = items.filter((n) => !n.read).length;
   const shown = filter === "unread" ? items.filter((n) => !n.read) : items;
@@ -129,6 +130,24 @@ export default function NotificationList({
       setLoading(false);
     }
   };
+
+  // Auto-load the next page when the sentinel scrolls into view — no stranded
+  // "load more" button floating in empty space. Only paginates the full list
+  // (the Unread filter works off already-loaded items).
+  useEffect(() => {
+    if (filter !== "all" || !hasMore || loading) return;
+    const el = sentinelRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) loadMore();
+      },
+      { rootMargin: "400px" },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter, hasMore, loading, items.length]);
 
   const markAllRead = async () => {
     setItems((cur) => cur.map((n) => ({ ...n, read: true })));
@@ -191,10 +210,8 @@ export default function NotificationList({
             </section>
           ))}
           {filter === "all" && hasMore ? (
-            <div className="flex justify-center pt-1">
-              <Button variant="secondary" size="sm" onClick={loadMore} disabled={loading}>
-                {loading ? "Loading…" : "Load more"}
-              </Button>
+            <div ref={sentinelRef} className="flex justify-center py-4 text-caption">
+              {loading ? "Loading…" : null}
             </div>
           ) : null}
         </div>

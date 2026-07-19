@@ -435,6 +435,23 @@ function BlockModalBody({
           <div className="max-h-full w-full max-w-xl overflow-y-auto">
             <TweetBlock id={tweetIdFromUrl(column.url ?? "") ?? ""} />
           </div>
+        ) : column.type === "channel" ? (
+          <Link
+            href={`/${column.linked_channel?.handle}/${column.linked_channel_id}`}
+            className="flex aspect-square w-full max-w-md flex-col items-center justify-center gap-2 rounded-md border p-6 text-center transition-colors hover:bg-accent"
+          >
+            <span className="max-w-full font-serif text-2xl font-medium">
+              {column.linked_channel?.title ?? "Channel"}
+            </span>
+            {column.linked_channel?.description ? (
+              <p className="line-clamp-4 max-w-full break-words text-sm text-muted-foreground">
+                {column.linked_channel.description}
+              </p>
+            ) : null}
+            <span className="text-caption">
+              {column.linked_channel?.count ?? 0} blocks · open channel →
+            </span>
+          </Link>
         ) : (
           <a href={column.url} target="_blank" className="block w-full max-w-3xl">
             <div className="flex flex-row items-center gap-2 border rounded-md px-2 py-1">

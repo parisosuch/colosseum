@@ -1,7 +1,6 @@
 "use client";
 
 import { memo } from "react";
-import Link from "next/link";
 import { FileText, Play } from "lucide-react";
 import { Markdown } from "./markdown";
 import type { Column } from "@/lib/colosseum/column";
@@ -52,13 +51,6 @@ const ColumnComponent = memo(function ColumnComponent({
   const screenshotVersion = screenshot?.captured_at ?? null;
   // A URL column is still loading until the parent resolves its screenshot.
   const loading = column.type === "url" && screenshot === undefined;
-
-  // A channel column links to another channel; the whole card is a link to it,
-  // not a modal opener. `linked_channel` is resolved by getChannelColumns.
-  const linkedHref =
-    column.type === "channel" && column.linked_channel
-      ? `/${column.linked_channel.handle}/${column.linked_channel_id}`
-      : null;
 
   const thumbnail =
     column.type === "channel" ? (
@@ -149,16 +141,6 @@ const ColumnComponent = memo(function ColumnComponent({
       </>
     );
 
-    if (column.type === "channel") {
-      return linkedHref ? (
-        <Link href={linkedHref} className={rowClass}>
-          {rowInner}
-        </Link>
-      ) : (
-        <div className={rowClass}>{rowInner}</div>
-      );
-    }
-
     return (
       <button
         type="button"
@@ -192,16 +174,6 @@ const ColumnComponent = memo(function ColumnComponent({
   // Press feedback on the core "open a block" gesture, matching Button's spring.
   const cardPress =
     "transition-transform duration-150 ease-[var(--ease-out)] motion-safe:active:scale-[0.97]";
-
-  if (column.type === "channel") {
-    return linkedHref ? (
-      <Link href={linkedHref} className={`cv-card block w-full text-left ${cardPress}`}>
-        {gridInner}
-      </Link>
-    ) : (
-      <div className="cv-card w-full text-left">{gridInner}</div>
-    );
-  }
 
   // Tweet embeds render their own <button> (copy link), so the card can't be a
   // real <button> without nesting them (invalid HTML). Use a role=button div.

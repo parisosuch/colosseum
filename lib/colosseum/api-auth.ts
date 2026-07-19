@@ -19,6 +19,7 @@ import { isChannelMember } from "./member";
 import { Column } from "./column";
 import { ApiToken } from "./api-token";
 import { getScreenshot, getScreenshotsForUrls } from "./screenshot-data";
+import { checkRateLimit } from "./rate-limit";
 import { logError, logInfo } from "@/lib/log";
 
 // Tokens look like `clsm_<43 base64url chars>`. The prefix namespaces the secret
@@ -114,6 +115,15 @@ export async function authenticateApiToken(req: Request): Promise<ApiAuth | Next
       // rejected, useful for spotting a client using a revoked/typo'd token.
       logInfo("api-auth", "rejected an invalid API token");
       return apiError("Invalid API token.", 401);
+    }
+    // Throttle per token owner so one client can't spam the API.
+    const rl = checkRateLimit(auth.userId);
+    if (!rl.ok) {
+      logInfo("api-auth", `rate limited user ${auth.userId}`);
+      return NextResponse.json(
+        { error: "Rate limit exceeded. Slow down." },
+        { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
+      );
     }
     return auth;
   } catch (e) {

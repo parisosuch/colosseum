@@ -20,6 +20,16 @@ release.
   block page embed the live Spotify player. The block's title and cover art come
   from Spotify; nothing else is persisted, so the block reflects the live item.
 
+## [1.7.5] - 2026-07-19
+
+### Fixed
+
+- Viewing a profile whose channel previews include a tweet no longer triggers a
+  hydration error. Each channel card wrapped its previews in a `<Link>` (`<a>`),
+  and a tweet preview renders its own avatar/header `<a>` inside — nesting them
+  is invalid HTML. The card link is now a "stretched link" overlay that sits
+  beside the previews rather than around them.
+
 ## [1.7.4] - 2026-07-19
 
 ### Fixed

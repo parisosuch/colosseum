@@ -42,8 +42,16 @@ test("removeChannelMember revokes access", async () => {
 
 test("getMemberChannels lists joined channels (with owner handle), not owned ones, and leaving drops them", async () => {
   // Bob owns a channel Alice joins; Alice also owns one herself.
-  const bobs = await createChannel({ title: "Bob's Group", access: "private", owner_id: USERS.bob.id });
-  const alices = await createChannel({ title: "Alice Own", access: "private", owner_id: USERS.alice.id });
+  const bobs = await createChannel({
+    title: "Bob's Group",
+    access: "private",
+    owner_id: USERS.bob.id,
+  });
+  const alices = await createChannel({
+    title: "Alice Own",
+    access: "private",
+    owner_id: USERS.alice.id,
+  });
   await addChannelMemberByHandle(bobs.id, USERS.alice.handle);
 
   const before = await getMemberChannels(USERS.alice.id);

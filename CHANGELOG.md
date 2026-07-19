@@ -8,6 +8,8 @@ release.
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-07-19
+
 ### Added
 
 - YouTube blocks: paste a YouTube URL (watch, `youtu.be`, Shorts, or embed
@@ -22,6 +24,13 @@ release.
 - Profile channel lists can now be sorted (recently added to, name, or column
   count) and filtered by access (public / open / private) and — on your own
   profile — whether you're a member of the channel.
+- Outbound email, configured at runtime from the admin panel (Off / Resend /
+  SMTP) with a "Send test" button. Password-reset mail routes through it, and
+  transactional emails share a branded template.
+- In-app notifications for comments, @mentions, channel connects, and channel
+  membership, with a nav-bar bell and unread badge. Each type has an
+  instant-save per-type email toggle in settings; notification delivery is
+  best-effort and never blocks the action that triggered it.
 
 ## [1.7.5] - 2026-07-19
 

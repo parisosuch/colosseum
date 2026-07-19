@@ -99,6 +99,7 @@ export default async function ChannelPage({ params }: ChannelPageParams) {
       channel={channel}
       handle={handle}
       isOwner={isOwner}
+      isMember={isMember}
       isAdmin={isAdmin}
       canContribute={canContribute}
       user={user}

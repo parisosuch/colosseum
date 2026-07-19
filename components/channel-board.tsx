@@ -6,6 +6,7 @@ import BlockModal from "@/components/block-modal";
 import ConnectChannelButton from "@/components/connect-channel-button";
 import type { PickableChannel } from "@/components/add-block-drawer";
 import ManageChannelButton from "@/components/manage-channel-button";
+import { LeaveChannelButton } from "@/components/leave-channel-button";
 import ChannelMembersBar from "@/components/channel-members-bar";
 import ExportChannelButton from "@/components/export-channel-button";
 import AdminDeleteButton from "@/components/admin-delete-button";
@@ -69,6 +70,9 @@ type ChannelBoardProps = {
   channel: Channel;
   handle: string;
   isOwner: boolean;
+  // Whether the viewer is an invited member (never the owner). Shows the
+  // self-service Leave button.
+  isMember: boolean;
   // Whether the viewer is an instance admin. Unlocks moderation (deleting other
   // people's public/open channels and blocks); never applies to private channels.
   isAdmin: boolean;
@@ -102,6 +106,7 @@ export default function ChannelBoard({
   channel: initialChannel,
   handle,
   isOwner,
+  isMember,
   isAdmin,
   canContribute,
   user,
@@ -432,6 +437,14 @@ export default function ChannelBoard({
             onUpdated={setChannel}
             members={members}
             setMembers={setMembers}
+          />
+        ) : null}
+        {isMember ? (
+          <LeaveChannelButton
+            channelId={channel.id}
+            handle={handle}
+            title={channel.title}
+            isPrivate={channel.private}
           />
         ) : null}
         {/* Any signed-in viewer can nest a public channel into one of their own. */}

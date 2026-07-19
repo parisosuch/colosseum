@@ -28,9 +28,16 @@ import { AwsClient } from "aws4fetch";
 
 export type StoredObject = { body: ReadableStream; size: number };
 
+export type ByteRange = { start: number; end: number };
+
 interface Backend {
   putObject(key: string, data: Buffer, contentType: string): Promise<void>;
-  getObject(key: string): Promise<StoredObject | null>;
+  // Full object, or (with `range`) just that inclusive byte slice — `size` is
+  // the bytes in `body`. Used for video seeking on the streaming path.
+  getObject(key: string, range?: ByteRange): Promise<StoredObject | null>;
+  // Total byte size of the object, or null if absent — for resolving/validating
+  // a Range request without fetching the bytes (a HEAD on S3, a stat on disk).
+  objectSize(key: string): Promise<number | null>;
   getBytes(key: string): Promise<Buffer | null>;
   objectExists(key: string): Promise<boolean>;
   deleteObject(key: string): Promise<void>;
@@ -56,7 +63,7 @@ const localBackend: Backend = {
     await writeFile(tmp, data);
     await rename(tmp, dest);
   },
-  async getObject(key) {
+  async getObject(key, range) {
     const dest = path.join(STORAGE_DIR, key);
     const s = await stat(dest).catch(() => null);
     if (!s) {
@@ -64,10 +71,17 @@ const localBackend: Backend = {
     }
     // Node's web-stream type doesn't structurally match the DOM lib's; at
     // runtime they're the same thing.
+    const stream = range
+      ? createReadStream(dest, { start: range.start, end: range.end })
+      : createReadStream(dest);
     return {
-      body: Readable.toWeb(createReadStream(dest)) as unknown as ReadableStream,
-      size: s.size,
+      body: Readable.toWeb(stream) as unknown as ReadableStream,
+      size: range ? range.end - range.start + 1 : s.size,
     };
+  },
+  async objectSize(key) {
+    const s = await stat(path.join(STORAGE_DIR, key)).catch(() => null);
+    return s ? s.size : null;
   },
   getBytes(key) {
     return readFile(path.join(STORAGE_DIR, key)).catch(() => null);
@@ -115,12 +129,22 @@ function s3Backend(): Backend {
         throw new Error(`S3 put ${key} failed: ${res.status}`);
       }
     },
-    async getObject(key) {
-      const res = await aws.fetch(url(key));
+    async getObject(key, range) {
+      // S3 serves Range natively (206 with Content-Length = slice size).
+      const res = await aws.fetch(
+        url(key),
+        range ? { headers: { Range: `bytes=${range.start}-${range.end}` } } : undefined,
+      );
       if (!res.ok || !res.body) {
         return null;
       }
       return { body: res.body, size: Number(res.headers.get("content-length")) };
+    },
+    async objectSize(key) {
+      const res = await aws.fetch(url(key), { method: "HEAD" });
+      if (!res.ok) return null;
+      const len = Number(res.headers.get("content-length"));
+      return Number.isFinite(len) ? len : null;
     },
     async getBytes(key) {
       const res = await aws.fetch(url(key));
@@ -152,6 +176,7 @@ const backend: Backend = process.env.S3_BUCKET ? s3Backend() : localBackend;
 
 export const putObject = backend.putObject;
 export const getObject = backend.getObject;
+export const objectSize = backend.objectSize;
 export const getBytes = backend.getBytes;
 export const objectExists = backend.objectExists;
 export const deleteObject = backend.deleteObject;

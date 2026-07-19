@@ -23,7 +23,7 @@ import { tweetIdFromUrl } from "@/lib/utils";
 export type Column = {
   id: number;
   created_at: string;
-  type: "url" | "text" | "image" | "channel" | "pdf" | "tweet";
+  type: "url" | "text" | "image" | "channel" | "pdf" | "video" | "tweet";
   title?: string;
   description?: string;
   url?: string;
@@ -398,6 +398,24 @@ export async function uploadPdfColumn(input: {
   return toColumn(row);
 }
 
+export async function uploadVideoColumn(input: {
+  created_by: string;
+  channel_id: number;
+  // Media URL of the already-uploaded video blob (reuses the `image` field).
+  image: string;
+}): Promise<Column> {
+  const [row] = await db
+    .insert(column)
+    .values({
+      type: "video",
+      image: input.image,
+      channel_id: input.channel_id,
+      created_by: input.created_by,
+    })
+    .returning();
+  return toColumn(row);
+}
+
 // Add a channel as a column inside another channel (Are.na-style). The column
 // carries no content of its own — it links to `linked_channel_id`. Auth (owning
 // the host, the linked channel being public) is enforced by the action.
@@ -438,6 +456,38 @@ export async function updateColumnTags(column_id: number, tags: string[]): Promi
 // channels) is enforced by the action.
 export async function moveColumn(column_id: number, channel_id: number): Promise<void> {
   await db.update(column).set({ channel_id }).where(eq(column.id, column_id));
+}
+
+// Duplicate a block into another channel, leaving the source untouched. The new
+// row copies every content field but gets a new channel/creator and its own
+// `image` (the action passes a fresh media reference for media blocks, so the
+// copy and the original don't share a media row — deleting one mustn't dangle
+// the other). Authorization is enforced by the action.
+export async function copyColumn(input: {
+  source: Column;
+  channel_id: number;
+  created_by: string;
+  // Media URL for the copy: a fresh media reference for media blocks, the
+  // source's external URL for url/external-image blocks, or null.
+  image: string | null;
+}): Promise<Column> {
+  const { source } = input;
+  const [row] = await db
+    .insert(column)
+    .values({
+      type: source.type,
+      title: source.title,
+      description: source.description,
+      url: source.url,
+      text: source.text,
+      image: input.image,
+      linked_channel_id: source.linked_channel_id,
+      tags: source.tags,
+      channel_id: input.channel_id,
+      created_by: input.created_by,
+    })
+    .returning();
+  return toColumn(row);
 }
 
 // Set title and/or description in one update — used to pre-fill a URL block

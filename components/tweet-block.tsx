@@ -1,6 +1,8 @@
 "use client";
 
+import { useMemo } from "react";
 import { EmbeddedTweet, TweetNotFound, TweetSkeleton, useTweet } from "react-tweet";
+import type { Tweet } from "react-tweet/api";
 import "react-tweet/theme.css";
 
 // Renders a persisted tweet from our own snapshot (served by /api/tweet/[id]),
@@ -8,16 +10,38 @@ import "react-tweet/theme.css";
 // the grid card (compact: clipped to the square, non-interactive) and the block
 // modal (full: scrollable).
 
+// Snapshots store self-hosted media as root-relative `/api/media/<id>` URLs so
+// they aren't pinned to one origin. react-tweet's getMediaUrl does `new URL(src)`,
+// which throws on a relative URL, so we make them absolute — against the
+// *browser's* origin, the only authoritative one. A server-derived origin
+// (req.nextUrl.origin) behind a TLS-terminating proxy is http:// or an internal
+// host, so those URLs get blocked as mixed content or point nowhere and every
+// image — the avatar included — fails to load.
+function withAbsoluteMedia(tweet: Tweet): Tweet {
+  if (typeof window === "undefined") return tweet;
+  const origin = window.location.origin;
+  const abs = (url: string) => (url.startsWith("/api/media/") ? `${origin}${url}` : url);
+  const clone = structuredClone(tweet);
+  const walk = (t: Tweet) => {
+    t.user.profile_image_url_https = abs(t.user.profile_image_url_https);
+    for (const media of t.mediaDetails ?? []) media.media_url_https = abs(media.media_url_https);
+    if (t.quoted_tweet) walk(t.quoted_tweet as unknown as Tweet);
+  };
+  walk(clone);
+  return clone;
+}
+
 export default function TweetBlock({ id, compact = false }: { id: string; compact?: boolean }) {
   const { data, error, isLoading } = useTweet(id, `/api/tweet/${id}`);
+  const tweet = useMemo(() => (data ? withAbsoluteMedia(data) : data), [data]);
 
   const inner =
     isLoading && !data ? (
       <TweetSkeleton />
-    ) : error || !data ? (
+    ) : error || !tweet ? (
       <TweetNotFound />
     ) : (
-      <EmbeddedTweet tweet={data} />
+      <EmbeddedTweet tweet={tweet} />
     );
 
   if (compact) {

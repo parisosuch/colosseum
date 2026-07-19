@@ -8,6 +8,15 @@ release.
 
 ## [Unreleased]
 
+## [1.7.3] - 2026-07-19
+
+### Fixed
+
+- Tweet embed images (including the author's avatar) now load on
+  proxied/HTTPS deployments. Their URLs were made absolute using the server's
+  request origin, which behind a TLS-terminating proxy became `http://` and got
+  blocked as mixed content; they are now resolved against the browser's origin.
+
 ## [1.7.2] - 2026-07-18
 
 ### Fixed

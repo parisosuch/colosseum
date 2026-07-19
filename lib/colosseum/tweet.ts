@@ -31,26 +31,10 @@ export async function getTweet(id: string): Promise<Tweet | null> {
   return (row?.data as Tweet | undefined) ?? null;
 }
 
-// Apply `fn` to every self-hostable image URL in a tweet (avatar + each
-// photo/poster in mediaDetails), recursing into the quoted tweet. Shared by the
-// ingest rewrite (URL → self-hosted media URL) and the render-time absolutize.
-function eachMediaUrl(t: Tweet, fn: (url: string) => string): void {
-  t.user.profile_image_url_https = fn(t.user.profile_image_url_https);
-  for (const media of t.mediaDetails ?? []) {
-    media.media_url_https = fn(media.media_url_https);
-  }
-  if (t.quoted_tweet) {
-    eachMediaUrl(t.quoted_tweet as unknown as Tweet, fn);
-  }
-}
-
 // We store media URLs relative (`/api/media/<id>`) so a snapshot isn't pinned to
-// one origin. react-tweet's getMediaUrl does `new URL(media_url_https)` on the
-// photo src, which throws on a relative URL — so the tweet route absolutizes
-// them against the request origin before handing the snapshot to the renderer.
-export function absolutizeMediaUrls(t: Tweet, origin: string): void {
-  eachMediaUrl(t, (url) => (url.startsWith("/api/media/") ? `${origin}${url}` : url));
-}
+// one origin — TweetBlock absolutizes them against the browser origin at render
+// time (a server-derived origin behind a proxy is the wrong host/scheme). The
+// snapshot therefore keeps them relative all the way through.
 
 // Fetch an image URL into our blob storage and return its self-hosted media URL.
 // Falls back to the original URL if the download fails — a live URL that may rot

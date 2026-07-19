@@ -43,14 +43,21 @@ function AlertDialogContent({
   return (
     <AlertDialogPortal>
       <AlertDialogOverlay />
-      <AlertDialogPrimitive.Content
-        data-slot="alert-dialog-content"
-        className={cn(
-          "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 sm:max-w-lg",
-          className,
-        )}
-        {...props}
-      />
+      {/* Flexbox-center the content so the enter/exit animation only touches
+          scale + opacity. Centering with translate-x/y-[-50%] would share the
+          `transform` property with zoom-in-95, and the animation drops the
+          centering offset mid-flight — making the dialog appear to fly in from
+          the corner instead of scaling from the middle. (Same fix as Dialog.) */}
+      <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <AlertDialogPrimitive.Content
+          data-slot="alert-dialog-content"
+          className={cn(
+            "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 relative grid w-full max-w-[calc(100%-2rem)] gap-4 rounded-lg border p-6 shadow-lg duration-200 [animation-timing-function:cubic-bezier(0.23,1,0.32,1)] sm:max-w-lg",
+            className,
+          )}
+          {...props}
+        />
+      </div>
     </AlertDialogPortal>
   );
 }

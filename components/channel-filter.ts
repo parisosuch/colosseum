@@ -8,6 +8,10 @@ export type ChannelRow = {
   private: boolean;
   created_at: string;
   count: number;
+  // Set for channels the profile owner is a member of (not owner): `handle` is
+  // the owning user's handle for the link, `memberOf` flags the "Member of" badge.
+  handle?: string;
+  memberOf?: boolean;
 };
 
 // Case-insensitive match of a channel against a search query, by title or

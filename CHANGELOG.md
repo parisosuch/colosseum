@@ -8,6 +8,15 @@ release.
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-07-18
+
+### Fixed
+
+- Channel-connection columns now open the block modal like any other column, so
+  a connection can be deleted and its details viewed. Previously they navigated
+  straight to the linked channel with no way to remove them, and stepping onto
+  one via the side navigation showed an empty modal.
+
 ## [1.7.0] - 2026-07-18
 
 ### Added

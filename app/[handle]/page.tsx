@@ -128,20 +128,30 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
   // pick which to render when filtering while the previews stay server-fetched.
   const gridCards = entries.map(({ channel, handle: ownerHandle, memberOf }) => ({
     id: channel.id,
+    // A tweet preview renders its own <a> (avatar/header links), so the card
+    // link can't be an ancestor <a> without nesting them (invalid HTML that
+    // breaks hydration). Use the "stretched link" pattern: an absolutely
+    // positioned <Link> overlay that's a sibling of the previews, not their
+    // parent. The previews are non-interactive (pointer-events-none), so the
+    // overlay still catches every click while real link semantics are kept.
     node: (
-      <Link key={channel.id} href={`/${ownerHandle}/${channel.id}`}>
-        <div
-          className={`flex aspect-square items-center justify-center p-4 md:block md:aspect-auto md:p-8 border-2 rounded-lg transition-colors ${CHANNEL_CARD_CLASS[channel.access]}`}
-        >
-          <ChannelColumnsView
-            channel={channel}
-            columnCount={countById.get(channel.id) ?? 0}
-            columns={previewsById.get(channel.id) ?? []}
-            screenshots={screenshots}
-            memberOf={memberOf}
-          />
-        </div>
-      </Link>
+      <div
+        key={channel.id}
+        className={`relative flex aspect-square items-center justify-center p-4 md:block md:aspect-auto md:p-8 border-2 rounded-lg transition-colors ${CHANNEL_CARD_CLASS[channel.access]}`}
+      >
+        <ChannelColumnsView
+          channel={channel}
+          columnCount={countById.get(channel.id) ?? 0}
+          columns={previewsById.get(channel.id) ?? []}
+          screenshots={screenshots}
+          memberOf={memberOf}
+        />
+        <Link
+          href={`/${ownerHandle}/${channel.id}`}
+          aria-label={channel.title}
+          className="absolute inset-0 rounded-lg"
+        />
+      </div>
     ),
   }));
 

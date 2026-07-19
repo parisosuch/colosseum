@@ -46,6 +46,7 @@ import {
   uploadTextColumn,
   uploadTweetColumn,
   uploadYouTubeColumn,
+  uploadSpotifyColumn,
   uploadURLColumn,
 } from "./column";
 import { ingestTweet } from "./tweet";
@@ -364,6 +365,38 @@ export async function uploadYouTubeColumnAction(input: {
     channel_id: input.channelId,
     url: input.url,
     title,
+  });
+}
+
+// Title + cover-art URL via Spotify's public oEmbed endpoint (no API key,
+// metadata only). Best-effort: empty on failure so the block is still created.
+async function spotifyMeta(url: string): Promise<{ title?: string; image?: string }> {
+  try {
+    const res = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(url)}`);
+    if (!res.ok) return {};
+    const data = (await res.json()) as { title?: string; thumbnail_url?: string };
+    return { title: data.title || undefined, image: data.thumbnail_url || undefined };
+  } catch (e) {
+    logError("spotify.oembed", `metadata lookup failed for ${url}`, e);
+    return {};
+  }
+}
+
+// Add a Spotify block. Stores the URL plus the item's title and cover art; the
+// player renders live from Spotify's iframe, nothing else is captured.
+export async function uploadSpotifyColumnAction(input: {
+  channelId: number;
+  url: string;
+}): Promise<Column> {
+  const userId = await requireUserId();
+  await requireContributableChannel(input.channelId, userId);
+  const { title, image } = await spotifyMeta(input.url);
+  return uploadSpotifyColumn({
+    created_by: userId,
+    channel_id: input.channelId,
+    url: input.url,
+    title,
+    image,
   });
 }
 

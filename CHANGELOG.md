@@ -15,6 +15,10 @@ release.
   block page embed the live player. The block's title is set to the video's
   title. Nothing else is persisted — the embed renders from YouTube, so the
   block reflects the live video.
+- Spotify blocks: paste an open.spotify.com URL (track, album, playlist, artist,
+  episode, or show) to add a block. Grid cards show the cover art; the modal and
+  block page embed the live Spotify player. The block's title and cover art come
+  from Spotify; nothing else is persisted, so the block reflects the live item.
 
 ## [1.7.4] - 2026-07-19
 

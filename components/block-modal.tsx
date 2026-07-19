@@ -17,7 +17,8 @@ import ColumnComments from "./column-comments";
 import { Markdown } from "./markdown";
 import TweetBlock from "./tweet-block";
 import YouTubeBlock from "./youtube-block";
-import { tweetIdFromUrl, youtubeIdFromUrl } from "@/lib/utils";
+import SpotifyBlock from "./spotify-block";
+import { spotifyEmbedRef, tweetIdFromUrl, youtubeIdFromUrl } from "@/lib/utils";
 import type { Column } from "@/lib/colosseum/column";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import {
@@ -439,6 +440,14 @@ function BlockModalBody({
         ) : column.type === "youtube" ? (
           <div className="w-full max-w-3xl">
             <YouTubeBlock id={youtubeIdFromUrl(column.url ?? "") ?? ""} />
+          </div>
+        ) : column.type === "spotify" ? (
+          <div className="w-full max-w-xl">
+            <SpotifyBlock
+              type={spotifyEmbedRef(column.url ?? "")?.type ?? ""}
+              id={spotifyEmbedRef(column.url ?? "")?.id ?? ""}
+              image={column.image}
+            />
           </div>
         ) : column.type === "channel" ? (
           <Link

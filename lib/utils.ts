@@ -57,6 +57,33 @@ export function isYouTubeUrl(url: string): boolean {
   return youtubeIdFromUrl(url) !== null;
 }
 
+// The embeddable content types Spotify's iframe player supports.
+const SPOTIFY_TYPES = ["track", "album", "playlist", "artist", "episode", "show"];
+
+// An open.spotify.com URL → its `{ type, id }`, or null for anything else.
+// Handles an optional `/intl-xx` locale prefix and any `?si=` query. Pure string
+// parsing (no server-only deps) so client components can classify a pasted URL.
+export function spotifyEmbedRef(url: string): { type: string; id: string } | null {
+  let u: URL;
+  try {
+    u = new URL(url.startsWith("http") ? url : `https://${url}`);
+  } catch {
+    return null;
+  }
+  if (u.hostname.replace(/^www\./, "") !== "open.spotify.com") return null;
+  const parts = u.pathname.split("/").filter(Boolean);
+  const seg = parts[0]?.startsWith("intl-") ? parts.slice(1) : parts;
+  const [type, id] = seg;
+  if (!type || !id || !SPOTIFY_TYPES.includes(type) || !/^[A-Za-z0-9]+$/.test(id)) {
+    return null;
+  }
+  return { type, id };
+}
+
+export function isSpotifyUrl(url: string): boolean {
+  return spotifyEmbedRef(url) !== null;
+}
+
 export function isURL(text: string): boolean {
   let url: URL;
   try {

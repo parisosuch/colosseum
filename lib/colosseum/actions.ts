@@ -73,6 +73,15 @@ import {
 } from "./blob";
 import { createInviteCode, InviteCode, revokeInviteCode } from "./invite";
 import {
+  createNotification,
+  listNotifications,
+  markAllNotificationsRead,
+  NotificationItem,
+  NotificationType,
+} from "./notification";
+import { parseMentions } from "./mentions";
+import type { EmailNotificationPrefs } from "@/lib/db/schema";
+import {
   AdminUser,
   AppSettings,
   Quota,
@@ -271,7 +280,18 @@ export async function addChannelMemberAction(
   if (profile.user_id === channel.owner_id) {
     throw new Error("You're already the owner of this channel.");
   }
-  return addChannelMemberByHandle(channelId, normalized);
+  // Only notify on a genuine add — re-adding an existing member is a no-op.
+  const alreadyMember = await isChannelMember(channelId, profile.user_id);
+  const member = await addChannelMemberByHandle(channelId, normalized);
+  if (!alreadyMember) {
+    await createNotification({
+      recipient_id: profile.user_id,
+      actor_id: userId,
+      type: "member",
+      channel_id: channelId,
+    });
+  }
+  return member;
 }
 
 export async function removeChannelMemberAction(
@@ -572,6 +592,13 @@ export async function addChannelColumnAction(
     channel_id: hostChannelId,
     linked_channel_id: linkedChannelId,
   });
+  // Tell the linked channel's owner someone nested their channel.
+  await createNotification({
+    recipient_id: linked.owner_id,
+    actor_id: userId,
+    type: "connect",
+    channel_id: linkedChannelId,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -585,7 +612,7 @@ export async function getColumnCommentsAction(columnId: number): Promise<Comment
 
 export async function createCommentAction(columnId: number, body: string): Promise<Comment> {
   const userId = await requireUserId();
-  await requireReadableBlock(columnId);
+  const { column } = await requireReadableBlock(columnId);
   const trimmed = body.trim();
   if (!trimmed) {
     throw new Error("Comment can't be empty.");
@@ -593,7 +620,35 @@ export async function createCommentAction(columnId: number, body: string): Promi
   if (trimmed.length > MAX_COMMENT_LENGTH) {
     throw new Error(`Comment is too long (max ${MAX_COMMENT_LENGTH} characters).`);
   }
-  return createComment({ column_id: columnId, author_id: userId, body: trimmed });
+  const created = await createComment({ column_id: columnId, author_id: userId, body: trimmed });
+
+  // Notify the block's author, then anyone @mentioned (resolved to a real user,
+  // deduped, and excluding the author who already gets the comment notification).
+  await createNotification({
+    recipient_id: column.created_by,
+    actor_id: userId,
+    type: "comment",
+    channel_id: column.channel_id,
+    column_id: columnId,
+  });
+  const handles = [
+    ...new Set(parseMentions(trimmed).flatMap((s) => (s.type === "mention" ? [s.handle] : []))),
+  ];
+  const mentioned = (await Promise.all(handles.map((h) => getPublicUserProfile(h)))).filter(
+    (p): p is NonNullable<typeof p> => p !== null && p.user_id !== column.created_by,
+  );
+  await Promise.all(
+    mentioned.map((p) =>
+      createNotification({
+        recipient_id: p.user_id,
+        actor_id: userId,
+        type: "mention",
+        channel_id: column.channel_id,
+        column_id: columnId,
+      }),
+    ),
+  );
+  return created;
 }
 
 export async function deleteCommentAction(commentId: number): Promise<void> {
@@ -756,6 +811,36 @@ export async function updateUserProfileAction(updates: {
     }
     throw e;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Notifications — the bell, the /notifications page, and the email toggle.
+// ---------------------------------------------------------------------------
+export async function listNotificationsAction(before?: string): Promise<NotificationItem[]> {
+  const userId = await requireUserId();
+  return listNotifications(userId, before);
+}
+
+export async function markNotificationsReadAction(): Promise<void> {
+  const userId = await requireUserId();
+  await markAllNotificationsRead(userId);
+}
+
+// Flip one notification type's email toggle. Reads the current prefs, changes
+// the one key, and returns the full persisted map so the UI can settle.
+export async function setEmailNotificationPrefAction(
+  type: NotificationType,
+  enabled: boolean,
+): Promise<EmailNotificationPrefs> {
+  const userId = await requireUserId();
+  const current = await getUserProfile(userId);
+  if (!current) {
+    throw new Error("Profile not found.");
+  }
+  const profile = await updateUserProfile(userId, {
+    email_notifications: { ...current.email_notifications, [type]: enabled },
+  });
+  return profile.email_notifications;
 }
 
 // ---------------------------------------------------------------------------

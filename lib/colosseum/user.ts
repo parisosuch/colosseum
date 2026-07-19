@@ -3,7 +3,7 @@ import { cache } from "react";
 import { eq, ilike, or } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { userProfile } from "@/lib/db/schema";
+import { userProfile, type EmailNotificationPrefs } from "@/lib/db/schema";
 import { sanitizeSearch } from "@/lib/utils";
 
 // Re-exported for server-side callers; client components import these directly
@@ -16,6 +16,7 @@ export type UserProfile = {
   handle: string;
   avatar_url?: string;
   about?: string;
+  email_notifications: EmailNotificationPrefs;
 };
 
 // A profile search hit. Profiles are public, so no viewer scoping is needed.
@@ -70,6 +71,7 @@ function toProfile(row: UserProfileRow): UserProfile {
     handle: row.handle,
     avatar_url: row.avatar_url ?? undefined,
     about: row.about ?? undefined,
+    email_notifications: row.email_notifications,
   };
 }
 
@@ -94,7 +96,12 @@ export const getUserProfile = cache(async (user_id: string): Promise<UserProfile
 
 export async function updateUserProfile(
   user_id: string,
-  updates: { handle?: string; about?: string; avatar_url?: string },
+  updates: {
+    handle?: string;
+    about?: string;
+    avatar_url?: string;
+    email_notifications?: EmailNotificationPrefs;
+  },
 ): Promise<UserProfile> {
   try {
     const [row] = await db

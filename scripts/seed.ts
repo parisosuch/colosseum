@@ -8,8 +8,11 @@
 
 import { inArray } from "drizzle-orm";
 
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import {
+  account,
+  appSettings,
   channel,
   channelMember,
   column,
@@ -151,7 +154,6 @@ const COMMENT_BODIES = [
 export async function seed(): Promise<void> {
   const bulk = bulkUsers();
   const userIds = [...Object.values(USERS).map((u) => u.id), ...bulk.map((u) => u.id)];
-  const codes = Object.values(INVITE_CODES);
 
   // A small deterministic RNG (reset every call) so bulk data is varied but
   // reproducible within a run and never touches Math.random.
@@ -176,9 +178,10 @@ export async function seed(): Promise<void> {
 
   // Clear prior seed rows. Deleting the users cascades to their profiles,
   // channels (→ columns, members, comments), and redemptions; invite codes are
-  // set-null on user delete, so drop them explicitly by code first (that
-  // cascades redemptions).
-  await db.delete(inviteCode).where(inArray(inviteCode.code, codes));
+  // set-null on user delete, so drop them explicitly first (by creator, which
+  // covers both the fixture codes and the generated invite tree — that delete
+  // cascades their redemptions).
+  await db.delete(inviteCode).where(inArray(inviteCode.created_by, userIds));
   await db.delete(user).where(inArray(user.id, userIds));
 
   await db.insert(user).values(
@@ -187,6 +190,26 @@ export async function seed(): Promise<void> {
       name: u.name,
       email: u.email,
       emailVerified: true,
+      // Alice is the instance admin, mirroring the first-user promotion in
+      // lib/auth.ts so tests have a known admin and a known non-admin (bob).
+      is_admin: u.id === USERS.alice.id,
+    })),
+  );
+  // Instance settings singleton (limits unset = unlimited). Idempotent across
+  // re-seeds; not user-scoped, so the cleanup above leaves it alone.
+  await db.insert(appSettings).values({ id: 1 }).onConflictDoNothing();
+
+  // Credential logins for the two fixture users so `make dev` can actually sign
+  // in — both use the password "password". Hashed with Better Auth's own hasher
+  // so the login flow verifies them. The account rows cascade with the user on
+  // re-seed (deleted above), so no separate cleanup is needed.
+  const passwordHash = await (await auth.$context).password.hash("password");
+  await db.insert(account).values(
+    [USERS.alice, USERS.bob].map((u) => ({
+      accountId: u.id,
+      providerId: "credential",
+      userId: u.id,
+      password: passwordHash,
     })),
   );
   await db
@@ -214,6 +237,33 @@ export async function seed(): Promise<void> {
     },
   ]);
   await db.insert(inviteRedemption).values({ code: INVITE_CODES.used, user_id: USERS.bob.id });
+
+  // An invite subtree over the bulk members so the /users network graph has a
+  // realistic cluster to draw: the first bulk member roots it, and every later
+  // member redeems a code minted by an earlier bulk member — one connected
+  // component, one redemption per invitee (respecting unique(user_id)).
+  //
+  // The fixture users alice/bob are deliberately NOT inviters here. Their invite
+  // state is pinned by the explicit fixtures above (alice minted two codes and
+  // invited only bob; bob minted none), and the invite tests assert exactly
+  // that — pulling them into this pool would break those invariants.
+  const treeCodes: (typeof inviteCode.$inferInsert)[] = [];
+  const treeRedemptions: (typeof inviteRedemption.$inferInsert)[] = [];
+  bulk.forEach((member, i) => {
+    if (i === 0) return; // first bulk member roots the subtree; redeems nothing
+    const inviter = bulk[randInt(0, i - 1)]; // any strictly-earlier bulk member
+    const code = `TREESEED${String(i + 1).padStart(4, "0")}`;
+    treeCodes.push({
+      code,
+      created_by: inviter.id,
+      max_uses: 1,
+      uses: 1,
+      note: "Seed invite tree",
+    });
+    treeRedemptions.push({ code, user_id: member.id });
+  });
+  await db.insert(inviteCode).values(treeCodes);
+  await db.insert(inviteRedemption).values(treeRedemptions);
 
   const [aliceDesign] = await db
     .insert(channel)

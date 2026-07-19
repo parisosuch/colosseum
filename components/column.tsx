@@ -2,11 +2,12 @@
 
 import { memo } from "react";
 import Link from "next/link";
-import { FileText } from "lucide-react";
+import { FileText, Play } from "lucide-react";
 import { Markdown } from "./markdown";
 import type { Column } from "@/lib/colosseum/column";
-import { timeAgo } from "@/lib/utils";
+import { timeAgo, tweetIdFromUrl } from "@/lib/utils";
 import ScreenShotPreview from "./screenshot-preview";
+import TweetBlock from "./tweet-block";
 import { GradientSpin } from "./gradient-spin";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 
@@ -86,6 +87,23 @@ const ColumnComponent = memo(function ColumnComponent({
         <FileText className="size-10" />
         <span className="line-clamp-2 max-w-full break-words text-xs">{column.title || "PDF"}</span>
       </div>
+    ) : column.type === "video" ? (
+      <div className="relative h-full w-full">
+        <video
+          src={column.image}
+          preload="metadata"
+          muted
+          playsInline
+          className="h-full w-full rounded-lg object-cover"
+        />
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <span className="rounded-full bg-black/50 p-2 text-white">
+            <Play className="size-4 fill-current" />
+          </span>
+        </div>
+      </div>
+    ) : column.type === "tweet" ? (
+      <TweetBlock id={tweetIdFromUrl(column.url ?? "") ?? ""} compact />
     ) : loading ? (
       <div className="w-full h-full flex items-center justify-center">
         <GradientSpin cellSize={4} />
@@ -98,13 +116,14 @@ const ColumnComponent = memo(function ColumnComponent({
     // Content column: the domain/path for a link, the text itself for a text
     // block, the linked channel's name for a channel, the title for an image.
     const content =
-      column.type === "url"
+      column.type === "url" || column.type === "tweet"
         ? (column.url ?? "").replace(/^https?:\/\//, "")
         : column.type === "text"
           ? (column.text ?? "")
           : column.type === "channel"
             ? (column.linked_channel?.title ?? "Channel")
-            : column.title || (column.type === "pdf" ? "PDF" : "Image");
+            : column.title ||
+              (column.type === "pdf" ? "PDF" : column.type === "video" ? "Video" : "Image");
     const title = column.title || urlTitle || "";
 
     const rowClass = `w-full border-b px-2 py-2 text-left hover:bg-muted/50 ${LIST_GRID}`;
@@ -181,6 +200,27 @@ const ColumnComponent = memo(function ColumnComponent({
       </Link>
     ) : (
       <div className="cv-card w-full text-left">{gridInner}</div>
+    );
+  }
+
+  // Tweet embeds render their own <button> (copy link), so the card can't be a
+  // real <button> without nesting them (invalid HTML). Use a role=button div.
+  if (column.type === "tweet") {
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => onOpen(column.id)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onOpen(column.id);
+          }
+        }}
+        className={`cv-card aspect-square w-full overflow-hidden text-left ${cardPress}`}
+      >
+        {gridInner}
+      </div>
     );
   }
 

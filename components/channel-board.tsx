@@ -6,8 +6,10 @@ import BlockModal from "@/components/block-modal";
 import ConnectChannelButton from "@/components/connect-channel-button";
 import type { PickableChannel } from "@/components/add-block-drawer";
 import ManageChannelButton from "@/components/manage-channel-button";
+import { LeaveChannelButton } from "@/components/leave-channel-button";
 import ChannelMembersBar from "@/components/channel-members-bar";
 import ExportChannelButton from "@/components/export-channel-button";
+import AdminDeleteButton from "@/components/admin-delete-button";
 import { ViewToggle } from "@/components/view-toggle";
 import { PAGE_SIZE } from "@/lib/pagination";
 import ColumnInput from "@/components/column-input";
@@ -20,8 +22,13 @@ import type { Channel } from "@/lib/colosseum/channel";
 import type { ChannelMember } from "@/lib/colosseum/member";
 import type { Column, ColumnFilter, ColumnSort } from "@/lib/colosseum/column";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
-import { getChannelColumnsAction, getScreenshotsForUrlsAction } from "@/lib/colosseum/actions";
+import {
+  adminDeleteChannelAction,
+  getChannelColumnsAction,
+  getScreenshotsForUrlsAction,
+} from "@/lib/colosseum/actions";
 import { Plus } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -63,6 +70,12 @@ type ChannelBoardProps = {
   channel: Channel;
   handle: string;
   isOwner: boolean;
+  // Whether the viewer is an invited member (never the owner). Shows the
+  // self-service Leave button.
+  isMember: boolean;
+  // Whether the viewer is an instance admin. Unlocks moderation (deleting other
+  // people's public/open channels and blocks); never applies to private channels.
+  isAdmin: boolean;
   // Whether the viewer may add blocks: owner (public), anyone signed in (open),
   // or owner/member (private). Gates every add-block affordance below.
   canContribute: boolean;
@@ -93,6 +106,8 @@ export default function ChannelBoard({
   channel: initialChannel,
   handle,
   isOwner,
+  isMember,
+  isAdmin,
   canContribute,
   user,
   initialCount,
@@ -104,6 +119,7 @@ export default function ChannelBoard({
   initialColumns,
   initialScreenshots,
 }: ChannelBoardProps) {
+  const router = useRouter();
   const [members, setMembers] = useState<ChannelMember[]>(initialMembers);
   const [channel, setChannel] = useState<Channel>(initialChannel);
   const [columns, setColumns] = useState<Column[]>(initialColumns);
@@ -423,11 +439,30 @@ export default function ChannelBoard({
             setMembers={setMembers}
           />
         ) : null}
+        {isMember ? (
+          <LeaveChannelButton
+            channelId={channel.id}
+            handle={handle}
+            title={channel.title}
+            isPrivate={channel.private}
+          />
+        ) : null}
         {/* Any signed-in viewer can nest a public channel into one of their own. */}
         {!channel.private ? (
           <ConnectChannelButton channelId={channel.id} channels={channels} />
         ) : null}
         <ExportChannelButton channel={channel} />
+        {/* Admin moderation: delete someone else's public/open channel. */}
+        {isAdmin && !isOwner && !channel.private ? (
+          <AdminDeleteButton
+            label="Delete channel"
+            description="Delete this public channel and all of its blocks as an admin. This can’t be undone."
+            onDelete={async () => {
+              await adminDeleteChannelAction(channel.id);
+              router.push(`/${handle}`);
+            }}
+          />
+        ) : null}
         <ViewToggle view={view} onChange={setView} />
       </div>
       <div className="flex flex-col space-y-4">
@@ -555,6 +590,7 @@ export default function ChannelBoard({
         }}
         isOwner={isOwner}
         canEdit={isOwner || (!!user && openColumn?.created_by === user.id)}
+        isAdmin={isAdmin && !channel.private}
         handle={handle}
         viewerId={user?.id ?? null}
         setColumns={setColumns}

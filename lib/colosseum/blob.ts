@@ -1,6 +1,7 @@
-// Content-addressed blob storage on local disk. Bytes live at
-// <STORAGE_DIR>/<sha[0:2]>/<sha>; metadata lives in the `blobs` table.
-// Identical uploads hash to the same path and row, so they dedupe for free.
+// Content-addressed blob storage. Bytes live in a pluggable object store
+// (local disk or S3-compatible, see ./storage) keyed by sha; metadata lives in
+// the `blobs` table. Identical uploads hash to the same key and row, so they
+// dedupe for free.
 //
 // Blobs are never served by hash. Every stored file is reached through a
 // `media` row (one row per reference) whose id is the URL and whose
@@ -9,9 +10,7 @@
 
 import "server-only";
 
-import { createHash, randomUUID } from "node:crypto";
-import { mkdir, rename, stat, unlink, writeFile } from "node:fs/promises";
-import path from "node:path";
+import { createHash } from "node:crypto";
 
 import { and, eq, inArray, notExists } from "drizzle-orm";
 import sharp from "sharp";
@@ -19,8 +18,7 @@ import sharp from "sharp";
 import { db } from "@/lib/db";
 import { blobs, media } from "@/lib/db/schema";
 import { DESKTOP_UA } from "./og-meta";
-
-const STORAGE_DIR = process.env.STORAGE_DIR ?? "./data/storage";
+import { deleteObject, getBytes, objectExists, putObject } from "./storage";
 
 export type MediaVisibility = "public" | "private";
 
@@ -35,37 +33,43 @@ export const ALLOWED_IMAGE_TYPES = [
   "image/avif",
 ];
 
-export function blobDiskPath(sha256: string): string {
-  return path.join(STORAGE_DIR, sha256.slice(0, 2), sha256);
+// Storage keys are content-addressed: identical bytes hash to the same key and
+// dedupe for free. `<sha[0:2]>/<sha>` shards the top level so no directory (or
+// bucket listing) holds every blob at once.
+export function blobKey(sha256: string): string {
+  return `${sha256.slice(0, 2)}/${sha256}`;
 }
 
 // Grid thumbnails render columns a few hundred px wide; 600 covers 2x DPR.
 const THUMB_MAX_WIDTH = 600;
 
-// The thumbnail sits next to its source blob. It's derived from the immutable
-// blob bytes, so it's content-addressed too and shares the blob's lifetime.
-export function thumbDiskPath(sha256: string): string {
-  return `${blobDiskPath(sha256)}.thumb`;
+// The thumbnail derives from the immutable blob bytes, so it's content-addressed
+// too and shares the blob's lifetime.
+export function thumbKey(sha256: string): string {
+  return `${blobKey(sha256)}.thumb`;
 }
 
 // Generate (once) a downsized webp thumbnail for a stored image blob and return
-// its disk path. Idempotent: an existing thumbnail is returned as-is. Throws if
+// its storage key. Idempotent: an existing thumbnail is left as-is. Throws if
 // the blob isn't a decodable image, so callers fall back to the full bytes.
 export async function ensureThumbnail(sha256: string): Promise<string> {
-  const dest = thumbDiskPath(sha256);
-  if (await stat(dest).catch(() => null)) {
-    return dest;
+  const key = thumbKey(sha256);
+  if (await objectExists(key)) {
+    return key;
   }
-  const tmp = `${dest}.tmp-${randomUUID()}`;
+  const src = await getBytes(blobKey(sha256));
+  if (!src) {
+    throw new Error(`blob ${sha256} not found`);
+  }
   // `animated: true` reads every frame so an animated GIF/WebP thumbnails to an
   // animated webp instead of a frozen first frame. Harmless for static images
   // (a single page).
-  await sharp(blobDiskPath(sha256), { animated: true })
+  const out = await sharp(src, { animated: true })
     .resize({ width: THUMB_MAX_WIDTH, withoutEnlargement: true })
     .webp({ quality: 72 })
-    .toFile(tmp);
-  await rename(tmp, dest);
-  return dest;
+    .toBuffer();
+  await putObject(key, out, "image/webp");
+  return key;
 }
 
 export function mediaUrl(id: string): string {
@@ -85,13 +89,7 @@ export function mediaIdFromUrl(url: string): string | null {
 // upsert is a no-op.
 export async function putBlob(data: Buffer, mime: string, createdBy: string): Promise<string> {
   const sha256 = createHash("sha256").update(data).digest("hex");
-  const dest = blobDiskPath(sha256);
-  await mkdir(path.dirname(dest), { recursive: true });
-  // Write via temp file + atomic rename so a reader (or a concurrent identical
-  // upload) never sees a partial file.
-  const tmp = `${dest}.tmp-${randomUUID()}`;
-  await writeFile(tmp, data);
-  await rename(tmp, dest);
+  await putObject(blobKey(sha256), data, mime);
   await db
     .insert(blobs)
     .values({ sha256, mime, size: data.length, created_by: createdBy })
@@ -190,6 +188,29 @@ export async function putPdfBlob(
   return createMedia(sha256, createdBy, visibility);
 }
 
+// Videos are the heaviest upload, so the roomiest cap. Served through the same
+// /api/media route, which honors Range requests so playback can seek.
+export const MAX_VIDEO_BYTES = 100 * 1024 * 1024; // 100MB
+export const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/webm", "video/quicktime", "video/ogg"];
+
+// Validate + store a user-uploaded video, returning the media URL to persist.
+// No thumbnail (sharp can't rasterize a video); the block renders the video
+// element itself, which shows its first frame in the grid.
+export async function putVideoBlob(
+  file: File,
+  createdBy: string,
+  visibility: MediaVisibility,
+): Promise<string> {
+  if (!ALLOWED_VIDEO_TYPES.includes(file.type)) {
+    throw new Error("Only video files (MP4, WebM, MOV, OGG) are supported.");
+  }
+  if (file.size > MAX_VIDEO_BYTES) {
+    throw new Error("That video is too large (max 100MB).");
+  }
+  const sha256 = await putBlob(Buffer.from(await file.arrayBuffer()), file.type, createdBy);
+  return createMedia(sha256, createdBy, visibility);
+}
+
 // Everything the serving route needs to authorize and stream one media id.
 export async function getMedia(
   id: string,
@@ -236,8 +257,8 @@ export async function deleteMediaByUrl(url: string): Promise<void> {
     .returning({ sha256: blobs.sha256 })
     .catch(() => []);
   if (gone.length > 0) {
-    await unlink(blobDiskPath(deleted.sha256)).catch(() => {});
-    await unlink(thumbDiskPath(deleted.sha256)).catch(() => {});
+    await deleteObject(blobKey(deleted.sha256));
+    await deleteObject(thumbKey(deleted.sha256));
   }
 }
 

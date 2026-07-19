@@ -33,6 +33,7 @@ import {
   getChannelColumns,
   getColumn,
   moveColumn,
+  copyColumn,
   searchColumns,
   updateColumnDescription,
   updateColumnMeta,
@@ -41,9 +42,13 @@ import {
   updateColumnTitle,
   uploadImageColumn,
   uploadPdfColumn,
+  uploadVideoColumn,
   uploadTextColumn,
+  uploadTweetColumn,
   uploadURLColumn,
 } from "./column";
+import { ingestTweet } from "./tweet";
+import { tweetIdFromUrl } from "@/lib/utils";
 import {
   Comment,
   createComment,
@@ -52,8 +57,33 @@ import {
   getCommentAuthorization,
   MAX_COMMENT_LENGTH,
 } from "./comment";
-import { deleteMediaByUrl, putImageBlob, putImageBlobFromUrl, putPdfBlob } from "./blob";
+import {
+  createMedia,
+  deleteMediaByUrl,
+  getMedia,
+  mediaIdFromUrl,
+  putImageBlob,
+  putImageBlobFromUrl,
+  putPdfBlob,
+  putVideoBlob,
+} from "./blob";
 import { createInviteCode, InviteCode, revokeInviteCode } from "./invite";
+import {
+  AdminUser,
+  AppSettings,
+  Quota,
+  assertColumnQuota,
+  assertInviteQuota,
+  getAdminHandles,
+  getAppSettings,
+  getColumnQuota,
+  listUsers,
+  requireAdmin,
+  setUserAdmin,
+  setUserBanned,
+  setUserLimits,
+  updateAppSettings,
+} from "./admin";
 import { revokeApiToken } from "./api-token";
 import { getScreenshotsForUrls, ColumnScreenshot } from "./screenshot-data";
 import {
@@ -109,6 +139,10 @@ async function requireContributableChannel(channelId: number, userId: string): P
   if (!canContributeChannel(channel, userId, isMember)) {
     throw new Error("You do not have permission to add to this channel.");
   }
+  // Every content upload routes through here, so the per-user block quota is
+  // enforced once at this choke point (addChannelColumnAction guards separately,
+  // as it owns rather than contributes).
+  await assertColumnQuota(userId);
   return channel;
 }
 
@@ -245,6 +279,14 @@ export async function removeChannelMemberAction(
   await removeChannelMember(channelId, memberUserId);
 }
 
+// Leave a channel you're a member of — a self-service remove, so it needs no
+// ownership check (you're only ever removing your own membership row). A no-op
+// if you weren't a member.
+export async function leaveChannelAction(channelId: number): Promise<void> {
+  const userId = await requireUserId();
+  await removeChannelMember(channelId, userId);
+}
+
 // ---------------------------------------------------------------------------
 // Blocks
 // ---------------------------------------------------------------------------
@@ -263,6 +305,28 @@ export async function uploadURLColumnAction(input: {
   const userId = await requireUserId();
   await requireContributableChannel(input.channelId, userId);
   return uploadURLColumn({ created_by: userId, channel_id: input.channelId, text: input.text });
+}
+
+// Add a tweet block. Captures the tweet's snapshot (data + self-hosted media)
+// before the block exists so it's already deletion-proof by the time it renders.
+// If the tweet can't be fetched (deleted, never existed, endpoint down), fall
+// back to a plain URL block so the user still gets a screenshot-backed link.
+export async function uploadTweetColumnAction(input: {
+  channelId: number;
+  url: string;
+}): Promise<Column> {
+  const userId = await requireUserId();
+  await requireContributableChannel(input.channelId, userId);
+  const id = tweetIdFromUrl(input.url);
+  if (id && (await ingestTweet(id, userId))) {
+    // Store a canonical id-based permalink, not the pasted URL: the snapshot is
+    // shared per tweet id, so every block for the same tweet must carry the same
+    // url string for the shared-snapshot GC (deleteTweetIfUnreferenced) to see
+    // its siblings. x.com/i/status/<id> redirects to the real tweet.
+    const url = `https://x.com/i/status/${id}`;
+    return uploadTweetColumn({ created_by: userId, channel_id: input.channelId, url });
+  }
+  return uploadURLColumn({ created_by: userId, channel_id: input.channelId, text: input.url });
 }
 
 export async function uploadTextColumnAction(input: {
@@ -302,6 +366,20 @@ export async function uploadPdfColumnAction(formData: FormData): Promise<Column>
   const channel = await requireContributableChannel(channelId, userId);
   const image = await putPdfBlob(file, userId, channel.private ? "private" : "public");
   return uploadPdfColumn({ created_by: userId, channel_id: channelId, image });
+}
+
+// Same shape as the image/PDF upload, for a dropped/picked video. The stored
+// media inherits the channel's privacy.
+export async function uploadVideoColumnAction(formData: FormData): Promise<Column> {
+  const userId = await requireUserId();
+  const channelId = Number(formData.get("channelId"));
+  const file = formData.get("file");
+  if (!Number.isInteger(channelId) || !(file instanceof File)) {
+    throw new Error("Bad request.");
+  }
+  const channel = await requireContributableChannel(channelId, userId);
+  const image = await putVideoBlob(file, userId, channel.private ? "private" : "public");
+  return uploadVideoColumn({ created_by: userId, channel_id: channelId, image });
 }
 
 // Create an image column from a remote image URL. Used by the paste flow: a
@@ -375,6 +453,30 @@ export async function moveColumnAction(columnId: number, targetChannelId: number
   await moveColumn(columnId, targetChannelId);
 }
 
+// Copy a block into another channel, leaving the original in place. The caller
+// only needs to *read* the source (so you can copy anyone's block from a channel
+// visible to you), and must be able to contribute to the target (which also
+// enforces the per-user block quota — a copy is a new block). For media blocks,
+// mint a fresh media reference to the same bytes so the copy owns its own media
+// row: deleting either column later won't dangle the other's image. The new
+// reference inherits the target channel's privacy.
+export async function copyColumnAction(columnId: number, targetChannelId: number): Promise<Column> {
+  const userId = await requireUserId();
+  const { column: source } = await requireReadableBlock(columnId);
+  const channel = await requireContributableChannel(targetChannelId, userId);
+
+  let image = source.image ?? null;
+  const mediaId = image ? mediaIdFromUrl(image) : null;
+  if (mediaId) {
+    const media = await getMedia(mediaId);
+    if (media) {
+      image = await createMedia(media.sha256, userId, channel.private ? "private" : "public");
+    }
+  }
+
+  return copyColumn({ source, channel_id: targetChannelId, created_by: userId, image });
+}
+
 // Add a channel as a column inside one of the caller's channels (Are.na-style).
 // The caller must own the host; the linked channel must exist and be non-private
 // (public or open — you can't nest a private channel, so nothing private ever
@@ -385,6 +487,7 @@ export async function addChannelColumnAction(
 ): Promise<void> {
   const userId = await requireUserId();
   await requireOwnedChannel(hostChannelId, userId);
+  await assertColumnQuota(userId);
   const linked = await getChannel(linkedChannelId);
   if (!linked || linked.private) {
     throw new Error("Not found.");
@@ -453,16 +556,39 @@ export async function getScreenshotsForUrlsAction(
 // ---------------------------------------------------------------------------
 // Invites
 // ---------------------------------------------------------------------------
+// Discriminated result so the invite reason (limit hit, disabled) rides back as
+// data — thrown server-action errors are sanitized in production.
+export type InviteCreateResult = { ok: true; invite: InviteCode } | { ok: false; message: string };
+
 export async function createInviteCodeAction(input?: {
   max_uses?: number;
   note?: string | null;
-}): Promise<InviteCode> {
+}): Promise<InviteCreateResult> {
   const userId = await requireUserId();
-  return createInviteCode({
+  const max_uses = input?.max_uses ?? 1;
+  try {
+    await assertInviteQuota(userId, max_uses);
+  } catch (e) {
+    return {
+      ok: false,
+      message: e instanceof Error ? e.message : "You can't create more invites.",
+    };
+  }
+  const invite = await createInviteCode({
     created_by: userId,
-    max_uses: input?.max_uses ?? 1,
+    max_uses,
     note: input?.note ?? null,
   });
+  return { ok: true, invite };
+}
+
+// The caller's current column quota plus the admin handles to ask — used by the
+// add-block flows to explain a limit rejection in the UI (the server still
+// enforces it authoritatively).
+export async function getColumnQuotaAction(): Promise<Quota & { admins: string[] }> {
+  const userId = await requireUserId();
+  const [quota, admins] = await Promise.all([getColumnQuota(userId), getAdminHandles()]);
+  return { ...quota, admins };
 }
 
 export async function revokeInviteCodeAction(code: string): Promise<void> {
@@ -558,4 +684,61 @@ export async function updateUserProfileAction(updates: {
     }
     throw e;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Admin — instance moderation and limits. Every action gates on requireAdmin
+// (which also rejects banned users, since getSessionUser nulls them).
+// ---------------------------------------------------------------------------
+
+// Delete any block in a public/open channel. Private channels stay owner-only —
+// admins don't reach into members-only spaces.
+export async function adminDeleteColumnAction(columnId: number): Promise<void> {
+  await requireAdmin();
+  const col = await getColumn(columnId);
+  if (!col) throw new Error("Not found.");
+  const channel = await getChannel(col.channel_id);
+  if (!channel || channel.private) throw new Error("Not found.");
+  await deleteColumn(columnId);
+}
+
+// Delete any public/open channel outright.
+export async function adminDeleteChannelAction(channelId: number): Promise<void> {
+  await requireAdmin();
+  const channel = await getChannel(channelId);
+  if (!channel || channel.private) throw new Error("Not found.");
+  await deleteChannel(channelId);
+}
+
+export async function listUsersAction(): Promise<AdminUser[]> {
+  await requireAdmin();
+  return listUsers();
+}
+
+export async function getAppSettingsAction(): Promise<AppSettings> {
+  await requireAdmin();
+  return getAppSettings();
+}
+
+export async function updateAppSettingsAction(settings: AppSettings): Promise<void> {
+  await requireAdmin();
+  await updateAppSettings(settings);
+}
+
+export async function setUserBannedAction(userId: string, banned: boolean): Promise<void> {
+  await requireAdmin();
+  await setUserBanned(userId, banned);
+}
+
+export async function setUserAdminAction(userId: string, isAdmin: boolean): Promise<void> {
+  await requireAdmin();
+  await setUserAdmin(userId, isAdmin);
+}
+
+export async function setUserLimitsAction(
+  userId: string,
+  limits: { invite_limit: number | null; column_limit: number | null },
+): Promise<void> {
+  await requireAdmin();
+  await setUserLimits(userId, limits);
 }

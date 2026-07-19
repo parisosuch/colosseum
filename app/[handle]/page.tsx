@@ -2,13 +2,19 @@ import PageHeader from "@/components/page-header";
 import ColumnPreview from "@/components/column-preview";
 import CreateChannelButton from "@/components/create-channel-button";
 import { ChannelsView } from "@/components/channels-view";
-import { Channel, getUserChannels, getVisibleUserChannels } from "@/lib/colosseum/channel";
+import {
+  Channel,
+  getMemberChannels,
+  getUserChannels,
+  getVisibleUserChannels,
+} from "@/lib/colosseum/channel";
 import { Column, getChannelColumnCounts, getTopColumnsByChannel } from "@/lib/colosseum/column";
 import { getScreenshotsForUrls, type ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import { getPublicUserProfile } from "@/lib/colosseum/user";
 import { getSessionUser } from "@/lib/auth";
 import Link from "next/link";
 import { UserProfilePicture } from "@/components/user-profile-picture";
+import { Badge } from "@/components/ui/badge";
 
 // How many block previews each channel card shows.
 const PREVIEWS_PER_CHANNEL = 5;
@@ -28,11 +34,13 @@ function ChannelColumnsView({
   columnCount,
   columns,
   screenshots,
+  memberOf,
 }: {
   channel: Channel;
   columnCount: number;
   columns: Column[];
   screenshots: Map<string, ColumnScreenshot>;
+  memberOf?: boolean;
 }) {
   return (
     <div className="flex flex-col md:flex-row gap-8 p-2">
@@ -42,6 +50,11 @@ function ChannelColumnsView({
           <p className="text-center line-clamp-3 break-words max-w-full">{channel.description}</p>
         ) : null}
         <p className="text-caption">{columnCount} column(s)</p>
+        {memberOf ? (
+          <Badge variant="secondary" className="font-normal">
+            member of
+          </Badge>
+        ) : null}
       </div>
       <div className="hidden md:flex gap-8 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {columns.map((column) => (
@@ -85,10 +98,19 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
     ? await getUserChannels(user!.id)
     : await getVisibleUserChannels(userProfile.user_id, user?.id ?? null);
 
+  // Only on your own profile: the channels you've been invited to (not owned).
+  // They render in the same grid as your own, carrying the owner's handle (for
+  // the link) and a "Member of" badge. Owned channels come first.
+  const memberChannels = match ? await getMemberChannels(user!.id) : [];
+  const entries = [
+    ...channels.map((channel) => ({ channel, handle, memberOf: false })),
+    ...memberChannels.map((channel) => ({ channel, handle: channel.handle, memberOf: true })),
+  ];
+
   // Counts and previews for every channel in one query each (not one per
   // channel): a grouped count(*) and a single windowed top-N fetch. Counts are
   // shared by the grid cards and the list rows so the two views don't re-query.
-  const channelIds = channels.map((c) => c.id);
+  const channelIds = entries.map((e) => e.channel.id);
   const [countById, previewsById] = await Promise.all([
     getChannelColumnCounts(channelIds),
     getTopColumnsByChannel(channelIds, PREVIEWS_PER_CHANNEL, user?.id ?? null),
@@ -104,10 +126,10 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
 
   // One grid card per channel, keyed by id, so the (client) ChannelsView can
   // pick which to render when filtering while the previews stay server-fetched.
-  const gridCards = channels.map((channel) => ({
+  const gridCards = entries.map(({ channel, handle: ownerHandle, memberOf }) => ({
     id: channel.id,
     node: (
-      <Link key={channel.id} href={`/${handle}/${channel.id}`}>
+      <Link key={channel.id} href={`/${ownerHandle}/${channel.id}`}>
         <div
           className={`flex aspect-square items-center justify-center p-4 md:block md:aspect-auto md:p-8 border-2 rounded-lg transition-colors ${CHANNEL_CARD_CLASS[channel.access]}`}
         >
@@ -116,19 +138,22 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
             columnCount={countById.get(channel.id) ?? 0}
             columns={previewsById.get(channel.id) ?? []}
             screenshots={screenshots}
+            memberOf={memberOf}
           />
         </div>
       </Link>
     ),
   }));
 
-  const channelRows = channels.map((c) => ({
+  const channelRows = entries.map(({ channel: c, handle: ownerHandle, memberOf }) => ({
     id: c.id,
     title: c.title,
     description: c.description,
     private: c.private,
     created_at: c.created_at,
     count: countById.get(c.id) ?? 0,
+    handle: ownerHandle,
+    memberOf,
   }));
 
   return (
@@ -161,7 +186,7 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
         </div>
       </div>
 
-      {channels.length === 0 ? (
+      {entries.length === 0 ? (
         <div className="w-full flex items-center justify-center">
           <div className="w-1/2 flex flex-col space-y-4 items-center">
             <h1 className="text-display">Looks like {match ? "you" : "they"} have no channels.</h1>

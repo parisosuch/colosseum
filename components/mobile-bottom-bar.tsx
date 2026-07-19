@@ -19,10 +19,12 @@ const ITEM =
 export function MobileBottomBar({
   handle,
   avatarUrl,
+  isAdmin,
   channels,
 }: {
   handle: string;
   avatarUrl?: string;
+  isAdmin?: boolean;
   channels: PickableChannel[];
 }) {
   const [searchOpen, setSearchOpen] = useState(false);
@@ -45,7 +47,7 @@ export function MobileBottomBar({
 
         <AddBlockDrawer channels={channels} />
 
-        <ProfileDrawer handle={handle} avatarUrl={avatarUrl} />
+        <ProfileDrawer handle={handle} avatarUrl={avatarUrl} isAdmin={isAdmin} />
       </div>
 
       <Drawer open={searchOpen} onOpenChange={setSearchOpen}>

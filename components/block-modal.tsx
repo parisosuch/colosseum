@@ -3,13 +3,25 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, GlobeIcon, LayersIcon, LinkIcon } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  FolderInput,
+  GlobeIcon,
+  LayersIcon,
+  LinkIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 import ColumnComments from "./column-comments";
 import { Markdown } from "./markdown";
+import TweetBlock from "./tweet-block";
+import { tweetIdFromUrl } from "@/lib/utils";
 import type { Column } from "@/lib/colosseum/column";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import {
+  adminDeleteColumnAction,
+  copyColumnAction,
   deleteColumnAction,
   moveColumnAction,
   updateColumnDescriptionAction,
@@ -18,8 +30,21 @@ import {
   updateColumnTitleAction,
 } from "@/lib/colosseum/actions";
 import type { PickableChannel } from "@/components/add-block-drawer";
+import AdminDeleteButton from "@/components/admin-delete-button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   CommandDialog,
   CommandEmpty,
@@ -40,11 +65,15 @@ type BlockModalProps = {
   isOwner: boolean;
   // May edit/delete *this* block: the channel owner or the block's own creator.
   canEdit: boolean;
+  // Viewer is an admin moderating a public/open channel (false for private).
+  // Unlocks deleting a block they don't own.
+  isAdmin: boolean;
   handle: string;
   // The signed-in viewer's id, or null when signed out. Drives commenting.
   viewerId: string | null;
   setColumns: Dispatch<SetStateAction<Column[]>>;
-  // The owner's channels, for the "Move" picker. Empty for non-owners.
+  // The viewer's own channels, for the "Move" (owner-only) and "Copy" (any
+  // viewer) pickers. Empty when signed out.
   channels: PickableChannel[];
   screenshot?: ColumnScreenshot;
   onPrev: () => void;
@@ -130,6 +159,7 @@ export default function BlockModal({
   onOpenChange,
   isOwner,
   canEdit,
+  isAdmin,
   handle,
   viewerId,
   setColumns,
@@ -171,6 +201,7 @@ export default function BlockModal({
             column={displayColumn}
             isOwner={isOwner}
             canEdit={canEdit}
+            isAdmin={isAdmin}
             handle={handle}
             viewerId={viewerId}
             setColumns={setColumns}
@@ -193,6 +224,7 @@ function BlockModalBody({
   column,
   isOwner,
   canEdit,
+  isAdmin,
   handle,
   viewerId,
   setColumns,
@@ -206,6 +238,7 @@ function BlockModalBody({
   column: Column;
   isOwner: boolean;
   canEdit: boolean;
+  isAdmin: boolean;
   handle: string;
   viewerId: string | null;
   setColumns: Dispatch<SetStateAction<Column[]>>;
@@ -304,8 +337,10 @@ function BlockModalBody({
     }
   };
 
-  // Channels the block can move to: the owner's, minus the one it's already in.
+  // Channels the block can move/copy to: the viewer's own, minus the one it's
+  // already in. (On someone else's channel, none is excluded — it isn't yours.)
   const moveTargets = channels.filter((c) => c.id !== column.channel_id);
+  const copyTargets = moveTargets;
   const [moveOpen, setMoveOpen] = useState(false);
   const [moving, setMoving] = useState(false);
 
@@ -323,6 +358,26 @@ function BlockModalBody({
       console.error(e);
       toast.error("Couldn't move that column. Please try again.");
       setMoving(false);
+    }
+  };
+
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [copying, setCopying] = useState(false);
+
+  // Copy leaves the source in place, so — unlike move — the current board is
+  // untouched; the duplicate lands in the target channel.
+  const handleCopy = async (targetChannelId: number) => {
+    if (copying) return;
+    setCopying(true);
+    try {
+      await copyColumnAction(column.id, targetChannelId);
+      setCopyOpen(false);
+      toast.success("Copied.");
+    } catch (e) {
+      console.error(e);
+      toast.error("Couldn't copy that column. Please try again.");
+    } finally {
+      setCopying(false);
     }
   };
 
@@ -366,6 +421,20 @@ function BlockModalBody({
               Open PDF
             </a>
           </object>
+        ) : column.type === "video" ? (
+          <video
+            src={column.image}
+            controls
+            playsInline
+            className="max-h-[70vh] md:max-h-full max-w-full rounded-md"
+          >
+            {/* User uploads carry no caption file; empty track satisfies a11y. */}
+            <track kind="captions" />
+          </video>
+        ) : column.type === "tweet" ? (
+          <div className="max-h-full w-full max-w-xl overflow-y-auto">
+            <TweetBlock id={tweetIdFromUrl(column.url ?? "") ?? ""} />
+          </div>
         ) : (
           <a href={column.url} target="_blank" className="block w-full max-w-3xl">
             <div className="flex flex-row items-center gap-2 border rounded-md px-2 py-1">
@@ -479,16 +548,23 @@ function BlockModalBody({
                 Save
               </Button>
             ) : null}
+            {/* Move is owner-only (it removes the block from this channel). */}
             {isOwner && moveTargets.length > 0 ? (
               <>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={moving}
-                  onClick={() => setMoveOpen(true)}
-                >
-                  Move
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Move to another channel"
+                      disabled={moving}
+                      onClick={() => setMoveOpen(true)}
+                    >
+                      <FolderInput />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Move to another channel</TooltipContent>
+                </Tooltip>
                 {/* Searchable picker so it scales past a handful of channels. */}
                 <CommandDialog
                   open={moveOpen}
@@ -520,15 +596,94 @@ function BlockModalBody({
                 </CommandDialog>
               </>
             ) : null}
+            {/* Copy needs only read access to this block, so any signed-in viewer
+                with a channel of their own to copy into gets it — including on
+                someone else's channel. */}
+            {copyTargets.length > 0 ? (
+              <>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Copy to another channel"
+                      disabled={copying}
+                      onClick={() => setCopyOpen(true)}
+                    >
+                      <Copy />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Copy to one of your channels</TooltipContent>
+                </Tooltip>
+                <CommandDialog
+                  open={copyOpen}
+                  onOpenChange={setCopyOpen}
+                  title="Copy to channel"
+                  description="Search your channels and copy this column into one of them."
+                >
+                  <CommandInput placeholder="Search channels…" />
+                  <CommandList>
+                    <CommandEmpty>No channels found.</CommandEmpty>
+                    {copyTargets.map((c) => (
+                      <CommandItem
+                        key={c.id}
+                        value={`channel-${c.id}`}
+                        keywords={[c.title]}
+                        disabled={copying}
+                        onSelect={() => handleCopy(c.id)}
+                      >
+                        <LayersIcon />
+                        <span className="truncate">{c.title}</span>
+                        {c.private ? (
+                          <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                            private
+                          </span>
+                        ) : null}
+                      </CommandItem>
+                    ))}
+                  </CommandList>
+                </CommandDialog>
+              </>
+            ) : null}
             {canEdit ? (
-              <Button
-                variant="ghost"
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive hover:text-destructive"
+                  >
+                    Delete
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete this block?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This permanently removes the block from the channel. This can’t be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      className="bg-destructive text-white hover:bg-destructive/90"
+                      onClick={handleDelete}
+                    >
+                      Delete
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            ) : isAdmin ? (
+              <AdminDeleteButton
+                label="Delete block"
+                description="Delete this block from a public channel as an admin. This can’t be undone."
                 size="sm"
-                className="text-destructive hover:text-destructive"
-                onClick={handleDelete}
-              >
-                Delete
-              </Button>
+                onDelete={async () => {
+                  await adminDeleteColumnAction(column.id);
+                  setColumns((cols) => cols.filter((c) => c.id !== column.id));
+                }}
+              />
             ) : null}
           </div>
         </div>

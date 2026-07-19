@@ -5,19 +5,38 @@ import { ChevronLeftIcon, ImageIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import {
+  getColumnQuotaAction,
   uploadImageColumnAction,
   uploadPdfColumnAction,
   uploadTextColumnAction,
   uploadURLColumnAction,
+  uploadVideoColumnAction,
 } from "@/lib/colosseum/actions";
+import { columnLimitMessage } from "@/lib/quota";
 import { isURL } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
 export type PickableChannel = { id: number; title: string; private: boolean };
 
+// Per-type upload caps, kept in sync with the server limits in
+// lib/colosseum/blob.ts (and the next.config server-action body limit, which
+// must sit above the largest of these). Validated client-side so an oversized
+// file gets a clear toast instead of an opaque server-action body error.
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_PDF_BYTES = 25 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
+
+function fileTooLargeMessage(file: File): string | null {
+  const isVideo = file.type.startsWith("video/");
+  const isPdf = file.type === "application/pdf";
+  const cap = isVideo ? MAX_VIDEO_BYTES : isPdf ? MAX_PDF_BYTES : MAX_IMAGE_BYTES;
+  if (file.size <= cap) return null;
+  return `That file is too large (max ${isVideo ? "100MB" : isPdf ? "25MB" : "10MB"}).`;
+}
+
 // Shared state machine for the quick-add flow: paste/type block content,
 // Continue, then pick which channel to drop it in. A URL becomes a link block
-// (and kicks off a screenshot), an image/PDF becomes a media block, anything
+// (and kicks off a screenshot), an image/video/PDF becomes a media block, anything
 // else a text block. Both the mobile drawer and the desktop modal drive this
 // exact hook + body, so the behaviour can never drift — only the shell differs.
 export function useAddBlockFlow(channels: PickableChannel[]) {
@@ -47,8 +66,17 @@ export function useAddBlockFlow(channels: PickableChannel[]) {
 
   const pickFile = (selected: File | undefined) => {
     if (!selected) return;
-    if (!selected.type.startsWith("image/") && selected.type !== "application/pdf") {
-      toast.error("That's not an image or PDF.");
+    if (
+      !selected.type.startsWith("image/") &&
+      !selected.type.startsWith("video/") &&
+      selected.type !== "application/pdf"
+    ) {
+      toast.error("That's not an image, video, or PDF.");
+      return;
+    }
+    const tooLarge = fileTooLargeMessage(selected);
+    if (tooLarge) {
+      toast.error(tooLarge);
       return;
     }
     setFile(selected);
@@ -65,6 +93,8 @@ export function useAddBlockFlow(channels: PickableChannel[]) {
         formData.set("file", file);
         if (file.type === "application/pdf") {
           await uploadPdfColumnAction(formData);
+        } else if (file.type.startsWith("video/")) {
+          await uploadVideoColumnAction(formData);
         } else {
           await uploadImageColumnAction(formData);
         }
@@ -83,7 +113,11 @@ export function useAddBlockFlow(channels: PickableChannel[]) {
       onOpenChange(false);
     } catch (e) {
       console.error(e);
-      toast.error("Couldn't add that column. Please try again.");
+      const quota = await getColumnQuotaAction().catch(() => null);
+      toast.error(
+        (quota && columnLimitMessage(quota, quota.admins)) ||
+          "Couldn't add that column. Please try again.",
+      );
       setSubmitting(false);
     }
   };
@@ -177,10 +211,10 @@ export function AddBlockBody({
         ) : (
           <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-muted-foreground underline">
             <ImageIcon size={16} />
-            Upload an image or PDF
+            Upload an image, video, or PDF
             <input
               type="file"
-              accept="image/*,application/pdf"
+              accept="image/*,video/mp4,video/webm,video/quicktime,video/ogg,application/pdf"
               className="hidden"
               onChange={(e) => {
                 pickFile(e.target.files?.[0]);

@@ -6,27 +6,59 @@ import { PlusIcon, CheckIcon, CopyIcon, LinkIcon, Trash2Icon } from "lucide-reac
 
 import { createInviteCodeAction, revokeInviteCodeAction } from "@/lib/colosseum/actions";
 import type { InviteCode } from "@/lib/colosseum/invite";
+import type { Quota } from "@/lib/colosseum/admin";
+import { adminContact } from "@/lib/quota";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function InviteManager({
   userId: _userId,
   initialCodes,
+  initialQuota,
+  admins,
 }: {
   userId: string;
   initialCodes: InviteCode[];
+  initialQuota: Quota;
+  admins: string[];
 }) {
+  const contact = adminContact(admins);
   const [codes, setCodes] = useState<InviteCode[]>(initialCodes);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState<string | null>(null);
 
+  // Invite quota. `limit` null = unlimited (no bar); 0 = disabled by admin.
+  // `used` is capacity issued (sum of code max_uses) and moves as codes are
+  // created/revoked. The dialog message explains a server-side rejection.
+  const { limit } = initialQuota;
+  const [used, setUsed] = useState(initialQuota.used);
+  const [limitMessage, setLimitMessage] = useState<string | null>(null);
+
+  const atCap = limit !== null && used >= limit;
+  const remaining = limit === null ? null : Math.max(0, limit - used);
+  const pct = limit && limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
+
   const handleCreate = async () => {
     setCreating(true);
     setError(null);
     try {
-      const invite = await createInviteCodeAction({ max_uses: 1 });
-      setCodes((prev) => [invite, ...prev]);
+      const result = await createInviteCodeAction({ max_uses: 1 });
+      if (!result.ok) {
+        setLimitMessage(result.message);
+        return;
+      }
+      setCodes((prev) => [result.invite, ...prev]);
+      setUsed((u) => u + result.invite.max_uses);
     } catch (e) {
       console.error(e);
       setError("Couldn't create an invite. Please try again.");
@@ -38,9 +70,12 @@ export default function InviteManager({
   const handleRevoke = async (code: string) => {
     setError(null);
     const prev = codes;
+    const revoked = codes.find((c) => c.code === code);
     setCodes((cs) => cs.filter((c) => c.code !== code));
     try {
       await revokeInviteCodeAction(code);
+      // Revoking an unused code frees the capacity it reserved.
+      if (revoked) setUsed((u) => Math.max(0, u - revoked.max_uses));
     } catch (e) {
       console.error(e);
       setCodes(prev);
@@ -74,7 +109,29 @@ export default function InviteManager({
 
   return (
     <div className="space-y-4">
-      <Button variant="secondary" onClick={handleCreate} disabled={creating}>
+      {/* Quota meter — shown only when the admin has set a cap. */}
+      {limit === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          Invites are disabled for your account. Ask {contact} about it.
+        </p>
+      ) : limit !== null ? (
+        <div className="max-w-md space-y-1">
+          <div className="text-caption flex justify-between tabular-nums">
+            <span>
+              {used} of {limit} invites used
+            </span>
+            <span>{remaining} left</span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-secondary">
+            <div
+              className="h-full rounded-full bg-primary transition-[width] duration-300"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      <Button variant="secondary" onClick={handleCreate} disabled={creating || atCap}>
         <PlusIcon />
         <p>{creating ? "Creating..." : "New invite"}</p>
       </Button>
@@ -169,6 +226,20 @@ export default function InviteManager({
           })}
         </ul>
       )}
+
+      <AlertDialog open={limitMessage !== null} onOpenChange={(o) => !o && setLimitMessage(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>You’ve reached your invite limit</AlertDialogTitle>
+            <AlertDialogDescription>
+              {limitMessage} Ask {contact} to raise it if you need more.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setLimitMessage(null)}>Got it</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

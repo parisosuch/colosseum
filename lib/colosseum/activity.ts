@@ -1,9 +1,9 @@
 import "server-only";
 
-import { and, desc, eq, lt, ne } from "drizzle-orm";
+import { and, desc, eq, lt, ne, or, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { channel, column, userProfile } from "@/lib/db/schema";
+import { channel, channelMember, column, userProfile } from "@/lib/db/schema";
 
 import { toColumn, withLinkedChannels, type Column } from "./column";
 import { getScreenshotsForUrls, type ColumnScreenshot } from "./screenshot-data";
@@ -14,8 +14,11 @@ export const ACTIVITY_PAGE = 24;
 
 // The Explore feed: recent public activity across the whole network. Colosseum
 // is invite-only, so every member is connected — the network is everyone, and
-// this is what they've been up to. Private channels (and their blocks) are
-// filtered out, so nothing private ever surfaces here.
+// this is what they've been up to. Public/open channels surface to everyone;
+// blocks in a private channel surface only to that channel's owner and members
+// (so a group's members see what each other add), never to anyone else. New
+// private *channels* themselves never surface — only the blocks inside ones the
+// viewer already belongs to.
 
 export type ActivityItem = {
   kind: "block" | "channel" | "user";
@@ -52,6 +55,7 @@ export function blockLabel(b: {
   if (b.type === "text") return b.text ? b.text.slice(0, 60) : "a note";
   if (b.type === "image") return "an image";
   if (b.type === "pdf") return "a PDF";
+  if (b.type === "video") return "a video";
   if (b.type === "channel") return "a channel";
   return "a column";
 }
@@ -77,7 +81,21 @@ export async function getActivityFeed(
       .from(column)
       .innerJoin(channel, eq(channel.id, column.channel_id))
       .innerJoin(userProfile, eq(userProfile.user_id, column.created_by))
-      .where(and(ne(channel.access, "private"), cursor ? lt(column.created_at, cursor) : undefined))
+      .where(
+        and(
+          // Non-private channels are visible to everyone; a private channel's
+          // blocks only to its owner or a member — so nothing private leaks to
+          // outsiders, but a group sees its own members' additions.
+          or(
+            ne(channel.access, "private"),
+            viewerId ? eq(channel.owner_id, viewerId) : undefined,
+            viewerId
+              ? sql`exists (select 1 from ${channelMember} where ${channelMember.channel_id} = ${channel.id} and ${channelMember.user_id} = ${viewerId})`
+              : undefined,
+          ),
+          cursor ? lt(column.created_at, cursor) : undefined,
+        ),
+      )
       .orderBy(desc(column.created_at))
       .limit(limit),
     db

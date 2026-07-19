@@ -8,6 +8,25 @@ release.
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-07-18
+
+### Added
+
+- An admin area for managing the instance.
+- Video files can now be uploaded as blocks and play inline.
+- A column can be copied into another channel.
+- Profile pages list the channels a person is a member of.
+- Adding a member to a channel now searches users by name or handle.
+- Members can see blocks from private channels they belong to in the Explore feed.
+- Deleting a column now asks for confirmation first.
+- The `/users` page shows an invite network graph of who invited whom.
+- Blob storage is now pluggable, with an S3/CDN backend option alongside local disk.
+- Tweets can be embedded as blocks that keep rendering even after the source tweet is deleted.
+
+### Changed
+
+- The REST API is now rate limited per token owner.
+
 ## [1.6.1] - 2026-07-16
 
 ### Fixed

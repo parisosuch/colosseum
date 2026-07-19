@@ -43,19 +43,16 @@ function groupByBucket(items: NotificationItem[]): [string, NotificationItem[]][
   return out;
 }
 
-function Card({ n }: { n: NotificationItem }) {
+function Row({ n }: { n: NotificationItem }) {
   const Icon = ICON[n.type];
   return (
-    <li>
-      <Link
-        href={n.href}
-        className={cn(
-          "flex h-full gap-3 rounded-xl border p-3.5 transition-colors",
-          n.read
-            ? "hover:bg-muted/50"
-            : "border-primary/25 bg-primary/[0.04] hover:bg-primary/[0.08]",
-        )}
-      >
+    <li
+      className={cn(
+        "transition-colors",
+        n.read ? "hover:bg-muted/50" : "bg-primary/[0.04] hover:bg-primary/[0.08]",
+      )}
+    >
+      <Link href={n.href} className="flex items-start gap-3 px-4 py-3">
         <div className="relative shrink-0">
           <UserProfilePicture avatarUrl={n.actor_avatar_url} handle={n.actor_handle} size="md" />
           {n.read ? null : (
@@ -71,7 +68,7 @@ function Card({ n }: { n: NotificationItem }) {
           >
             <span className="font-semibold text-foreground">@{n.actor_handle}</span> {n.message}
           </p>
-          <div className="mt-1.5 flex items-center gap-1.5 text-muted-foreground">
+          <div className="mt-1 flex items-center gap-1.5 text-muted-foreground">
             <Icon className="size-3.5 shrink-0" />
             <span className="text-xs tabular-nums">{timeAgo(new Date(n.created_at))}</span>
           </div>
@@ -193,9 +190,9 @@ export default function NotificationList({
               <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 {label}
               </h3>
-              <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+              <ul className="divide-y overflow-hidden rounded-xl border">
                 {group.map((n) => (
-                  <Card key={n.id} n={n} />
+                  <Row key={n.id} n={n} />
                 ))}
               </ul>
             </section>

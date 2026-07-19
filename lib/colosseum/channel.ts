@@ -5,8 +5,9 @@ import { and, desc, eq, ilike, ne, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { channel, channelMember, column, userProfile } from "@/lib/db/schema";
 import { sanitizeSearch } from "@/lib/utils";
-import { deleteMediaByUrl, setMediaVisibilityByUrls } from "./blob";
+import { deleteMediaByUrl, mediaUrl, setMediaVisibilityByUrls } from "./blob";
 import { deleteScreenshotIfUnreferenced } from "./column";
+import { isChannelMember } from "./member";
 
 // A channel's access mode. `public`: everyone reads, only the owner adds.
 // `open`: everyone reads, any signed-in user adds. `private`: only the owner and
@@ -61,6 +62,26 @@ export function canContributeChannel(
 // Manage (settings, delete, members): owner only, whatever the access mode.
 export function canManageChannel(ch: Channel, userId: string | null): boolean {
   return !!userId && userId === ch.owner_id;
+}
+
+// May this user view the bytes behind a media id? True when they can read any
+// channel that embeds it (a column's image points at /api/media/<id>). The
+// media route calls this instead of re-checking media ownership, so the
+// owner-or-member read rule stays defined in exactly one place — a private
+// channel's members must see its images, not just its owner.
+export async function canReadMedia(mediaId: string, userId: string | null): Promise<boolean> {
+  const rows = await db
+    .select({ channel_id: column.channel_id })
+    .from(column)
+    .where(eq(column.image, mediaUrl(mediaId)));
+  const channelIds = [...new Set(rows.map((r) => r.channel_id))];
+  for (const id of channelIds) {
+    const ch = await getChannel(id);
+    if (!ch) continue;
+    const member = ch.access === "private" && userId ? await isChannelMember(id, userId) : false;
+    if (canReadChannel(ch, userId, member)) return true;
+  }
+  return false;
 }
 
 // Drizzle returns Date objects for timestamptz and null for absent columns; the

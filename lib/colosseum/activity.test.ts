@@ -40,7 +40,11 @@ test("getActivityFeed: private-channel blocks reach the owner and members, not o
     items.some((i) => i.kind === "block" && i.column?.id === id);
 
   // Bob owns a private channel that Alice is a member of.
-  const shared = await createChannel({ title: "Shared", access: "private", owner_id: USERS.bob.id });
+  const shared = await createChannel({
+    title: "Shared",
+    access: "private",
+    owner_id: USERS.bob.id,
+  });
   await addChannelMemberByHandle(shared.id, USERS.alice.handle);
   const sharedBlock = await uploadURLColumn({
     created_by: USERS.bob.id,
@@ -49,7 +53,11 @@ test("getActivityFeed: private-channel blocks reach the owner and members, not o
   });
 
   // Bob owns another private channel Alice is NOT in.
-  const secret = await createChannel({ title: "Secret", access: "private", owner_id: USERS.bob.id });
+  const secret = await createChannel({
+    title: "Secret",
+    access: "private",
+    owner_id: USERS.bob.id,
+  });
   const secretBlock = await uploadURLColumn({
     created_by: USERS.bob.id,
     channel_id: secret.id,

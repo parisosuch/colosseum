@@ -29,6 +29,34 @@ export function isTweetUrl(url: string): boolean {
   return tweetIdFromUrl(url) !== null;
 }
 
+// A YouTube URL → its 11-char video id, or null for anything else. Handles
+// watch?v=, youtu.be/, /shorts/, and /embed/ forms. Pure string parsing (no
+// server-only deps) so client components can classify a pasted URL as a video.
+export function youtubeIdFromUrl(url: string): string | null {
+  let u: URL;
+  try {
+    u = new URL(url.startsWith("http") ? url : `https://${url}`);
+  } catch {
+    return null;
+  }
+  const host = u.hostname.replace(/^(www\.|m\.|music\.)/, "");
+  const isId = (s: string | undefined | null): string | null =>
+    s && /^[\w-]{11}$/.test(s) ? s : null;
+  if (host === "youtu.be") {
+    return isId(u.pathname.slice(1));
+  }
+  if (host === "youtube.com") {
+    if (u.pathname === "/watch") return isId(u.searchParams.get("v"));
+    const m = /^\/(?:shorts|embed)\/([\w-]{11})/.exec(u.pathname);
+    return isId(m?.[1]);
+  }
+  return null;
+}
+
+export function isYouTubeUrl(url: string): boolean {
+  return youtubeIdFromUrl(url) !== null;
+}
+
 export function isURL(text: string): boolean {
   let url: URL;
   try {

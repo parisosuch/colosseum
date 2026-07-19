@@ -4,6 +4,7 @@ import { Dispatch, SetStateAction, useEffect, useState, useRef } from "react";
 import {
   uploadURLColumnAction,
   uploadTweetColumnAction,
+  uploadYouTubeColumnAction,
   uploadTextColumnAction,
   uploadImageColumnAction,
   uploadImageColumnFromUrlAction,
@@ -13,7 +14,7 @@ import {
 } from "@/lib/colosseum/actions";
 import type { Column } from "@/lib/colosseum/column";
 import { columnLimitMessage } from "@/lib/quota";
-import { imageSrcFromHtml, isTweetUrl, isURL } from "@/lib/utils";
+import { imageSrcFromHtml, isTweetUrl, isYouTubeUrl, isURL } from "@/lib/utils";
 import { resumeVideoUploads, startVideoUpload, type UploadHandlers } from "@/lib/resumable-upload";
 import type { SessionUser } from "@/components/channel-board";
 import type { Channel } from "@/lib/colosseum/channel";
@@ -285,6 +286,8 @@ export default function ColumnInput({
     try {
       if (isTweetUrl(text)) {
         column = await uploadTweetColumnAction({ channelId: channel.id, url: urlText });
+      } else if (isYouTubeUrl(text)) {
+        column = await uploadYouTubeColumnAction({ channelId: channel.id, url: urlText });
       } else if (isUrlInput) {
         column = await uploadURLColumnAction({
           channelId: channel.id,
@@ -311,7 +314,13 @@ export default function ColumnInput({
     // Only plain URL blocks get the async screenshot pass. A tweet block already
     // carries its snapshot; a text block has nothing to capture.
     if (column.type !== "url") {
-      toast.success(column.type === "tweet" ? "Tweet added." : "Column added.");
+      toast.success(
+        column.type === "tweet"
+          ? "Tweet added."
+          : column.type === "youtube"
+            ? "Video added."
+            : "Column added.",
+      );
       return;
     }
 

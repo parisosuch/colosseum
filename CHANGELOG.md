@@ -8,6 +8,13 @@ release.
 
 ## [Unreleased]
 
+### Added
+
+- YouTube blocks: paste a YouTube URL (watch, `youtu.be`, Shorts, or embed
+  form) to add a video block. Grid cards show the video thumbnail; the modal and
+  block page embed the live player. Nothing is persisted — the embed renders
+  from YouTube, so the block reflects the live video.
+
 ## [1.7.3] - 2026-07-19
 
 ### Fixed

@@ -23,7 +23,7 @@ import { tweetIdFromUrl } from "@/lib/utils";
 export type Column = {
   id: number;
   created_at: string;
-  type: "url" | "text" | "image" | "channel" | "pdf" | "video" | "tweet";
+  type: "url" | "text" | "image" | "channel" | "pdf" | "video" | "tweet" | "youtube";
   title?: string;
   description?: string;
   url?: string;
@@ -337,6 +337,26 @@ export async function uploadTweetColumn(input: {
     .insert(column)
     .values({
       type: "tweet",
+      url: input.url,
+      channel_id: input.channel_id,
+      created_by: input.created_by,
+    })
+    .returning();
+  return toColumn(row);
+}
+
+// A YouTube block reuses the `url` field for the video's watch URL. Nothing is
+// persisted beyond the URL — the embed renders live from YouTube (per issue,
+// snapshotting video would be too costly), so there's no capture step and no GC.
+export async function uploadYouTubeColumn(input: {
+  created_by: string;
+  channel_id: number;
+  url: string;
+}): Promise<Column> {
+  const [row] = await db
+    .insert(column)
+    .values({
+      type: "youtube",
       url: input.url,
       channel_id: input.channel_id,
       created_by: input.created_by,

@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import ColumnComments from "@/components/column-comments";
 import { Markdown } from "@/components/markdown";
+import YouTubeBlock from "@/components/youtube-block";
 import PageHeader from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Channel, canReadChannel, getChannel } from "@/lib/colosseum/channel";
@@ -11,6 +12,7 @@ import { isChannelMember } from "@/lib/colosseum/member";
 import { Column, getColumn } from "@/lib/colosseum/column";
 import { getScreenshot } from "@/lib/colosseum/screenshot-data";
 import { getSessionUser } from "@/lib/auth";
+import { youtubeIdFromUrl } from "@/lib/utils";
 
 type BlockPageParams = {
   params: Promise<{ handle: string; channel_id: string; block_id: string }>;
@@ -22,6 +24,7 @@ function blockLabel(column: Column): string {
   if (column.type === "text") return "Text column";
   if (column.type === "pdf") return "PDF column";
   if (column.type === "video") return "Video column";
+  if (column.type === "youtube") return "YouTube video";
   return "Column";
 }
 
@@ -123,6 +126,8 @@ export default async function BlockPage({ params }: BlockPageParams) {
               {/* User uploads carry no caption file; empty track satisfies a11y. */}
               <track kind="captions" />
             </video>
+          ) : column.type === "youtube" ? (
+            <YouTubeBlock id={youtubeIdFromUrl(column.url ?? "") ?? ""} />
           ) : (
             <a
               href={column.url}

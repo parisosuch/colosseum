@@ -45,6 +45,7 @@ import {
   uploadVideoColumn,
   uploadTextColumn,
   uploadTweetColumn,
+  uploadYouTubeColumn,
   uploadURLColumn,
 } from "./column";
 import { ingestTweet } from "./tweet";
@@ -327,6 +328,17 @@ export async function uploadTweetColumnAction(input: {
     return uploadTweetColumn({ created_by: userId, channel_id: input.channelId, url });
   }
   return uploadURLColumn({ created_by: userId, channel_id: input.channelId, text: input.url });
+}
+
+// Add a YouTube block. Just stores the URL — the embed renders live from
+// YouTube, nothing is captured (persisting the video would be too costly).
+export async function uploadYouTubeColumnAction(input: {
+  channelId: number;
+  url: string;
+}): Promise<Column> {
+  const userId = await requireUserId();
+  await requireContributableChannel(input.channelId, userId);
+  return uploadYouTubeColumn({ created_by: userId, channel_id: input.channelId, url: input.url });
 }
 
 export async function uploadTextColumnAction(input: {

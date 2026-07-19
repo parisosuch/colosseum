@@ -2,10 +2,11 @@ import { FileText, Play } from "lucide-react";
 
 import type { Column } from "@/lib/colosseum/column";
 import { getScreenshot, type ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
-import { tweetIdFromUrl } from "@/lib/utils";
+import { tweetIdFromUrl, youtubeIdFromUrl } from "@/lib/utils";
 import { Markdown } from "./markdown";
 import ScreenShotPreview from "./screenshot-preview";
 import TweetBlock from "./tweet-block";
+import YouTubeBlock from "./youtube-block";
 
 export default async function ColumnPreview({
   column,
@@ -84,6 +85,10 @@ export default async function ColumnPreview({
 
   if (column.type === "tweet") {
     return <TweetBlock id={tweetIdFromUrl(column.url ?? "") ?? ""} compact />;
+  }
+
+  if (column.type === "youtube") {
+    return <YouTubeBlock id={youtubeIdFromUrl(column.url ?? "") ?? ""} compact />;
   }
 
   // Use the pre-fetched screenshot when a caller passed one (batched list);

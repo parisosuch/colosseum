@@ -8,6 +8,14 @@ release.
 
 ## [Unreleased]
 
+## [1.7.2] - 2026-07-18
+
+### Fixed
+
+- Members of a private channel can now see the channel's images. Previously
+  only the channel owner could load them — every image 404'd for members even
+  though they could read the channel.
+
 ## [1.7.1] - 2026-07-18
 
 ### Fixed

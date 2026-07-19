@@ -16,9 +16,13 @@ export default async function NotificationsPage() {
   const items = await listNotifications(user.id);
 
   return (
-    <div className="mx-auto w-full max-w-2xl p-6 sm:p-12 space-y-8">
+    // Breadcrumb sits at the page's left edge like every other page; the feed
+    // itself stays a centered reading column.
+    <div className="w-full p-6 sm:p-12 space-y-8">
       <PageHeader crumbs={[{ label: "notifications" }]} />
-      <NotificationList initial={items} pageSize={NOTIFICATION_PAGE} />
+      <div className="mx-auto w-full max-w-2xl">
+        <NotificationList initial={items} pageSize={NOTIFICATION_PAGE} />
+      </div>
     </div>
   );
 }

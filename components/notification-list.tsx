@@ -8,6 +8,7 @@ import { AtSign, Bell, CheckCheck, Link2, MessageSquare, UserPlus } from "lucide
 import { listNotificationsAction, markNotificationsReadAction } from "@/lib/colosseum/actions";
 import type { NotificationItem, NotificationType } from "@/lib/colosseum/notification";
 import { cn, timeAgo } from "@/lib/utils";
+import { GradientSpin } from "@/components/gradient-spin";
 import { Button } from "@/components/ui/button";
 import { UserProfilePicture } from "@/components/user-profile-picture";
 
@@ -198,8 +199,8 @@ export default function NotificationList({
             </section>
           ))}
           {filter === "all" && hasMore ? (
-            <div ref={sentinelRef} className="flex justify-center py-4 text-caption">
-              {loading ? "Loading…" : null}
+            <div ref={sentinelRef} className="flex justify-center py-4">
+              {loading ? <GradientSpin cellSize={4} pattern="arrow-down" /> : null}
             </div>
           ) : null}
         </div>

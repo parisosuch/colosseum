@@ -421,6 +421,16 @@ function BlockModalBody({
               Open PDF
             </a>
           </object>
+        ) : column.type === "video" ? (
+          <video
+            src={column.image}
+            controls
+            playsInline
+            className="max-h-[70vh] md:max-h-full max-w-full rounded-md"
+          >
+            {/* User uploads carry no caption file; empty track satisfies a11y. */}
+            <track kind="captions" />
+          </video>
         ) : column.type === "tweet" ? (
           <div className="max-h-full w-full max-w-xl overflow-y-auto">
             <TweetBlock id={tweetIdFromUrl(column.url ?? "") ?? ""} />

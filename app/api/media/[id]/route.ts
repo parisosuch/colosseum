@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
 import { blobKey, ensureThumbnail, getMedia, thumbKey } from "@/lib/colosseum/blob";
-import { getObject, publicUrl, signedUrl } from "@/lib/colosseum/storage";
+import { getObject, objectSize, publicUrl, signedUrl } from "@/lib/colosseum/storage";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -69,20 +69,55 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     }
   }
 
-  const object = await getObject(key);
-  if (!object) {
-    return NextResponse.json({ error: "Not found." }, { status: 404 });
-  }
-
   // A media id's bytes never change, so public responses cache forever;
   // private ones must never land in any cache.
   const cacheControl =
     item.visibility === "private" ? "private, no-store" : "public, max-age=31536000, immutable";
 
+  // Honor a byte-range request (video seeking; Safari won't play a video at all
+  // without one). Only reached on the streaming path — CDN/signed-URL redirects
+  // above hand range off to the object store's own edge. Unparseable/absent
+  // Range falls through to the full 200.
+  const range = req.headers.get("range");
+  const match = range ? /^bytes=(\d*)-(\d*)$/.exec(range.trim()) : null;
+  if (match && (match[1] || match[2])) {
+    const total = await objectSize(key);
+    if (total == null) {
+      return NextResponse.json({ error: "Not found." }, { status: 404 });
+    }
+    const start = match[1] ? Number(match[1]) : total - Number(match[2]);
+    const end = match[1] && match[2] ? Number(match[2]) : total - 1;
+    if (start > end || start < 0 || end >= total) {
+      return new NextResponse(null, {
+        status: 416,
+        headers: { "Content-Range": `bytes */${total}`, "Accept-Ranges": "bytes" },
+      });
+    }
+    const slice = await getObject(key, { start, end });
+    if (!slice) {
+      return NextResponse.json({ error: "Not found." }, { status: 404 });
+    }
+    return new Response(slice.body, {
+      status: 206,
+      headers: {
+        "Content-Type": contentType,
+        "Content-Length": String(end - start + 1),
+        "Content-Range": `bytes ${start}-${end}/${total}`,
+        "Accept-Ranges": "bytes",
+        "Cache-Control": cacheControl,
+      },
+    });
+  }
+
+  const object = await getObject(key);
+  if (!object) {
+    return NextResponse.json({ error: "Not found." }, { status: 404 });
+  }
   return new Response(object.body, {
     headers: {
       "Content-Type": contentType,
       "Content-Length": String(object.size),
+      "Accept-Ranges": "bytes",
       "Cache-Control": cacheControl,
     },
   });

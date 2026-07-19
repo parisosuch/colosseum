@@ -23,7 +23,7 @@ import { tweetIdFromUrl } from "@/lib/utils";
 export type Column = {
   id: number;
   created_at: string;
-  type: "url" | "text" | "image" | "channel" | "pdf" | "tweet";
+  type: "url" | "text" | "image" | "channel" | "pdf" | "video" | "tweet";
   title?: string;
   description?: string;
   url?: string;
@@ -390,6 +390,24 @@ export async function uploadPdfColumn(input: {
     .insert(column)
     .values({
       type: "pdf",
+      image: input.image,
+      channel_id: input.channel_id,
+      created_by: input.created_by,
+    })
+    .returning();
+  return toColumn(row);
+}
+
+export async function uploadVideoColumn(input: {
+  created_by: string;
+  channel_id: number;
+  // Media URL of the already-uploaded video blob (reuses the `image` field).
+  image: string;
+}): Promise<Column> {
+  const [row] = await db
+    .insert(column)
+    .values({
+      type: "video",
       image: input.image,
       channel_id: input.channel_id,
       created_by: input.created_by,

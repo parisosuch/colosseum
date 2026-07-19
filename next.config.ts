@@ -11,12 +11,17 @@ const nextConfig: NextConfig = {
   // dynamic require(). They run server-side only, so leave them as node requires.
   serverExternalPackages: ["puppeteer-extra", "puppeteer-extra-plugin-stealth"],
   experimental: {
-    // Image uploads go through a server action (uploadImageColumnAction), which
-    // defaults to a 1MB body cap. Keep this above the 10MB client-side image
-    // limit (MAX_IMAGE_BYTES) with headroom for multipart overhead, or larger
-    // pastes/drops fail with a 413 "Body exceeded 1 MB limit".
+    // Media uploads (image/PDF/video) go through server actions, which default
+    // to a 1MB body cap. Keep this above the largest client-side cap — the 100MB
+    // video limit (MAX_VIDEO_BYTES; images 10MB, PDFs 25MB) — with headroom for
+    // multipart overhead. If it's below a client cap, files in the gap fail with
+    // an opaque "Body exceeded N mb limit" *before* the action's own validation
+    // runs, so the client-side size toast never gets to fire.
+    // ponytail: server actions buffer the whole body in memory, so a 100MB cap
+    // means ~100MB per concurrent upload — fine at self-host scale. Move to a
+    // streaming upload route if that memory pressure ever bites.
     serverActions: {
-      bodySizeLimit: "12mb",
+      bodySizeLimit: "110mb",
     },
   },
 };

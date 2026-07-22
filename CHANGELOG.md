@@ -10,6 +10,12 @@ release.
 
 ### Added
 
+- Optional Redis caching layer for hot, stable read queries — channel metadata
+  (`getChannel`) and the per-user channel lists (`getUserChannels`,
+  `getUserPublicChannels`). Disabled unless `REDIS_URL` is set, so the default
+  behavior is unchanged; Redis failures fall back to Postgres, and channel
+  create/update/delete invalidate the affected keys (a TTL backstops any missed
+  invalidation). Configure with `REDIS_URL` / `REDIS_CACHE_ENABLED`.
 - Open-source community health files: MIT `LICENSE`, `CONTRIBUTING.md`,
   `CODE_OF_CONDUCT.md`, `SECURITY.md`, and GitHub issue/PR templates. The README
   gained a project overview plus Contributing and License sections, and

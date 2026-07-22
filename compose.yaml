@@ -22,6 +22,11 @@ services:
       # "Invalid origin".
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
       STORAGE_DIR: /data/storage
+      # Optional Redis cache. Empty unless set in `.env`, which keeps caching
+      # off (the app queries Postgres directly). To enable, start the stack with
+      # the `cache` profile and set REDIS_URL — see the redis service below.
+      REDIS_URL: ${REDIS_URL:-}
+      REDIS_CACHE_ENABLED: ${REDIS_CACHE_ENABLED:-}
     volumes:
       - storage:/data/storage
     ports:
@@ -45,6 +50,16 @@ services:
       - "127.0.0.1:54322:5432"
     volumes:
       - db:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # Optional cache, off by default. It only starts under the `cache` profile
+  # (`docker compose --profile cache up -d --build`); a plain `up` runs just app
+  # + db. Data is ephemeral on purpose — it's a cache, so nothing here needs to
+  # survive a restart. Reachable from `app` at redis://redis:6379 on the compose
+  # network; set REDIS_URL to that in `.env` to turn caching on.
+  redis:
+    image: redis:7-alpine
+    profiles: ["cache"]
     restart: unless-stopped
 
 volumes:

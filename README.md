@@ -102,30 +102,27 @@ because it needs both stores reachable at once.
 ### Redis cache (optional)
 
 By default every read hits Postgres directly. To cache the hottest, stable
-queries — channel metadata and the per-user channel lists — point the app at a
-Redis server by setting `REDIS_URL` in the compose `.env`:
+queries — channel metadata and the per-user channel lists — the compose file
+includes an optional `redis` service behind a `cache` profile. Enable it by
+setting `REDIS_URL` in the compose `.env` and starting the stack with the
+profile:
 
 ```bash
-REDIS_URL=redis://localhost:6379
+# in .env, next to compose.yaml
+REDIS_URL=redis://redis:6379
+
+# then bring the stack up with the cache profile
+docker compose --profile cache up -d --build
 ```
 
-Its presence turns caching on; unset, nothing changes. The cache is
-**best-effort**: if Redis is unreachable the app falls back to Postgres on every
-query, so a Redis outage degrades performance but never takes the app down.
-Writes (creating, editing, or deleting a channel) invalidate the affected
-entries immediately, and a short TTL (5 minutes for channel metadata, 30 for the
-channel lists) backstops anything missed. Set `REDIS_CACHE_ENABLED=false` to
-keep a configured `REDIS_URL` but turn caching off without removing the var.
-
-To run Redis as part of the compose stack, add a service like:
-
-```yaml
-redis:
-  image: redis:7-alpine
-  restart: unless-stopped
-```
-
-and set `REDIS_URL=redis://redis:6379` (the service name) in `.env`.
+A plain `docker compose up` (no profile) runs just `app` + `db` as before, and
+without `REDIS_URL` nothing changes. The cache is **best-effort**: if Redis is
+unreachable the app falls back to Postgres on every query, so a Redis outage
+degrades performance but never takes the app down. Writes (creating, editing, or
+deleting a channel) invalidate the affected entries immediately, and a short TTL
+(5 minutes for channel metadata, 30 for the channel lists) backstops anything
+missed. Set `REDIS_CACHE_ENABLED=false` to keep a configured `REDIS_URL` but
+turn caching off without removing the var.
 
 ## Local development
 

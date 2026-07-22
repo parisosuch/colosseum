@@ -8,6 +8,15 @@ release.
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-07-22
+
+### Fixed
+
+- The Cmd/Ctrl+K command palette now highlights the first result again, so
+  pressing Enter opens the top match immediately. With manual filtering the
+  palette had stopped auto-selecting the first item, forcing an arrow-down
+  before Enter would do anything.
+
 ## [1.8.0] - 2026-07-19
 
 ### Added

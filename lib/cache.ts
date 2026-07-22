@@ -18,7 +18,7 @@ type RedisLike = {
   get(key: string): Promise<string | null>;
   set(key: string, value: string, mode: "EX", ttl: number): Promise<unknown>;
   del(...keys: string[]): Promise<unknown>;
-  on(event: "error", listener: (err: unknown) => void): unknown;
+  on(event: "error" | "ready", listener: (err: unknown) => void): unknown;
 };
 
 function cacheEnabled(): boolean {
@@ -41,20 +41,30 @@ function getClient(): Promise<RedisLike | null> {
         // Dynamic import so ioredis is never loaded (or bundled into the hot
         // path) when the cache is disabled.
         const { default: Redis } = await import("ioredis");
+        // Connect in the background (no lazyConnect / no awaited connect) and
+        // let ioredis auto-reconnect for the process's lifetime. This is what
+        // makes an always-on deployment self-healing: if Redis is briefly
+        // unreachable at boot or restarts later, the client reconnects on its
+        // own — we never memoise a permanently-dead null. While it's down,
+        // `enableOfflineQueue: false` makes commands reject immediately so a
+        // read falls straight through to Postgres instead of hanging.
         const client = new Redis(process.env.REDIS_URL!, {
-          // Fail a command fast rather than wedging a page render behind a dead
-          // Redis; we fall back to Postgres on the rejection.
           maxRetriesPerRequest: 1,
           enableOfflineQueue: false,
           connectTimeout: 3000,
-          // Connect explicitly below so the client is ready before the first
-          // command — otherwise, with enableOfflineQueue off, commands issued
-          // during the async connect reject and every early read misses.
-          lazyConnect: true,
         });
-        // ioredis throws on an 'error' event with no listener; log and swallow.
-        client.on("error", (err) => logError("cache", "redis client error", err));
-        await client.connect();
+        // ioredis throws on an 'error' event with no listener; log and swallow
+        // (a reconnect is already scheduled). The at-most-once error listener
+        // avoids noisy logs during an outage.
+        let logged = false;
+        client.on("error", (err) => {
+          if (logged) return;
+          logged = true;
+          logError("cache", "redis client error (will keep retrying)", err);
+        });
+        client.on("ready", () => {
+          logged = false;
+        });
         return client as unknown as RedisLike;
       } catch (err) {
         logError("cache", "failed to init redis; caching disabled", err);

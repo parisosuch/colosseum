@@ -52,8 +52,20 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+      # Exercises the cache's enabled path (miss/hit/invalidate) against a real
+      # Redis; cache tests skip themselves when this is unset (e.g. local runs).
+      REDIS_URL: redis://127.0.0.1:6379
       PUPPETEER_SKIP_DOWNLOAD: "true"
     steps:
       - uses: actions/checkout@v4

@@ -22,10 +22,12 @@ services:
       # "Invalid origin".
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
       STORAGE_DIR: /data/storage
-      # Optional Redis cache. Empty unless set in `.env`, which keeps caching
-      # off (the app queries Postgres directly). To enable, start the stack with
-      # the `cache` profile and set REDIS_URL — see the redis service below.
-      REDIS_URL: ${REDIS_URL:-}
+      # Redis cache — on by default, pointing at the bundled `redis` service.
+      # It's best-effort: if Redis is unreachable the app falls back to Postgres,
+      # so it can never take the app down. Set REDIS_CACHE_ENABLED=false in
+      # `.env` to turn caching off, or override REDIS_URL to use an external
+      # Redis.
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       REDIS_CACHE_ENABLED: ${REDIS_CACHE_ENABLED:-}
     volumes:
       - storage:/data/storage
@@ -52,14 +54,18 @@ services:
       - db:/var/lib/postgresql/data
     restart: unless-stopped
 
-  # Optional cache, off by default. It only starts under the `cache` profile
-  # (`docker compose --profile cache up -d --build`); a plain `up` runs just app
-  # + db. Data is ephemeral on purpose — it's a cache, so nothing here needs to
-  # survive a restart. Reachable from `app` at redis://redis:6379 on the compose
-  # network; set REDIS_URL to that in `.env` to turn caching on.
+  # Cache for hot reads (channel metadata, per-user channel lists). Data is
+  # ephemeral on purpose — it's a cache, so nothing here needs to survive a
+  # restart. The app reaches it at redis://redis:6379 on the compose network and
+  # falls back to Postgres whenever it's unavailable, so it's safe to remove
+  # this service (and set REDIS_CACHE_ENABLED=false) if you don't want a cache.
   redis:
     image: redis:7-alpine
-    profiles: ["cache"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     restart: unless-stopped
 
 volumes:

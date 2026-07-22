@@ -99,30 +99,23 @@ configured** (it reads through the bucket and writes to `STORAGE_DIR`), then
 unset `S3_BUCKET` and redeploy. It's a deliberate one-off, not boot automation,
 because it needs both stores reachable at once.
 
-### Redis cache (optional)
+### Redis cache
 
-By default every read hits Postgres directly. To cache the hottest, stable
-queries — channel metadata and the per-user channel lists — the compose file
-includes an optional `redis` service behind a `cache` profile. Enable it by
-setting `REDIS_URL` in the compose `.env` and starting the stack with the
-profile:
+The stack includes a `redis` service that caches the hottest, stable queries —
+channel metadata and the per-user channel lists. It's **on by default**: the
+`app` points at `redis://redis:6379` out of the box, so `docker compose up`
+gives you caching with no extra steps.
 
-```bash
-# in .env, next to compose.yaml
-REDIS_URL=redis://redis:6379
+The cache is **best-effort**: if Redis is unreachable the app falls back to
+Postgres on every query and reconnects on its own, so a Redis outage degrades
+performance but never takes the app down. Writes (creating, editing, or deleting
+a channel) invalidate the affected entries immediately, and a short TTL (5
+minutes for channel metadata, 30 for the channel lists) backstops anything
+missed.
 
-# then bring the stack up with the cache profile
-docker compose --profile cache up -d --build
-```
-
-A plain `docker compose up` (no profile) runs just `app` + `db` as before, and
-without `REDIS_URL` nothing changes. The cache is **best-effort**: if Redis is
-unreachable the app falls back to Postgres on every query, so a Redis outage
-degrades performance but never takes the app down. Writes (creating, editing, or
-deleting a channel) invalidate the affected entries immediately, and a short TTL
-(5 minutes for channel metadata, 30 for the channel lists) backstops anything
-missed. Set `REDIS_CACHE_ENABLED=false` to keep a configured `REDIS_URL` but
-turn caching off without removing the var.
+To turn caching **off**, set `REDIS_CACHE_ENABLED=false` in the compose `.env`
+(you can also remove the `redis` service). To use an **external** Redis instead
+of the bundled one, override `REDIS_URL` in `.env`.
 
 ## Local development
 

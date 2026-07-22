@@ -3,6 +3,7 @@ import { cache } from "react";
 import { and, desc, eq, ilike, ne, or, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
+import { cached, cacheKeys, cacheTtl, invalidate } from "@/lib/cache";
 import { channel, channelMember, column, userProfile } from "@/lib/db/schema";
 import { sanitizeSearch } from "@/lib/utils";
 import { deleteMediaByUrl, mediaUrl, setMediaVisibilityByUrls } from "./blob";
@@ -108,21 +109,31 @@ function toChannel(row: ChannelRow): Channel {
 const lastBlockAddedAt = sql`coalesce((select max(${column.created_at}) from ${column} where ${column.channel_id} = ${channel.id}), ${channel.created_at})`;
 
 export async function getUserPublicChannels(user_id: string): Promise<Channel[]> {
-  const rows = await db
-    .select()
-    .from(channel)
-    .where(and(eq(channel.owner_id, user_id), ne(channel.access, "private")))
-    .orderBy(desc(lastBlockAddedAt));
-  return rows.map(toChannel);
+  return cached(cacheKeys.userPublicChannels(user_id), cacheTtl.userChannels, async () => {
+    const rows = await db
+      .select()
+      .from(channel)
+      .where(and(eq(channel.owner_id, user_id), ne(channel.access, "private")))
+      .orderBy(desc(lastBlockAddedAt));
+    return rows.map(toChannel);
+  });
 }
 
 export async function getUserChannels(user_id: string): Promise<Channel[]> {
-  const rows = await db
-    .select()
-    .from(channel)
-    .where(eq(channel.owner_id, user_id))
-    .orderBy(desc(lastBlockAddedAt));
-  return rows.map(toChannel);
+  return cached(cacheKeys.userChannels(user_id), cacheTtl.userChannels, async () => {
+    const rows = await db
+      .select()
+      .from(channel)
+      .where(eq(channel.owner_id, user_id))
+      .orderBy(desc(lastBlockAddedAt));
+    return rows.map(toChannel);
+  });
+}
+
+// Invalidate the per-user channel-list caches for one owner. Called whenever a
+// channel they own is created, updated, or deleted.
+async function invalidateUserChannelLists(owner_id: string): Promise<void> {
+  await invalidate(cacheKeys.userPublicChannels(owner_id), cacheKeys.userChannels(owner_id));
 }
 
 // Channels the user is an explicit member of (never ones they own — the owner
@@ -210,6 +221,7 @@ export async function createChannel(input: {
   owner_id: string;
 }): Promise<Channel> {
   const [row] = await db.insert(channel).values(input).returning();
+  await invalidateUserChannelLists(input.owner_id);
   return toChannel(row);
 }
 
@@ -217,10 +229,14 @@ export async function createChannel(input: {
 // bypasses RLS). The channel's columns are removed by the ON DELETE CASCADE
 // foreign key.
 export async function deleteChannel(channel_id: number): Promise<void> {
+  // Resolve the owner before the row is gone, so we can invalidate their lists.
+  const owner_id = await channelOwnerId(channel_id);
   // Collect referenced media/URLs before the cascade removes the columns.
   const images = await channelImageUrls(channel_id);
   const linkUrls = await channelLinkUrls(channel_id);
   await db.delete(channel).where(eq(channel.id, channel_id));
+  await invalidate(cacheKeys.channel(channel_id));
+  if (owner_id) await invalidateUserChannelLists(owner_id);
   // Drop image-block media references (blobs GC when the last reference goes).
   for (const url of images) {
     await deleteMediaByUrl(url);
@@ -247,6 +263,17 @@ async function channelImageUrls(channel_id: number): Promise<string[]> {
   return rows.map((r) => r.image).filter((image): image is string => image !== null);
 }
 
+// The owner of a channel, or null if it no longer exists. Used to target cache
+// invalidation at the affected user's channel lists.
+async function channelOwnerId(channel_id: number): Promise<string | null> {
+  const [row] = await db
+    .select({ owner_id: channel.owner_id })
+    .from(channel)
+    .where(eq(channel.id, channel_id))
+    .limit(1);
+  return row?.owner_id ?? null;
+}
+
 async function channelLinkUrls(channel_id: number): Promise<string[]> {
   const rows = await db
     .select({ url: column.url })
@@ -269,6 +296,8 @@ export async function updateChannel(
   if (!row) {
     throw new Error("Channel not found.");
   }
+  await invalidate(cacheKeys.channel(channel_id));
+  await invalidateUserChannelLists(row.owner_id);
   // Keep image-block media in sync with the channel's privacy so a flipped
   // channel's images follow it (idempotent, so no need to diff the old value).
   // Only `private` channels hide their images; open channels read publicly.
@@ -285,10 +314,14 @@ export async function updateChannel(
 // never leaked.
 // Wrapped in React cache() so generateMetadata and the page share one lookup
 // per request (they both resolve the same channel). cache() keys on the id.
+// The React cache() dedupes within a request; the Redis layer (cached()) spans
+// requests. Invalidated on update/delete of the channel.
 export const getChannel = cache(async (channel_id: number): Promise<Channel | null> => {
   if (!Number.isFinite(channel_id)) {
     return null;
   }
-  const [row] = await db.select().from(channel).where(eq(channel.id, channel_id)).limit(1);
-  return row ? toChannel(row) : null;
+  return cached(cacheKeys.channel(channel_id), cacheTtl.channel, async () => {
+    const [row] = await db.select().from(channel).where(eq(channel.id, channel_id)).limit(1);
+    return row ? toChannel(row) : null;
+  });
 });

@@ -8,6 +8,13 @@ release.
 
 ## [Unreleased]
 
+### Added
+
+- Open-source community health files: MIT `LICENSE`, `CONTRIBUTING.md`,
+  `CODE_OF_CONDUCT.md`, `SECURITY.md`, and GitHub issue/PR templates. The README
+  gained a project overview plus Contributing and License sections, and
+  `package.json` now carries license, description, and repository metadata.
+
 ## [1.8.1] - 2026-07-22
 
 ### Fixed

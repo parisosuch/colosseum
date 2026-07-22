@@ -2,6 +2,16 @@
   "name": "colosseum",
   "version": "1.8.1",
   "private": true,
+  "description": "A self-hostable, Are.na-style tool for collecting and organizing the web into channels of blocks.",
+  "homepage": "https://github.com/parisosuch/colosseum#readme",
+  "bugs": {
+    "url": "https://github.com/parisosuch/colosseum/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/parisosuch/colosseum.git"
+  },
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",

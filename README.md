@@ -1,5 +1,17 @@
 # Colosseum
 
+Colosseum is a self-hostable, [Are.na](https://www.are.na/)-style tool for
+collecting and organizing the web. You save **blocks** — links, images, text,
+PDFs, videos, YouTube/Spotify embeds — into **channels**, laid out as columns,
+and browse everyone's public channels from an explore feed. It's built with
+Next.js (App Router), Postgres via Drizzle, and Better Auth, and ships as a
+single Docker Compose stack.
+
+- **Self-host it** with [Docker Compose](#self-hosting-docker-compose).
+- **Hack on it** — see [Local development](#local-development) and
+  [CONTRIBUTING.md](./CONTRIBUTING.md).
+- **License:** [MIT](./LICENSE).
+
 ## Docs
 
 - [REST API](docs/api.md) — CRUD your channels and blocks programmatically.
@@ -202,3 +214,14 @@ sudo apt-get update && sudo apt-get install -y \
 ```
 
 On Ubuntu 22.04 and earlier, use `libasound2` instead of `libasound2t64`.
+
+## Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for
+the development setup, branching model, and PR checklist, and note the
+[Code of Conduct](./CODE_OF_CONDUCT.md). Found a security issue? See
+[SECURITY.md](./SECURITY.md).
+
+## License
+
+Colosseum is released under the [MIT License](./LICENSE).

@@ -22,6 +22,15 @@ release.
   gained a project overview plus Contributing and License sections, and
   `package.json` now carries license, description, and repository metadata.
 
+### Fixed
+
+- Self-hosting: the `app` service in `compose.yaml` now passes through the
+  documented S3/CDN vars (`S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`,
+  `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT`, `CDN_URL`) and the runtime toggles
+  (`DISABLE_SIGNUPS`, `API_RATE_LIMIT`, `API_RATE_WINDOW_MS`). Setting them in
+  the compose `.env` previously had no effect because they never reached the
+  container; unset, behavior is unchanged.
+
 ## [1.8.1] - 2026-07-22
 
 ### Fixed

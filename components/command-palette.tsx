@@ -111,11 +111,29 @@ export default function CommandPalette({ handle }: { handle: string }) {
   ].filter((i) => matches(i.label));
   const showLogout = matches("Log out");
 
+  // Values of every rendered item, in the same order they appear in the list.
+  // With shouldFilter={false} cmdk stops auto-highlighting the first item, so
+  // we drive the selection ourselves (below) using this order.
+  const itemValues = [
+    ...profiles.map((profile) => `profile-${profile.handle}`),
+    ...channels.map((channel) => `channel-${channel.id}`),
+    ...columns.map((column) => `block-${column.id}`),
+    ...visibleNav.map((i) => i.label),
+    ...themeItems.map((i) => `theme-${i.value}`),
+    ...(showLogout ? ["logout"] : []),
+  ];
+
+  // Keep the highlight on a live item, snapping to the first whenever the
+  // current selection is gone (e.g. results just changed). This ensures Enter
+  // fires the top result without arrowing down first.
+  const [selected, setSelected] = useState("");
+  const activeValue = itemValues.includes(selected) ? selected : (itemValues[0] ?? "");
+
   return (
     <CommandDialog
       open={open}
       onOpenChange={setOpen}
-      commandProps={{ shouldFilter: false }}
+      commandProps={{ shouldFilter: false, value: activeValue, onValueChange: setSelected }}
       title="Command palette"
       description="Search your channels and columns, or jump to a page."
     >

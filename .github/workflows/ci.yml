@@ -63,9 +63,6 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
-      # Exercises the cache's enabled path (miss/hit/invalidate) against a real
-      # Redis; cache tests skip themselves when this is unset (e.g. local runs).
-      REDIS_URL: redis://127.0.0.1:6379
       PUPPETEER_SKIP_DOWNLOAD: "true"
     steps:
       - uses: actions/checkout@v4
@@ -83,5 +80,17 @@ jobs:
       - name: Seed fixtures
         run: bun run db:seed
 
+      # The main suite runs with caching OFF (no REDIS_URL): the data-layer
+      # tests re-seed the DB per file and assert direct-read semantics, so a
+      # shared Redis holding entries across files would break isolation. The
+      # cache's own enabled-path tests run separately below.
       - name: Test (bun test)
         run: bun run test
+
+      # Exercises the real Redis integration (miss/hit/invalidate/TTL) in its
+      # own process with REDIS_URL set. cache.redis.test.ts skips when unset, so
+      # it's a no-op in the main run above.
+      - name: Cache integration (real Redis)
+        run: bun test --conditions=react-server lib/cache.redis.test.ts
+        env:
+          REDIS_URL: redis://127.0.0.1:6379

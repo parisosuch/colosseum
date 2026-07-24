@@ -22,6 +22,22 @@ services:
       # "Invalid origin".
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
       STORAGE_DIR: /data/storage
+      # Optional S3-compatible blob storage (AWS S3, Cloudflare R2, MinIO). Unset
+      # by default → blobs stay on the local `storage` volume. Set S3_BUCKET (and
+      # the rest) in `.env` to switch every blob operation to the bucket. See the
+      # "S3 / CDN storage" section in the README and `.env.example`.
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_REGION: ${S3_REGION:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      # Public CDN/edge base URL in front of the bucket (optional; needs S3).
+      CDN_URL: ${CDN_URL:-}
+      # Runtime toggles, read at request time so they can change without a
+      # rebuild. Unset → their in-app defaults (sign-ups open; 100 req / 60s).
+      DISABLE_SIGNUPS: ${DISABLE_SIGNUPS:-}
+      API_RATE_LIMIT: ${API_RATE_LIMIT:-}
+      API_RATE_WINDOW_MS: ${API_RATE_WINDOW_MS:-}
     volumes:
       - storage:/data/storage
     ports:

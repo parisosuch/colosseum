@@ -22,6 +22,21 @@ release.
   gained a project overview plus Contributing and License sections, and
   `package.json` now carries license, description, and repository metadata.
 
+### Changed
+
+- Image blocks now start loading their full-size image while the pointer rests
+  on the card, so opening one shows the whole image at once instead of painting
+  it in top-to-bottom. Applies to the channel grid, the list view, and the
+  Explore feed; a pointer merely crossing a card doesn't trigger a fetch, and
+  nothing is prefetched on a data-saver connection.
+- Private media is now cacheable by the viewer's own browser, so blocks in
+  private channels get that same instant open (and their grid thumbnails stop
+  re-downloading). It is served `private, no-cache` with the blob's hash as an
+  `ETag`: the browser may keep a copy but must revalidate before every reuse,
+  so each one still re-runs the channel-access check. A viewer who has lost
+  access, or a different account on the same browser, revalidates into a 404
+  rather than a cache hit. Public media is unchanged.
+
 ## [1.8.3] - 2026-07-24
 
 ### Fixed

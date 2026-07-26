@@ -26,7 +26,13 @@ export function AddBlockDrawer({ channels }: { channels: PickableChannel[] }) {
       >
         <PlusIcon />
       </DrawerTrigger>
-      <DrawerContent>
+      {/* A fixed height, not one that follows the content. vaul caches the
+          sheet's height the first time the soft keyboard opens and writes it
+          back as an inline style when the keyboard closes, so a sheet that
+          grows between steps gets pinned to whatever it measured on the first
+          step and clips the second. Same height throughout means that cached
+          measurement is always the right one. */}
+      <DrawerContent className="h-[70dvh]">
         <DrawerHeader>
           <DrawerTitle>{flow.title}</DrawerTitle>
         </DrawerHeader>

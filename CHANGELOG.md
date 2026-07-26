@@ -22,6 +22,14 @@ release.
   gained a project overview plus Contributing and License sections, and
   `package.json` now carries license, description, and repository metadata.
 
+### Changed
+
+- Image blocks now start loading their full-size image while the pointer rests
+  on the card, so opening one shows the whole image at once instead of painting
+  it in top-to-bottom. Applies to the channel grid, the list view, and the
+  Explore feed; a pointer merely crossing a card doesn't trigger a fetch, and
+  nothing is prefetched on a data-saver connection.
+
 ## [1.8.3] - 2026-07-24
 
 ### Fixed

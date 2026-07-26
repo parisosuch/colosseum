@@ -1,5 +1,17 @@
 # Colosseum
 
+Colosseum is a self-hostable, [Are.na](https://www.are.na/)-style tool for
+collecting and organizing the web. You save **blocks** — links, images, text,
+PDFs, videos, YouTube/Spotify embeds — into **channels**, laid out as columns,
+and browse everyone's public channels from an explore feed. It's built with
+Next.js (App Router), Postgres via Drizzle, and Better Auth, and ships as a
+single Docker Compose stack.
+
+- **Self-host it** with [Docker Compose](#self-hosting-docker-compose).
+- **Hack on it** — see [Local development](#local-development) and
+  [CONTRIBUTING.md](./CONTRIBUTING.md).
+- **License:** [MIT](./LICENSE).
+
 ## Docs
 
 - [REST API](docs/api.md) — CRUD your channels and blocks programmatically.
@@ -86,6 +98,24 @@ To move **back** to local disk, run `bun run export-blobs` **while S3 is still
 configured** (it reads through the bucket and writes to `STORAGE_DIR`), then
 unset `S3_BUCKET` and redeploy. It's a deliberate one-off, not boot automation,
 because it needs both stores reachable at once.
+
+### Redis cache
+
+The stack includes a `redis` service that caches the hottest, stable queries —
+channel metadata and the per-user channel lists. It's **on by default**: the
+`app` points at `redis://redis:6379` out of the box, so `docker compose up`
+gives you caching with no extra steps.
+
+The cache is **best-effort**: if Redis is unreachable the app falls back to
+Postgres on every query and reconnects on its own, so a Redis outage degrades
+performance but never takes the app down. Writes (creating, editing, or deleting
+a channel) invalidate the affected entries immediately, and a short TTL (5
+minutes for channel metadata, 30 for the channel lists) backstops anything
+missed.
+
+To turn caching **off**, set `REDIS_CACHE_ENABLED=false` in the compose `.env`
+(you can also remove the `redis` service). To use an **external** Redis instead
+of the bundled one, override `REDIS_URL` in `.env`.
 
 ## Local development
 
@@ -202,3 +232,14 @@ sudo apt-get update && sudo apt-get install -y \
 ```
 
 On Ubuntu 22.04 and earlier, use `libasound2` instead of `libasound2t64`.
+
+## Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for
+the development setup, branching model, and PR checklist, and note the
+[Code of Conduct](./CODE_OF_CONDUCT.md). Found a security issue? See
+[SECURITY.md](./SECURITY.md).
+
+## License
+
+Colosseum is released under the [MIT License](./LICENSE).

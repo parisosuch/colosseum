@@ -1,7 +1,17 @@
 {
   "name": "colosseum",
-  "version": "1.8.3",
+  "version": "1.9.0",
   "private": true,
+  "description": "A self-hostable, Are.na-style tool for collecting and organizing the web into channels of blocks.",
+  "homepage": "https://github.com/parisosuch/colosseum#readme",
+  "bugs": {
+    "url": "https://github.com/parisosuch/colosseum/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/parisosuch/colosseum.git"
+  },
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
@@ -39,6 +49,7 @@
     "cmdk": "^1.1.1",
     "drizzle-orm": "^0.45.2",
     "global-tld-list": "^1.22.45",
+    "ioredis": "^5.11.1",
     "lucide-react": "^0.511.0",
     "marked": "^18.0.6",
     "mcp-handler": "^1.1.0",

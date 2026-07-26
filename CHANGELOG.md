@@ -8,6 +8,44 @@ release.
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-07-26
+
+### Added
+
+- Redis caching layer for hot, stable read queries — channel metadata
+  (`getChannel`) and the per-user channel lists (`getUserChannels`,
+  `getUserPublicChannels`). The Docker stack bundles a `redis` service and
+  caching is **on by default**; it's best-effort, so Redis failures fall back to
+  Postgres and can never take the app down. Channel create/update/delete
+  invalidate the affected keys, with a TTL backstop. Turn it off with
+  `REDIS_CACHE_ENABLED=false`, or point `REDIS_URL` at an external Redis.
+- Open-source community health files: MIT `LICENSE`, `CONTRIBUTING.md`,
+  `CODE_OF_CONDUCT.md`, `SECURITY.md`, and GitHub issue/PR templates. The README
+  gained a project overview plus Contributing and License sections, and
+  `package.json` now carries license, description, and repository metadata.
+
+### Changed
+
+- Image blocks now start loading their full-size image while the pointer rests
+  on the card, so opening one shows the whole image at once instead of painting
+  it in top-to-bottom. Applies to the channel grid, the list view, and the
+  Explore feed; a pointer merely crossing a card doesn't trigger a fetch, and
+  nothing is prefetched on a data-saver connection.
+- Private media is now cacheable by the viewer's own browser, so blocks in
+  private channels get that same instant open (and their grid thumbnails stop
+  re-downloading). It is served `private, no-cache` with the blob's hash as an
+  `ETag`: the browser may keep a copy but must revalidate before every reuse,
+  so each one still re-runs the channel-access check. A viewer who has lost
+  access, or a different account on the same browser, revalidates into a 404
+  rather than a cache hit. Public media is unchanged.
+
+### Fixed
+
+- The mobile add-block sheet no longer opens cut off. After the keyboard had
+  been used on the first step, picking a channel showed a sliver of the list
+  instead of the whole picker, and stayed that way until the page was reloaded.
+  The sheet now keeps one height across both steps.
+
 ## [1.8.3] - 2026-07-24
 
 ### Fixed

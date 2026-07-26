@@ -22,6 +22,13 @@ services:
       # "Invalid origin".
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
       STORAGE_DIR: /data/storage
+      # Redis cache — on by default, pointing at the bundled `redis` service.
+      # It's best-effort: if Redis is unreachable the app falls back to Postgres,
+      # so it can never take the app down. Set REDIS_CACHE_ENABLED=false in
+      # `.env` to turn caching off, or override REDIS_URL to use an external
+      # Redis.
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      REDIS_CACHE_ENABLED: ${REDIS_CACHE_ENABLED:-}
       # Optional S3-compatible blob storage (AWS S3, Cloudflare R2, MinIO). Unset
       # by default → blobs stay on the local `storage` volume. Set S3_BUCKET (and
       # the rest) in `.env` to switch every blob operation to the bucket. See the
@@ -61,6 +68,20 @@ services:
       - "127.0.0.1:54322:5432"
     volumes:
       - db:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # Cache for hot reads (channel metadata, per-user channel lists). Data is
+  # ephemeral on purpose — it's a cache, so nothing here needs to survive a
+  # restart. The app reaches it at redis://redis:6379 on the compose network and
+  # falls back to Postgres whenever it's unavailable, so it's safe to remove
+  # this service (and set REDIS_CACHE_ENABLED=false) if you don't want a cache.
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     restart: unless-stopped
 
 volumes:

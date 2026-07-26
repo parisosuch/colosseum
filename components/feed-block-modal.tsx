@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 
 import type { Column } from "@/lib/colosseum/column";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
+import { useBlockMediaPrefetch } from "@/components/block-prefetch";
 import BlockModal from "@/components/block-modal";
 
 const noop = () => {};
@@ -30,6 +31,9 @@ export function FeedBlockModal({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  // Same as the channel grid: warm the modal's image while the pointer rests
+  // on the card (lib/prefetch.ts).
+  const prefetch = useBlockMediaPrefetch(column);
 
   return (
     <>
@@ -48,6 +52,7 @@ export function FeedBlockModal({
             setOpen(true);
           }
         }}
+        {...prefetch}
         className="group block w-full text-left"
       >
         {children}

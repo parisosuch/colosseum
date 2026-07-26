@@ -4,6 +4,7 @@ import { memo } from "react";
 import { FileText, Play } from "lucide-react";
 import { Markdown } from "./markdown";
 import type { Column } from "@/lib/colosseum/column";
+import { useBlockMediaPrefetch } from "@/components/block-prefetch";
 import { spotifyEmbedRef, timeAgo, tweetIdFromUrl, youtubeIdFromUrl } from "@/lib/utils";
 import ScreenShotPreview from "./screenshot-preview";
 import TweetBlock from "./tweet-block";
@@ -47,6 +48,9 @@ const ColumnComponent = memo(function ColumnComponent({
   author,
   onOpen,
 }: ColumnComponentProps) {
+  // Hovering the card starts fetching what the modal will show, so the click
+  // opens onto a decoded image instead of one painting in as it arrives.
+  const prefetch = useBlockMediaPrefetch(column);
   const imageURL = screenshot?.image_url ?? null;
   const urlTitle = screenshot?.title ?? "";
   // cache-busting token for the shared storage object (bumped on refresh)
@@ -160,6 +164,7 @@ const ColumnComponent = memo(function ColumnComponent({
         type="button"
         aria-label="Open column"
         onClick={() => onOpen(column.id)}
+        {...prefetch}
         className={rowClass}
       >
         {rowInner}
@@ -203,6 +208,7 @@ const ColumnComponent = memo(function ColumnComponent({
             onOpen(column.id);
           }
         }}
+        {...prefetch}
         className={`cv-card aspect-square w-full overflow-hidden text-left ${cardPress}`}
       >
         {gridInner}
@@ -214,6 +220,7 @@ const ColumnComponent = memo(function ColumnComponent({
     <button
       type="button"
       onClick={() => onOpen(column.id)}
+      {...prefetch}
       className={`cv-card w-full text-left ${cardPress}`}
     >
       {gridInner}

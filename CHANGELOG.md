@@ -8,6 +8,8 @@ release.
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-07-26
+
 ### Added
 
 - Redis caching layer for hot, stable read queries — channel metadata
@@ -36,6 +38,13 @@ release.
   so each one still re-runs the channel-access check. A viewer who has lost
   access, or a different account on the same browser, revalidates into a 404
   rather than a cache hit. Public media is unchanged.
+
+### Fixed
+
+- The mobile add-block sheet no longer opens cut off. After the keyboard had
+  been used on the first step, picking a channel showed a sliver of the list
+  instead of the whole picker, and stayed that way until the page was reloaded.
+  The sheet now keeps one height across both steps.
 
 ## [1.8.3] - 2026-07-24
 

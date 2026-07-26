@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { blobKey, ensureThumbnail, getMedia, thumbKey } from "@/lib/colosseum/blob";
 import { canReadMedia } from "@/lib/colosseum/channel";
+import { etagMatches, mediaCacheControl, mediaEtag } from "@/lib/colosseum/media-cache";
 import { getObject, objectSize, publicUrl, signedUrl } from "@/lib/colosseum/storage";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -43,11 +44,13 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   // failure) falls back to the full bytes.
   let key = blobKey(item.sha256);
   let contentType = item.mime;
+  let servingThumb = false;
   if (req.nextUrl.searchParams.has("thumb")) {
     const thumb = await ensureThumbnail(item.sha256).catch(() => null);
     if (thumb) {
       key = thumbKey(item.sha256);
       contentType = "image/webp";
+      servingThumb = true;
     }
   }
 
@@ -73,16 +76,30 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     }
   }
 
-  // A media id's bytes never change, so public responses cache forever;
-  // private ones must never land in any cache.
-  const cacheControl =
-    item.visibility === "private" ? "private, no-store" : "public, max-age=31536000, immutable";
+  // A media id's bytes never change, so the sha is a strong validator and
+  // public responses cache forever. Private ones may be stored by the viewer's
+  // own browser but never reused without revalidating here — see
+  // lib/colosseum/media-cache.ts for why that's the safe shape.
+  const cacheControl = mediaCacheControl(item.visibility);
+  const etag = mediaEtag(item.sha256, servingThumb);
 
   // Honor a byte-range request (video seeking; Safari won't play a video at all
   // without one). Only reached on the streaming path — CDN/signed-URL redirects
   // above hand range off to the object store's own edge. Unparseable/absent
   // Range falls through to the full 200.
   const range = req.headers.get("range");
+
+  // The viewer already holds these bytes: they passed the access check above,
+  // so hand back a 304 and let them paint from their own cache. Skipped for a
+  // ranged request — a player that asked for bytes N..M expects a 206, and
+  // some (Safari's, notably) handle a 304 there badly.
+  if (!range && etagMatches(req.headers.get("if-none-match"), etag)) {
+    return new NextResponse(null, {
+      status: 304,
+      headers: { ETag: etag, "Cache-Control": cacheControl },
+    });
+  }
+
   const match = range ? /^bytes=(\d*)-(\d*)$/.exec(range.trim()) : null;
   if (match && (match[1] || match[2])) {
     const total = await objectSize(key);
@@ -109,6 +126,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
         "Content-Range": `bytes ${start}-${end}/${total}`,
         "Accept-Ranges": "bytes",
         "Cache-Control": cacheControl,
+        ETag: etag,
       },
     });
   }
@@ -123,6 +141,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       "Content-Length": String(object.size),
       "Accept-Ranges": "bytes",
       "Cache-Control": cacheControl,
+      ETag: etag,
     },
   });
 }

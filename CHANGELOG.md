@@ -8,6 +8,16 @@ release.
 
 ## [Unreleased]
 
+## [1.8.3] - 2026-07-24
+
+### Fixed
+
+- Tweet blocks now sit properly inside their card. The embed no longer draws its
+  own border, corner radius, and background over the block's — the mismatched
+  radii read as a box inside a box — and a tweet shorter than the card is
+  centered instead of hugging the top. Taller tweets still start at the top and
+  clip at the bottom, so the author and the opening line stay visible.
+
 ## [1.8.2] - 2026-07-24
 
 ### Fixed

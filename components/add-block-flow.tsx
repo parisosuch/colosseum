@@ -147,11 +147,12 @@ export function useAddBlockFlow(channels: PickableChannel[]) {
 
 export type AddBlockFlow = ReturnType<typeof useAddBlockFlow>;
 
-// The two-step body (content → channel picker), shell-agnostic. `tall` adds the
-// drawer's extra height so there's room to drag-dismiss under the list; the
-// modal omits it and sizes to its content. `advanceOnEnter` makes Enter go to
-// the channel step (Shift+Enter still inserts a newline) — desktop only; a
-// mobile soft-keyboard Enter should stay a newline.
+// The two-step body (content → channel picker), shell-agnostic. `tall` fills a
+// shell of a fixed height (the drawer, which must not resize between steps —
+// see add-block-drawer.tsx); the modal omits it and sizes to its content.
+// `advanceOnEnter` makes Enter go to the channel step (Shift+Enter still
+// inserts a newline) — desktop only; a mobile soft-keyboard Enter should stay a
+// newline.
 export function AddBlockBody({
   flow,
   tall = false,
@@ -180,7 +181,7 @@ export function AddBlockBody({
 
   if (step === "content") {
     return (
-      <div className="space-y-3 px-4 pb-6">
+      <div className={`flex flex-col gap-3 px-4 pb-6 ${tall ? "min-h-0 flex-1" : ""}`}>
         <textarea
           value={text}
           onChange={(e) => {
@@ -224,7 +225,12 @@ export function AddBlockBody({
           </label>
         )}
 
-        <Button className="w-full" disabled={!hasContent} onClick={() => setStep("channel")}>
+        {/* Pinned to the bottom of the sheet, where the thumb is. */}
+        <Button
+          className={`w-full ${tall ? "mt-auto" : ""}`}
+          disabled={!hasContent}
+          onClick={() => setStep("channel")}
+        >
           Continue
         </Button>
       </div>
@@ -232,7 +238,7 @@ export function AddBlockBody({
   }
 
   return (
-    <div className={`flex flex-col gap-3 px-4 pb-6 ${tall ? "min-h-[60dvh]" : ""}`}>
+    <div className={`flex flex-col gap-3 px-4 pb-6 ${tall ? "min-h-0 flex-1" : ""}`}>
       {channels.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           You have no channels yet — create one first.
@@ -247,7 +253,13 @@ export function AddBlockBody({
             // text-base (16px) so iOS doesn't zoom on focus.
             className="w-full shrink-0 rounded-md border bg-transparent p-3 text-base leading-normal focus:outline-none focus:ring-2 focus:ring-ring"
           />
-          <ul className="flex max-h-[40dvh] flex-col divide-y overflow-y-auto rounded-md border">
+          {/* In the sheet the list shrink-wraps a short channel list and
+              shrinks to fit a long one — min-h-0 is what lets a flex child
+              shrink past its content. The modal's shell has no height to
+              shrink against, so there it stays capped. */}
+          <ul
+            className={`flex flex-col divide-y overflow-y-auto rounded-md border ${tall ? "min-h-0" : "max-h-[40dvh]"}`}
+          >
             {filteredChannels.map((channel) => (
               <li key={channel.id}>
                 <button
@@ -270,7 +282,15 @@ export function AddBlockBody({
         </>
       )}
 
-      <Button variant="ghost" size="sm" disabled={submitting} onClick={() => setStep("content")}>
+      {/* Pinned to the bottom of the sheet, so it doesn't move as the list
+          length changes and the slack above it stays draggable. */}
+      <Button
+        variant="ghost"
+        size="sm"
+        className={tall ? "mt-auto" : ""}
+        disabled={submitting}
+        onClick={() => setStep("content")}
+      >
         <ChevronLeftIcon size={16} /> Back
       </Button>
     </div>

@@ -45,12 +45,21 @@ export default function TweetBlock({ id, compact = false }: { id: string; compac
     );
 
   if (compact) {
-    // Fill the square card and clip the overflow; the tweet's own margin is
-    // zeroed so it starts flush at the top. pointer-events-none — the whole card
-    // is the click target that opens the modal.
+    // Fill the card and clip the overflow. The embed drops its own border,
+    // radius and background so the card's frame is the only one — its 12px
+    // radius nested inside the card's 8px read as a box in a box. What's left
+    // sits on the card like any other block's content.
+    //
+    // my-auto (in a column flex box) centers a tweet shorter than the card;
+    // auto margins only absorb *positive* free space, so a taller one still
+    // starts flush at the top and clips off the bottom, keeping the author and
+    // the start of the text visible. shrink-0 stops it being squashed instead.
+    //
+    // pointer-events-none — the whole card is the click target that opens the
+    // modal.
     return (
       <div
-        className="pointer-events-none h-full w-full overflow-hidden [&_.react-tweet-theme]:m-0 [&_.react-tweet-theme]:[--tweet-body-font-size:0.8125rem] [&_.react-tweet-theme]:[--tweet-body-line-height:1.1rem] [&_.react-tweet-theme]:[--tweet-header-font-size:0.8125rem] [&_.react-tweet-theme]:[--tweet-header-line-height:1rem] [&_.react-tweet-theme]:[--tweet-info-font-size:0.75rem] [&_[class*='videoButton']]:hidden [&_[class*='watchOnTwitter']]:hidden"
+        className="pointer-events-none flex h-full w-full flex-col overflow-hidden [&_.react-tweet-theme]:my-auto [&_.react-tweet-theme]:shrink-0 [&_.react-tweet-theme]:rounded-none [&_.react-tweet-theme]:border-0 [&_.react-tweet-theme]:bg-transparent [&_.react-tweet-theme]:[--tweet-body-font-size:0.8125rem] [&_.react-tweet-theme]:[--tweet-body-line-height:1.1rem] [&_.react-tweet-theme]:[--tweet-header-font-size:0.8125rem] [&_.react-tweet-theme]:[--tweet-header-line-height:1rem] [&_.react-tweet-theme]:[--tweet-info-font-size:0.75rem] [&_[class*='videoButton']]:hidden [&_[class*='watchOnTwitter']]:hidden"
         style={{ ["--tweet-container-margin" as string]: "0" }}
       >
         {inner}

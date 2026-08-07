@@ -33,7 +33,6 @@ release.
   when the same recipient was already emailed about the same block within 15
   minutes; in-app notifications, the unread badge, and the per-type email
   toggles are unaffected.
-
 - Image blocks now start loading their full-size image while the pointer rests
   on the card, so opening one shows the whole image at once instead of painting
   it in top-to-bottom. Applies to the channel grid, the list view, and the

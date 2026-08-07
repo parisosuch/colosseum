@@ -28,6 +28,11 @@ export const EMAIL_QUIET_PERIOD_MINUTES = 15;
 // How much of a comment body rides along in the row and the email.
 const EXCERPT_LENGTH = 140;
 
+// Block and channel titles are user-written and unvalidated for length, and a
+// rendered message becomes an email subject line, so they're capped too. For a
+// connect the host title comes from the actor, not the recipient.
+const TITLE_LENGTH = 80;
+
 export type NotificationType = "comment" | "mention" | "connect" | "member";
 
 export type NotificationItem = {
@@ -119,8 +124,15 @@ async function joinNotifications(
     .limit(limit);
 }
 
+// Cut to `max` characters, counting by code point rather than UTF-16 unit so an
+// emoji straddling the boundary isn't split into a lone surrogate.
+function truncate(s: string, max: number): string {
+  const chars = Array.from(s);
+  return chars.length > max ? `${chars.slice(0, max).join("").trimEnd()}…` : s;
+}
+
 function quoted(title: string | null): string {
-  return title ? `"${title}"` : "a channel";
+  return title ? `"${truncate(title, TITLE_LENGTH)}"` : "a channel";
 }
 
 // The subject block's display name, or null when the notification doesn't point
@@ -199,7 +211,7 @@ function excerptFor(r: JoinedNotification): string | undefined {
   if (!r.comment_body) return undefined;
   const flat = r.comment_body.replace(/\s+/g, " ").trim();
   if (!flat) return undefined;
-  return flat.length > EXCERPT_LENGTH ? `${flat.slice(0, EXCERPT_LENGTH).trimEnd()}…` : flat;
+  return truncate(flat, EXCERPT_LENGTH);
 }
 
 function toItem(r: JoinedNotification): NotificationItem {

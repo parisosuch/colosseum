@@ -1209,7 +1209,7 @@
           "tableTo": "comment",
           "columnsFrom": ["comment_id"],
           "columnsTo": ["id"],
-          "onDelete": "cascade",
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },

@@ -312,8 +312,12 @@ export const notification = pgTable(
     }),
     // Set for comment/mention: the comment that triggered it, so the row and its
     // email can quote the body. Null on rows created before this column existed.
+    // Deleting the comment nulls it rather than cascading: the notification is
+    // history and stays in the feed and the unread count with its quote dropped,
+    // and — because `email_sent_at` below is the only quiet-period anchor —
+    // cascading would let delete-and-repost email the recipient without bound.
     comment_id: bigint("comment_id", { mode: "number" }).references(() => comment.id, {
-      onDelete: "cascade",
+      onDelete: "set null",
     }),
     // When this notification was emailed, or null if it never was (toggle off,
     // or suppressed as part of a burst). Read back to decide whether a later

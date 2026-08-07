@@ -5,8 +5,8 @@ import { desc, eq } from "drizzle-orm";
 import { BLOCKS, CHANNELS, seed, USERS } from "@/scripts/seed";
 import { db } from "@/lib/db";
 import { notification } from "@/lib/db/schema";
-import { getUserChannels } from "./channel";
-import { addChannelColumn, deleteColumn, searchColumns } from "./column";
+import { createChannel, deleteChannel, getUserChannels } from "./channel";
+import { addChannelColumn, deleteColumn, getChannelColumns, searchColumns } from "./column";
 import { createComment, deleteComment } from "./comment";
 import {
   createNotification,
@@ -20,6 +20,9 @@ let channelId: number;
 // Bob's public channel, used as the host a connect lands in.
 let bobChannelId: number;
 let blockId: number;
+// A second block in the same channel, so the quiet period can be shown to be
+// per-block rather than per-channel.
+let otherBlockId: number;
 
 beforeAll(async () => {
   await seed();
@@ -31,6 +34,7 @@ beforeAll(async () => {
   bobChannelId = bobChannels.find((c) => c.title === CHANNELS.bobPhoto.title)!.id;
   const [hit] = await searchColumns(USERS.alice.id, BLOCKS.alicePublic);
   blockId = hit.id;
+  otherBlockId = (await getChannelColumns(channelId)).find((c) => c.id !== blockId)!.id;
 });
 
 afterEach(async () => {
@@ -232,6 +236,17 @@ test("a burst on one block emails once, and a later comment emails again", async
     actor_id: USERS.bob.id,
     type: "comment",
     channel_id: channelId,
+    column_id: otherBlockId,
+  });
+  expect(await emailSentAt(await lastNotificationId(USERS.alice.id))).not.toBeNull();
+
+  // And a channel-level row (no block at all) is a subject of its own too — the
+  // null column_id matches only another null.
+  await createNotification({
+    recipient_id: USERS.alice.id,
+    actor_id: USERS.bob.id,
+    type: "comment",
+    channel_id: channelId,
   });
   expect(await emailSentAt(await lastNotificationId(USERS.alice.id))).not.toBeNull();
 
@@ -244,7 +259,105 @@ test("a burst on one block emails once, and a later comment emails again", async
   expect(await emailSentAt(await lastNotificationId(USERS.alice.id))).not.toBeNull();
 
   // The badge still counts every event.
-  expect(await unreadNotificationCount(USERS.alice.id)).toBe(4);
+  expect(await unreadNotificationCount(USERS.alice.id)).toBe(5);
+});
+
+test("deleting a comment keeps the notification and its quiet-period anchor", async () => {
+  const created = await createComment({
+    column_id: blockId,
+    author_id: USERS.bob.id,
+    body: "Typo here, reposting.",
+  });
+  await createNotification({
+    recipient_id: USERS.alice.id,
+    actor_id: USERS.bob.id,
+    type: "comment",
+    channel_id: channelId,
+    column_id: blockId,
+    comment_id: created.id,
+  });
+  const first = await lastNotificationId(USERS.alice.id);
+  expect(await emailSentAt(first)).not.toBeNull();
+
+  // The comment goes away; the notification does not. It loses its quote and
+  // degrades to the one-line text, and it still anchors the quiet period — so
+  // delete-and-repost can't email the recipient a second time.
+  await deleteComment(created.id);
+  expect(await unreadNotificationCount(USERS.alice.id)).toBe(1);
+  const [item] = await listNotifications(USERS.alice.id);
+  expect(item.excerpt).toBeUndefined();
+  expect(item.message).toContain(`commented on "${BLOCKS.alicePublic}"`);
+  expect(await emailSentAt(first)).not.toBeNull();
+
+  const repost = await createComment({
+    column_id: blockId,
+    author_id: USERS.bob.id,
+    body: "Typo fixed, reposting.",
+  });
+  try {
+    await createNotification({
+      recipient_id: USERS.alice.id,
+      actor_id: USERS.bob.id,
+      type: "comment",
+      channel_id: channelId,
+      column_id: blockId,
+      comment_id: repost.id,
+    });
+    expect(await emailSentAt(await lastNotificationId(USERS.alice.id))).toBeNull();
+  } finally {
+    await deleteComment(repost.id);
+  }
+});
+
+test("a long title is capped in the rendered message", async () => {
+  // Channel titles aren't length-validated anywhere, and the message doubles as
+  // an email subject, so an unbounded title can't ride into one.
+  const host = await createChannel({
+    title: "x".repeat(300),
+    access: "public",
+    owner_id: USERS.bob.id,
+  });
+  try {
+    await createNotification({
+      recipient_id: USERS.alice.id,
+      actor_id: USERS.bob.id,
+      type: "member",
+      channel_id: host.id,
+    });
+    const [item] = await listNotifications(USERS.alice.id);
+    expect(item.message.length).toBeLessThan(120);
+    expect(item.message).toContain("…");
+  } finally {
+    await deleteChannel(host.id);
+  }
+});
+
+test("an excerpt cut mid-emoji doesn't leave a broken character", async () => {
+  // 139 characters, then an astral emoji straddling the 140-unit boundary.
+  const created = await createComment({
+    column_id: blockId,
+    author_id: USERS.bob.id,
+    body: `${"a".repeat(139)}🙂 and more after the cut`,
+  });
+  try {
+    await createNotification({
+      recipient_id: USERS.alice.id,
+      actor_id: USERS.bob.id,
+      type: "comment",
+      channel_id: channelId,
+      column_id: blockId,
+      comment_id: created.id,
+    });
+    const [item] = await listNotifications(USERS.alice.id);
+    expect(item.excerpt).toBe(`${"a".repeat(139)}🙂…`);
+    // No lone surrogate survived the slice.
+    expect(item.excerpt).not.toContain("�");
+    expect(
+      [...item.excerpt!].every((c) => c.codePointAt(0)! < 0xd800 || c.codePointAt(0)! > 0xdfff),
+    ).toBe(true);
+  } finally {
+    await deleteComment(created.id);
+  }
 });
 
 test("markAllNotificationsRead clears the unread count", async () => {

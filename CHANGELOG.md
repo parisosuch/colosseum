@@ -24,6 +24,16 @@ release.
 
 ### Changed
 
+- Notifications now say what they are about. A comment or mention names the
+  block and its channel and quotes the first 140 characters of the comment,
+  with the block's thumbnail in the row; the email subject names the block
+  instead of repeating the body. Rows recorded before this shipped have no
+  comment to quote and keep their old one-line text.
+- A burst of activity on one block is emailed once. A notification is skipped
+  when the same recipient was already emailed about the same block within 15
+  minutes; in-app notifications, the unread badge, and the per-type email
+  toggles are unaffected.
+
 - Image blocks now start loading their full-size image while the pointer rests
   on the card, so opening one shows the whole image at once instead of painting
   it in top-to-bottom. Applies to the channel grid, the list view, and the
@@ -36,6 +46,14 @@ release.
   so each one still re-runs the channel-access check. A viewer who has lost
   access, or a different account on the same browser, revalidates into a 404
   rather than a cache hit. Public media is unchanged.
+
+### Fixed
+
+- A "connected to your channel" notification now opens the channel your channel
+  was added to, rather than your own channel — where nothing had changed. The
+  message names both channels. Existing notifications are migrated; any whose
+  column has since been deleted keep their old wording and link. A connection
+  into a private channel you can't read still points at your own channel.
 
 ## [1.8.3] - 2026-07-24
 

@@ -26,6 +26,17 @@ function baseUrl(): string {
   return (process.env.BETTER_AUTH_URL ?? "http://localhost:3000").replace(/\/$/, "");
 }
 
+// Every interpolated field is plain text, so it is escaped on the way into the
+// HTML. Notification emails quote user-written comment bodies; without this a
+// comment containing markup would render as markup in the recipient's inbox.
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 // Renders a transactional email in the Colosseum look: logo mark, serif heading,
 // an optional CTA button, and a muted footnote — all inline-styled on a white
 // card (the only layout email clients render reliably). Returns both the HTML
@@ -39,10 +50,10 @@ export function renderEmail(t: {
 }): { html: string; text: string } {
   const button =
     t.buttonLabel && t.buttonUrl
-      ? `<tr><td style="padding:4px 0 24px;"><a href="${t.buttonUrl}" style="display:inline-block;background:#171717;color:#fafafa;text-decoration:none;font-size:15px;font-weight:600;padding:12px 22px;border-radius:8px;">${t.buttonLabel}</a></td></tr>`
+      ? `<tr><td style="padding:4px 0 24px;"><a href="${escapeHtml(t.buttonUrl)}" style="display:inline-block;background:#171717;color:#fafafa;text-decoration:none;font-size:15px;font-weight:600;padding:12px 22px;border-radius:8px;">${escapeHtml(t.buttonLabel)}</a></td></tr>`
       : "";
   const footnote = t.footnote
-    ? `<tr><td style="padding-top:8px;color:#737373;font-size:13px;line-height:20px;">${t.footnote}</td></tr>`
+    ? `<tr><td style="padding-top:8px;color:#737373;font-size:13px;line-height:20px;">${escapeHtml(t.footnote)}</td></tr>`
     : "";
   const sans = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
   const html = `<!doctype html><html><body style="margin:0;padding:0;background:#fafafa;">
@@ -50,8 +61,8 @@ export function renderEmail(t: {
     <tr><td align="center">
       <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border:1px solid #e5e5e5;border-radius:12px;padding:32px;color:#0a0a0a;">
         <tr><td style="padding-bottom:20px;"><img src="${baseUrl()}/icon-512.png" alt="Colosseum" width="40" height="40" style="display:block;border:0;" /></td></tr>
-        <tr><td style="font-family:Georgia,'Times New Roman',serif;font-size:22px;font-weight:600;line-height:28px;padding-bottom:12px;">${t.heading}</td></tr>
-        <tr><td style="font-size:15px;line-height:24px;padding-bottom:20px;">${t.body}</td></tr>
+        <tr><td style="font-family:Georgia,'Times New Roman',serif;font-size:22px;font-weight:600;line-height:28px;padding-bottom:12px;">${escapeHtml(t.heading)}</td></tr>
+        <tr><td style="font-size:15px;line-height:24px;padding-bottom:20px;">${escapeHtml(t.body).replace(/\n/g, "<br />")}</td></tr>
         ${button}${footnote}
       </table>
       <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;"><tr><td style="padding:16px 8px;color:#737373;font-size:12px;">Colosseum</td></tr></table>

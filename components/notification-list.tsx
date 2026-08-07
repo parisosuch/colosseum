@@ -69,11 +69,23 @@ function Row({ n }: { n: NotificationItem }) {
           >
             <span className="font-semibold text-foreground">@{n.actor_handle}</span> {n.message}
           </p>
+          {n.excerpt ? (
+            <p className="mt-1 line-clamp-2 border-l-2 pl-2 text-sm text-muted-foreground">
+              {n.excerpt}
+            </p>
+          ) : null}
           <div className="mt-1 flex items-center gap-1.5 text-muted-foreground">
             <Icon className="size-3.5 shrink-0" />
             <span className="text-xs tabular-nums">{timeAgo(new Date(n.created_at))}</span>
           </div>
         </div>
+        {n.thumbnail_url ? (
+          <img
+            src={`${n.thumbnail_url}?thumb`}
+            alt=""
+            className="size-10 shrink-0 rounded-md border object-cover"
+          />
+        ) : null}
       </Link>
     </li>
   );

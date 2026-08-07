@@ -587,17 +587,21 @@ export async function addChannelColumnAction(
   if (linkedChannelId === hostChannelId) {
     throw new Error("A channel can't be added to itself.");
   }
-  await addChannelColumn({
+  const added = await addChannelColumn({
     created_by: userId,
     channel_id: hostChannelId,
     linked_channel_id: linkedChannelId,
   });
-  // Tell the linked channel's owner someone nested their channel.
+  // Tell the linked channel's owner someone nested their channel. The
+  // notification records the *host* — that's where their channel now sits, so
+  // that's where the link should land — plus the column that was created, which
+  // is what names the linked channel in the message.
   await createNotification({
     recipient_id: linked.owner_id,
     actor_id: userId,
     type: "connect",
-    channel_id: linkedChannelId,
+    channel_id: hostChannelId,
+    column_id: added.id,
   });
 }
 
@@ -630,6 +634,7 @@ export async function createCommentAction(columnId: number, body: string): Promi
     type: "comment",
     channel_id: column.channel_id,
     column_id: columnId,
+    comment_id: created.id,
   });
   const handles = [
     ...new Set(parseMentions(trimmed).flatMap((s) => (s.type === "mention" ? [s.handle] : []))),
@@ -645,6 +650,7 @@ export async function createCommentAction(columnId: number, body: string): Promi
         type: "mention",
         channel_id: column.channel_id,
         column_id: columnId,
+        comment_id: created.id,
       }),
     ),
   );

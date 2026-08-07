@@ -52,8 +52,10 @@ release.
 - A "connected to your channel" notification now opens the channel your channel
   was added to, rather than your own channel — where nothing had changed. The
   message names both channels. Existing notifications are migrated; any whose
-  column has since been deleted keep their old wording and link. A connection
-  into a private channel you can't read still points at your own channel.
+  column has since been deleted keep their old wording and link. Adding a
+  channel to a **private** channel no longer notifies its owner at all — what
+  someone collects privately is their own business, and the recipient could not
+  open it to look anyway.
 
 ## [1.8.3] - 2026-07-24
 

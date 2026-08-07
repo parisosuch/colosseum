@@ -119,7 +119,10 @@ test("a connect links to the host channel and names both channels", async () => 
   }
 });
 
-test("a connect into a private host falls back to the recipient's own channel", async () => {
+// A private host no longer produces a notification at all, but the migration
+// can repoint an older connect row onto one, so the rendering still has to keep
+// the host out of the message and the link.
+test("a connect into a private host names neither the host nor links to it", async () => {
   const channels = await getUserChannels(USERS.alice.id);
   const privateId = channels.find((c) => c.title === CHANNELS.alicePrivate.title)!.id;
   const added = await addChannelColumn({

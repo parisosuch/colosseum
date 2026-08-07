@@ -578,7 +578,7 @@ export async function addChannelColumnAction(
   hostChannelId: number,
 ): Promise<void> {
   const userId = await requireUserId();
-  await requireOwnedChannel(hostChannelId, userId);
+  const host = await requireOwnedChannel(hostChannelId, userId);
   await assertColumnQuota(userId);
   const linked = await getChannel(linkedChannelId);
   if (!linked || linked.private) {
@@ -596,13 +596,19 @@ export async function addChannelColumnAction(
   // notification records the *host* — that's where their channel now sits, so
   // that's where the link should land — plus the column that was created, which
   // is what names the linked channel in the message.
-  await createNotification({
-    recipient_id: linked.owner_id,
-    actor_id: userId,
-    type: "connect",
-    channel_id: hostChannelId,
-    column_id: added.id,
-  });
+  //
+  // Nothing is sent when the host is private: what someone collects into a
+  // private channel is their own business, and the recipient couldn't open it
+  // to see anyway. Privacy runs both ways here.
+  if (!host.private) {
+    await createNotification({
+      recipient_id: linked.owner_id,
+      actor_id: userId,
+      type: "connect",
+      channel_id: hostChannelId,
+      column_id: added.id,
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------

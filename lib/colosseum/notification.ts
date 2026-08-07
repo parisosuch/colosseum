@@ -142,6 +142,14 @@ function isLegacyConnect(r: JoinedNotification): boolean {
   return r.n.type === "connect" && r.n.column_id === null;
 }
 
+// Adding a channel column only requires the *linked* channel to be public, so
+// someone can file the recipient's channel inside a private channel of their
+// own. The recipient is told their channel was used; the host is neither named
+// nor linked, because they can't read it.
+function hasPrivateHost(r: JoinedNotification): boolean {
+  return r.n.type === "connect" && !isLegacyConnect(r) && r.channel_access === "private";
+}
+
 // What the actor did, from the recipient's point of view. The actor's handle is
 // shown separately, so this is only the predicate.
 function messageFor(r: JoinedNotification): string {
@@ -152,10 +160,13 @@ function messageFor(r: JoinedNotification): string {
       return block ? `commented on ${quoted(block)}${inChannel}` : "commented on your block";
     case "mention":
       return block ? `mentioned you on ${quoted(block)}${inChannel}` : "mentioned you in a comment";
-    case "connect":
-      return isLegacyConnect(r)
-        ? `connected to your channel ${quoted(r.channel_title)}`
-        : `connected your channel ${quoted(r.linked_channel_title)} into ${quoted(r.channel_title)}`;
+    case "connect": {
+      if (isLegacyConnect(r)) return `connected to your channel ${quoted(r.channel_title)}`;
+      const yours = quoted(r.linked_channel_title);
+      return hasPrivateHost(r)
+        ? `connected your channel ${yours} into a private channel`
+        : `connected your channel ${yours} into ${quoted(r.channel_title)}`;
+    }
     case "member":
       return `added you to ${quoted(r.channel_title)}`;
   }
@@ -165,11 +176,11 @@ function messageFor(r: JoinedNotification): string {
 // notification without a resolvable channel falls back to the home page.
 function hrefFor(r: JoinedNotification): string {
   // A connect lands on the host channel, where the recipient's channel now sits
-  // as a column. The host isn't required to be public, so a private one would
-  // put the recipient on a not-found page — those fall back to the recipient's
-  // own channel, which is where the notification used to point.
+  // as a column. A private host would put the recipient on a not-found page, so
+  // those fall back to the recipient's own channel — where the notification used
+  // to point, and somewhere they can always read.
   if (r.n.type === "connect" && !isLegacyConnect(r)) {
-    if (r.channel_access === "private") {
+    if (hasPrivateHost(r)) {
       return r.linked_owner_handle && r.linked_channel_id !== null
         ? `/${r.linked_owner_handle}/${r.linked_channel_id}`
         : "/";

@@ -138,6 +138,12 @@ test("a connect into a private host falls back to the recipient's own channel", 
     const [item] = await listNotifications(USERS.bob.id);
     // Bob can't read alice's private channel, so the link stays somewhere he can.
     expect(item.href).toBe(`/${USERS.bob.handle}/${bobChannelId}`);
+    // And it is never named — bob learns his channel was used, not what it was
+    // filed under.
+    expect(item.message).not.toContain(CHANNELS.alicePrivate.title);
+    expect(item.message).toBe(
+      `connected your channel "${CHANNELS.bobPhoto.title}" into a private channel`,
+    );
   } finally {
     await deleteColumn(added.id);
   }

@@ -188,6 +188,38 @@
   }
 }
 
+/* How far a toast sits from the bottom of the viewport. Read by the Toaster,
+   which points both of sonner's offset variables at it.
+
+   The default values are sonner's own (24px desktop, 16px mobile). What this
+   adds is the mobile bottom bar: it's fixed to the bottom of the viewport at
+   h-14 plus the safe area, so a toast at 16px lands on top of it. Keying off
+   the bar being in the DOM rather than off the breakpoint alone means the
+   offset drops back to normal wherever the bar isn't rendered — the hero
+   routes, and any signed-out or not-yet-onboarded viewer — instead of leaving
+   toasts floating over nothing on the auth screens.
+
+   Two breakpoints are in play and they disagree: sonner switches to its
+   --mobile-offset-* variables at 600px, while the bar hides at Tailwind's `sm`
+   (640px). Pointing both variables at this one keeps the 40px band between
+   them from falling back to the desktop offset while the bar is still up.
+
+   Browsers without :has() keep sonner's default offsets and the original
+   overlap, which is where they were before. */
+:root {
+  --toast-offset-bottom: 24px;
+}
+
+@media (max-width: 639.98px) {
+  :root {
+    --toast-offset-bottom: 16px;
+  }
+
+  body:has([data-mobile-bottom-bar]) {
+    --toast-offset-bottom: calc(3.5rem + env(safe-area-inset-bottom) + 1rem);
+  }
+}
+
 /* Accessibility media queries, unlayered so they win over the base tokens and
    any component animation when the OS asks for them. One place covers every
    surface (dialog/drawer/dropdown/popover/toast/buttons/cards) instead of each

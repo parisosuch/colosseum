@@ -51,6 +51,17 @@ release.
   answer a repeated or backspaced-to query from results already fetched. A
   nine-character search was 27 queries and is now three. Results stay on screen
   while the next search runs, so the list no longer empties and refills.
+- A URL block's preview now comes from the page's own og:image, falling back to
+  a live screenshot when a site publishes none. The published preview is the one
+  the site chose for this purpose, so links stop showing cookie banners, consent
+  walls, and half-painted pages. It costs one HTTP request instead of a headless
+  Chromium launch, and deployments without a working Chromium get link previews
+  for the first time. Previews are still stored as the same square.
+- URL blocks are named from the page they point at. The title and description
+  read during the capture are written onto the block itself, so a link is
+  findable by the name of the page rather than only by its URL. A title someone
+  typed is never overwritten, and blocks added to an already-captured URL are
+  named from the cached metadata.
 - Profile search reads from an index. `user_profile.handle` and `about` gained
   trigram GIN indexes, matching what channel and column search already had;
   before this every palette keystroke and every `@`-mention character scanned

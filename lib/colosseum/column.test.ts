@@ -7,7 +7,10 @@ import {
   addChannelColumn,
   copyColumn,
   deleteColumn,
+  fillEmptyUrlColumnMeta,
   getChannelColumns,
+  searchColumns,
+  updateColumnTitle,
   uploadImageColumn,
   uploadURLColumn,
 } from "./column";
@@ -104,4 +107,64 @@ test("deleting the last column for a URL GCs its cached screenshot; a shared one
   // Last one gone → the shared screenshot row and its media reference are GC'd.
   await deleteColumn(b.id);
   expect(await getScreenshot(url)).toBeNull();
+});
+
+test("fillEmptyUrlColumnMeta names blank URL blocks and leaves edited ones alone", async () => {
+  const host = await createChannel({ title: "Named", access: "public", owner_id: USERS.alice.id });
+  const url = "https://ponytail.example/og-title-test";
+
+  // Two blocks on the same URL: one untouched, one the user already titled.
+  const blank = await uploadURLColumn({
+    created_by: USERS.alice.id,
+    channel_id: host.id,
+    text: url,
+  });
+  const edited = await uploadURLColumn({
+    created_by: USERS.alice.id,
+    channel_id: host.id,
+    text: url,
+  });
+  await updateColumnTitle(edited.id, "My own name");
+
+  // A block on a different URL must not be touched by this URL's metadata.
+  const other = await uploadURLColumn({
+    created_by: USERS.alice.id,
+    channel_id: host.id,
+    text: "https://ponytail.example/some-other-page",
+  });
+
+  await fillEmptyUrlColumnMeta(url, { title: "Page title", description: "Page description" });
+
+  const byId = new Map((await getChannelColumns(host.id)).map((c) => [c.id, c]));
+  expect(byId.get(blank.id)?.title).toBe("Page title");
+  expect(byId.get(blank.id)?.description).toBe("Page description");
+  expect(byId.get(edited.id)?.title).toBe("My own name");
+  // The hand-titled block still had no description, so that half is filled.
+  expect(byId.get(edited.id)?.description).toBe("Page description");
+  expect(byId.get(other.id)?.title).toBeUndefined();
+
+  // A second capture of the same URL doesn't overwrite what's already there.
+  await fillEmptyUrlColumnMeta(url, { title: "Newer title", description: "Newer description" });
+  const after = (await getChannelColumns(host.id)).find((c) => c.id === blank.id);
+  expect(after?.title).toBe("Page title");
+  expect(after?.description).toBe("Page description");
+});
+
+test("fillEmptyUrlColumnMeta makes a URL block findable by the page's title", async () => {
+  const host = await createChannel({
+    title: "Findable",
+    access: "public",
+    owner_id: USERS.alice.id,
+  });
+  const url = "https://ponytail.example/searchable-page";
+  await uploadURLColumn({ created_by: USERS.alice.id, channel_id: host.id, text: url });
+
+  // Before naming, the page's title matches nothing: search reads column rows,
+  // never the screenshot cache.
+  expect(await searchColumns(USERS.alice.id, "Quokka Weekly")).toEqual([]);
+
+  await fillEmptyUrlColumnMeta(url, { title: "Quokka Weekly", description: "" });
+
+  const hits = await searchColumns(USERS.alice.id, "Quokka Weekly");
+  expect(hits.map((c) => c.url)).toContain(url);
 });

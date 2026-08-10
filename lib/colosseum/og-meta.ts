@@ -1,12 +1,15 @@
-// Open Graph / metadata extraction — the fallback when a live headless render
-// is blocked or fails. A plain HTML fetch with a browser-like UA often succeeds
-// where a full render doesn't (no JS, no automation fingerprint), and the
-// og:image it exposes is a preview the site publishes for exactly this purpose.
+// Open Graph / metadata extraction — the first thing tried for a URL block's
+// preview. The og:image a site publishes is the preview it chose for exactly
+// this purpose, where a live render catches whatever happened to be on screen:
+// cookie banners, consent walls, and images that hadn't painted yet. A plain
+// HTML fetch with a browser-like UA also succeeds on plenty of sites a full
+// render can't reach (no JS, no automation fingerprint), and costs one request
+// instead of a Chromium launch. Rendering is the fallback (see ./screenshot).
 //
 // Deliberately free of DB / server-only imports so the parser stays unit-testable.
 
-// A current desktop Chrome UA, shared with the headless launch so both the
-// render and this fallback look like the same ordinary browser.
+// A current desktop Chrome UA, shared with the headless launch so both this and
+// the render look like the same ordinary browser.
 export const DESKTOP_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 
@@ -79,9 +82,10 @@ async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Respons
 }
 
 // Fetch a page's HTML, pull its og:image, and download those bytes. Returns
-// null when there's no usable preview image. Title/description come along so a
-// fallback capture can still pre-fill a block's metadata.
-export async function fetchOgFallback(
+// null when there's no usable preview image, which is the caller's cue to
+// render the page instead. Title/description come along so a block can be named
+// without a second trip.
+export async function fetchOgPreview(
   url: string,
   timeoutMs: number,
 ): Promise<{ image: Buffer; title: string; description: string } | null> {

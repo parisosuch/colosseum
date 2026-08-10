@@ -4,7 +4,8 @@ import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import sharp from "sharp";
 
 import { createMedia, putBlob } from "./blob";
-import { DESKTOP_UA, fetchOgFallback } from "./og-meta";
+import { fillEmptyUrlColumnMeta } from "./column";
+import { DESKTOP_UA, fetchOgPreview } from "./og-meta";
 import { getScreenshot, upsertScreenshot, ScreenshotRow } from "./screenshot-data";
 import { logError, logInfo } from "@/lib/log";
 
@@ -12,8 +13,9 @@ import { logError, logInfo } from "@/lib/log";
 // HeadlessChrome UA, missing Accept-Language, and ~9 others) that bot
 // protection reads to serve a challenge instead of the page. Registered once at
 // module load. It clears most public detectors but not IP-reputation walls
-// (Cloudflare/DataDome from a datacenter IP) — those need a proxy/unlocker,
-// which the og:image fallback below partly covers for free.
+// (Cloudflare/DataDome from a datacenter IP) — those need a proxy/unlocker.
+// Rendering is now the second choice behind og:image, so a walled site is only
+// reached this way when it publishes no preview of its own.
 puppeteer.use(StealthPlugin());
 
 export interface Screenshot {
@@ -137,32 +139,58 @@ export async function captureAndCacheScreenshot(
   url: string,
   ownerId: string,
 ): Promise<{ image_url: string; title: string; description: string }> {
+  const og = await ogPreview(url);
+
   let image: Buffer;
   let title: string;
   let description: string;
-  try {
+  if (og) {
+    ({ image, title, description } = og);
+  } else {
+    // No og:image, or the bytes behind it weren't a usable image. Render the
+    // page — slower and easier to block, but it works on sites that publish no
+    // preview at all, and it's the only way to see a page that has one.
     ({ image, title, description } = await captureWebsiteScreenshot(url));
-  } catch (renderError) {
-    // Live render failed or was blocked. Fall back to the site's published
-    // og:image, which a plain fetch (no automation fingerprint) often still
-    // gets. If there's no usable preview image either, there's genuinely
-    // nothing to show — rethrow so the caller records the failure.
-    logError("screenshot.capture", `render failed for ${url}, trying og:image`, renderError);
-    const fallback = await fetchOgFallback(url, NAV_TIMEOUT_MS);
-    if (!fallback) throw renderError;
-    try {
-      image = await toSquarePng(fallback.image, "centre");
-    } catch {
-      throw renderError; // the og:image wasn't a usable image
-    }
-    title = fallback.title;
-    description = fallback.description;
   }
 
   const sha256 = await putBlob(image, "image/png", ownerId);
   const image_url = await createMedia(sha256, ownerId, "public");
   await upsertScreenshot({ url, image_url, title, description });
+  // The capture is what learns the page's title, and it runs after the block
+  // exists, so blocks pointing here are named from it now rather than staying
+  // blank rows the search can't match.
+  await fillEmptyUrlColumnMeta(url, { title, description });
   return { image_url, title, description };
+}
+
+// The og:image path, squared and ready to store, or null if this URL doesn't
+// offer one. Never throws: every failure here means "render the page instead",
+// and a site being unreachable is the render's error to report, not this one's.
+async function ogPreview(
+  url: string,
+): Promise<{ image: Buffer; title: string; description: string } | null> {
+  let preview: Awaited<ReturnType<typeof fetchOgPreview>>;
+  try {
+    preview = await fetchOgPreview(url, NAV_TIMEOUT_MS);
+  } catch (e) {
+    logError("screenshot.capture", `og:image lookup failed for ${url}, rendering instead`, e);
+    return null;
+  }
+  if (!preview) return null;
+
+  try {
+    // Centred, not top-anchored: an og:image is composed as a whole, so the
+    // middle is the part worth keeping. A page render crops from the top
+    // because that's where a page's own header is.
+    return {
+      image: await toSquarePng(preview.image, "centre"),
+      title: preview.title,
+      description: preview.description,
+    };
+  } catch (e) {
+    logError("screenshot.capture", `og:image for ${url} wasn't usable, rendering instead`, e);
+    return null;
+  }
 }
 
 // Each capture is a full headless Chromium — a burst of API calls (e.g. a bulk
@@ -211,7 +239,16 @@ export function triggerScreenshotCapture(url: string, ownerId: string): void {
       logError("screenshot.capture", `lookup failed for ${url}`, e);
       return;
     }
-    if (existing?.image_url) return;
+    if (existing?.image_url) {
+      // Already captured by an earlier block on this URL. There's no work to
+      // do for the preview, but this block was created blank and the name is
+      // sitting right there in the cache, so take it.
+      await fillEmptyUrlColumnMeta(url, {
+        title: existing.title ?? "",
+        description: existing.description ?? "",
+      }).catch((e) => logError("screenshot.capture", `naming blocks for ${url} failed`, e));
+      return;
+    }
 
     const startedAt = Date.now();
     logInfo("screenshot.capture", `starting capture: ${url}`, {

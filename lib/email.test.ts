@@ -14,6 +14,12 @@ const BLANK = {
   smtp_pass: "",
 } as const;
 
+// These tests stub `globalThis.fetch` by assignment, which `mock.restore()`
+// doesn't undo — it only knows about spies. Every test file shares one process,
+// so without putting the real fetch back, everything that runs after this file
+// gets the last stub installed here and its requests quietly resolve to `{}`.
+const realFetch = globalThis.fetch;
+
 beforeAll(async () => {
   await seed();
 });
@@ -21,6 +27,7 @@ beforeAll(async () => {
 afterEach(async () => {
   await updateAppSettings({ max_invites_per_user: null, max_columns_per_user: null, email: BLANK });
   mock.restore();
+  globalThis.fetch = realFetch;
 });
 
 test("Resend provider posts to the API with the stored key and from", async () => {

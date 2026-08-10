@@ -6,6 +6,7 @@ import {
   getTableColumns,
   ilike,
   inArray,
+  isNull,
   lte,
   ne,
   or,
@@ -497,6 +498,51 @@ export async function updateColumnDescription(
 
 export async function updateColumnTags(column_id: number, tags: string[]): Promise<void> {
   await db.update(column).set({ tags }).where(eq(column.id, column_id));
+}
+
+// Name the URL blocks pointing at `url` from the page's own metadata, once a
+// preview capture has read it. A URL block is created with nothing but the
+// link, and the capture that learns the page's title runs afterwards and
+// off to the side, so this is what closes the gap.
+//
+// The screenshot cache holds the same title and the grid already falls back to
+// it for display. What it can't do is make the block findable: `searchColumns`
+// matches `column.title`/`description`, never the cache, so a block whose row
+// is blank is unsearchable by the name people know it by.
+//
+// Only ever fills a blank — a title someone typed, or one an earlier capture
+// wrote, is left alone. Applies to every matching block, not one: the cache is
+// keyed per URL and shared, so all of them learned the name at the same moment.
+export async function fillEmptyUrlColumnMeta(
+  url: string,
+  meta: { title: string; description: string },
+): Promise<void> {
+  // Each field is filled independently: a block can have been titled by hand
+  // and still have no description, and vice versa.
+  if (meta.title) {
+    await db
+      .update(column)
+      .set({ title: meta.title })
+      .where(
+        and(
+          eq(column.type, "url"),
+          eq(column.url, url),
+          or(isNull(column.title), eq(column.title, "")),
+        ),
+      );
+  }
+  if (meta.description) {
+    await db
+      .update(column)
+      .set({ description: meta.description })
+      .where(
+        and(
+          eq(column.type, "url"),
+          eq(column.url, url),
+          or(isNull(column.description), eq(column.description, "")),
+        ),
+      );
+  }
 }
 
 // Move a block to another channel. Only the channel_id changes, so the block

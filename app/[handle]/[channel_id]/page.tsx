@@ -26,7 +26,15 @@ export async function generateMetadata({ params }: ChannelPageParams): Promise<M
   const { handle, channel_id } = await params;
   const id = parseInt(channel_id, 10);
   const channel = Number.isNaN(id) ? null : await getChannel(id);
-  return channelPreviewMeta(channel, handle);
+  // Show what's in the channel: its most recent image block becomes the card's
+  // picture. Only asked for on a public channel — a private one gets generic
+  // metadata anyway, and this would be a query answering nothing.
+  let imageUrl: string | null = null;
+  if (channel && !channel.private) {
+    const [newestImage] = await getChannelColumns(channel.id, { type: "image", limit: 1 });
+    imageUrl = newestImage?.image ?? null;
+  }
+  return channelPreviewMeta(channel, handle, imageUrl);
 }
 
 export default async function ChannelPage({ params }: ChannelPageParams) {

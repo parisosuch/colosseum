@@ -8,6 +8,7 @@ import YouTubeBlock from "@/components/youtube-block";
 import SpotifyBlock from "@/components/spotify-block";
 import PageHeader from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
+import { blockLabel, blockPreviewMeta } from "@/lib/colosseum/block-meta";
 import { Channel, canReadChannel, getChannel } from "@/lib/colosseum/channel";
 import { isChannelMember } from "@/lib/colosseum/member";
 import { Column, getColumn } from "@/lib/colosseum/column";
@@ -18,17 +19,6 @@ import { spotifyEmbedRef, youtubeIdFromUrl } from "@/lib/utils";
 type BlockPageParams = {
   params: Promise<{ handle: string; channel_id: string; block_id: string }>;
 };
-
-function blockLabel(column: Column): string {
-  if (column.title) return column.title;
-  if (column.type === "url") return column.url ?? "Link";
-  if (column.type === "text") return "Text column";
-  if (column.type === "pdf") return "PDF column";
-  if (column.type === "video") return "Video column";
-  if (column.type === "youtube") return "YouTube video";
-  if (column.type === "spotify") return "Spotify";
-  return "Column";
-}
 
 // Resolve the block and its channel, enforcing visibility in app code (this
 // connection bypasses RLS): a block is visible only when it belongs to the
@@ -58,12 +48,22 @@ async function loadVisibleBlock(
 }
 
 export async function generateMetadata({ params }: BlockPageParams): Promise<Metadata> {
-  const { channel_id, block_id } = await params;
+  const { handle, channel_id, block_id } = await params;
   const found = await loadVisibleBlock(parseInt(channel_id, 10), parseInt(block_id, 10));
   if (!found) {
     return { title: "Column not found · Colosseum" };
   }
-  return { title: `${blockLabel(found.column)} · Colosseum` };
+  // A URL block's card reuses the preview the block itself renders, along with
+  // the page description captured beside it.
+  const preview =
+    found.column.type === "url" && found.column.url ? await getScreenshot(found.column.url) : null;
+  return blockPreviewMeta({
+    column: found.column,
+    channel: found.channel,
+    handle,
+    previewUrl: preview?.image_url ?? null,
+    previewDescription: preview?.description ?? null,
+  });
 }
 
 export default async function BlockPage({ params }: BlockPageParams) {

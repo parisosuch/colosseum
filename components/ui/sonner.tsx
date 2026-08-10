@@ -18,6 +18,13 @@ const Toaster = ({ ...props }: ToasterProps) => {
       theme={theme as ToasterProps["theme"]}
       richColors
       className="toaster group"
+      // Both offsets, not just the mobile one: sonner's mobile breakpoint
+      // (600px) sits below the one that hides the bottom bar (640px), so the
+      // desktop offset is what applies in between while the bar is still on
+      // screen. --toast-offset-bottom resolves per breakpoint and per whether
+      // the bar is mounted; see app/globals.css.
+      offset={{ bottom: "var(--toast-offset-bottom)" }}
+      mobileOffset={{ bottom: "var(--toast-offset-bottom)" }}
       icons={{
         success: <CircleCheckIcon className="size-4" />,
         info: <InfoIcon className="size-4" />,

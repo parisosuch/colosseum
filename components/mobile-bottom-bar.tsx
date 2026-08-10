@@ -30,7 +30,12 @@ export function MobileBottomBar({
   const [searchOpen, setSearchOpen] = useState(false);
 
   return (
-    <nav className="chrome fixed inset-x-0 bottom-0 z-40 border-t pb-[env(safe-area-inset-bottom)] sm:hidden">
+    // data-mobile-bottom-bar is what globals.css looks for to lift toasts
+    // above the bar; it's only in the DOM when the bar actually renders.
+    <nav
+      data-mobile-bottom-bar
+      className="chrome fixed inset-x-0 bottom-0 z-40 border-t pb-[env(safe-area-inset-bottom)] sm:hidden"
+    >
       <div className="flex h-14 items-center justify-around px-2">
         <Link href="/" aria-label="Home" className={ITEM}>
           <HomeIcon />

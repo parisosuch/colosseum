@@ -65,6 +65,12 @@ release.
   channel to a **private** channel no longer notifies its owner at all — what
   someone collects privately is their own business, and the recipient could not
   open it to look anyway.
+- Toasts no longer land on top of the mobile bottom bar. They now clear it by
+  the same margin they keep from the bottom of the screen everywhere else,
+  including between 600px and 640px, where the toast library switches to its
+  desktop spacing while the bar is still on screen. Where the bar isn't there
+  at all — the landing and auth pages, and any signed-out or not-yet-onboarded
+  viewer — toasts sit at the usual distance instead of floating above nothing.
 
 ## [1.8.3] - 2026-07-24
 

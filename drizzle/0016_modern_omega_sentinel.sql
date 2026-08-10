@@ -1,0 +1,2 @@
+CREATE INDEX "user_profile_handle_trgm_idx" ON "user_profile" USING gin ("handle" gin_trgm_ops);--> statement-breakpoint
+CREATE INDEX "user_profile_about_trgm_idx" ON "user_profile" USING gin ("about" gin_trgm_ops);

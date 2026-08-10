@@ -45,6 +45,16 @@ release.
   so each one still re-runs the channel-access check. A viewer who has lost
   access, or a different account on the same browser, revalidates into a 404
   rather than a cache hit. Public media is unchanged.
+- Search stops querying Postgres on every keystroke. The nav box, the mobile
+  drawer, and the command palette now share one 150ms debounce (they used
+  300ms, 50ms, and none), skip queries shorter than three characters, and
+  answer a repeated or backspaced-to query from results already fetched. A
+  nine-character search was 27 queries and is now three. Results stay on screen
+  while the next search runs, so the list no longer empties and refills.
+- Profile search reads from an index. `user_profile.handle` and `about` gained
+  trigram GIN indexes, matching what channel and column search already had;
+  before this every palette keystroke and every `@`-mention character scanned
+  the whole profile table.
 
 ### Fixed
 

@@ -156,6 +156,12 @@ export const userProfile = pgTable(
   (t) => [
     // Explore feed orders new members by join time.
     index("user_profile_created_at_idx").on(t.created_at),
+    // Profile search, and the comment @-mention autocomplete behind it. Both
+    // run ILIKE '%term%' over handle/about, which a btree can't serve because
+    // of the leading wildcard, so each searched column needs a trigram GIN
+    // (pg_trgm) the same way channel and column search do.
+    index("user_profile_handle_trgm_idx").using("gin", sql`${t.handle} gin_trgm_ops`),
+    index("user_profile_about_trgm_idx").using("gin", sql`${t.about} gin_trgm_ops`),
   ],
 );
 

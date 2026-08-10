@@ -54,7 +54,7 @@ export default async function NavBar() {
         <>
           <div className="hidden sm:flex flex-1 max-w-md items-center gap-2">
             <div className="flex-1 max-w-xs">
-              <SearchBar userId={user.id} />
+              <SearchBar />
             </div>
             <AddBlockModal channels={channels} label="Add" />
           </div>

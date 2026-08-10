@@ -113,6 +113,13 @@
       "when": 1786122129551,
       "tag": "0015_quiet_blonde_phantom",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1786400676370,
+      "tag": "0016_modern_omega_sentinel",
+      "breakpoints": true
     }
   ]
 }

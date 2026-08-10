@@ -16,10 +16,8 @@ import {
 } from "lucide-react";
 
 import { authClient } from "@/lib/auth-client";
-import { searchAction } from "@/lib/colosseum/actions";
-import type { ChannelSearchResult } from "@/lib/colosseum/channel";
-import type { Column, ColumnSearchResult } from "@/lib/colosseum/column";
-import type { ProfileSearchResult } from "@/lib/colosseum/user";
+import type { Column } from "@/lib/colosseum/column";
+import { useSearch } from "@/components/use-search";
 import {
   CommandDialog,
   CommandEmpty,
@@ -44,9 +42,10 @@ export default function CommandPalette({ handle }: { handle: string }) {
   const { setTheme } = useTheme();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [profiles, setProfiles] = useState<ProfileSearchResult[]>([]);
-  const [channels, setChannels] = useState<ChannelSearchResult[]>([]);
-  const [columns, setColumns] = useState<ColumnSearchResult[]>([]);
+  const {
+    results: { profiles, channels, columns },
+    searching,
+  } = useSearch(query);
 
   // Global Cmd+K / Ctrl+K to toggle the palette.
   useEffect(() => {
@@ -59,28 +58,6 @@ export default function CommandPalette({ handle }: { handle: string }) {
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, []);
-
-  // Search on every keystroke (no debounce) so results feel instant. The
-  // cancelled flag drops stale responses if they land out of order.
-  useEffect(() => {
-    if (!query.trim()) {
-      setProfiles([]);
-      setChannels([]);
-      setColumns([]);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      const results = await searchAction(query);
-      if (cancelled) return;
-      setProfiles(results.profiles);
-      setChannels(results.channels);
-      setColumns(results.columns);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [query]);
 
   // Reset the query whenever the palette closes so it reopens clean.
   useEffect(() => {
@@ -143,7 +120,9 @@ export default function CommandPalette({ handle }: { handle: string }) {
         onValueChange={setQuery}
       />
       <CommandList>
-        <CommandEmpty>No results.</CommandEmpty>
+        {/* Held back while a search is in flight, so a query that matches no
+            commands doesn't flash "No results." on its way to matching one. */}
+        {searching ? null : <CommandEmpty>No results.</CommandEmpty>}
 
         {profiles.length > 0 ? (
           <CommandGroup heading="People">

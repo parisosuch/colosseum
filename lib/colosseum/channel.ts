@@ -47,6 +47,18 @@ export function canReadChannel(ch: Channel, userId: string | null, isMember: boo
   return userId === ch.owner_id || isMember;
 }
 
+// Which of these users may read the channel, order preserved and duplicates
+// kept. Only private channels cost a membership lookup. Callers that fan out to
+// a set of recipients (notifications) use this so the read rule stays defined
+// where the rest of the matrix is.
+export async function channelReaders(ch: Channel, userIds: string[]): Promise<string[]> {
+  if (ch.access !== "private") return userIds;
+  const members = await Promise.all(
+    userIds.map(async (id) => canReadChannel(ch, id, await isChannelMember(ch.id, id))),
+  );
+  return userIds.filter((_, i) => members[i]);
+}
+
 // Add blocks: open → any signed-in user; public and private → the owner or an
 // invited member. (A public channel with no members is therefore owner-only; add
 // members to make it a publicly-readable, members-only-writable channel.)

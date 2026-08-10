@@ -283,8 +283,8 @@ export const comment = pgTable(
 );
 
 // In-app notifications: someone (actor) did something to the recipient's
-// content. `type` says what; `column_id`/`channel_id` point at the subject when
-// relevant (both nullable, cascade so a notification vanishes with its subject).
+// content. `type` says what; `channel_id`/`column_id`/`comment_id` locate the
+// subject (all cascade, so a notification vanishes with what it points at).
 // `read_at` null = unread. Actor cascades too, so removing a user clears the
 // notifications they caused.
 export const notification = pgTable(
@@ -300,13 +300,30 @@ export const notification = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
     type: text("type", { enum: ["comment", "mention", "connect", "member"] }).notNull(),
     // Every notification is about a channel (or a block within one), so this is
-    // always set; column_id is set only for comment/mention.
+    // always set. For `connect` it is the *host* channel — the one the recipient's
+    // channel was added to — which is where the link should land.
     channel_id: bigint("channel_id", { mode: "number" })
       .notNull()
       .references(() => channel.id, { onDelete: "cascade" }),
+    // Set for comment/mention (the block) and for `connect` (the channel column
+    // created inside the host, whose linked_channel_id names the subject).
     column_id: bigint("column_id", { mode: "number" }).references(() => column.id, {
       onDelete: "cascade",
     }),
+    // Set for comment/mention: the comment that triggered it, so the row and its
+    // email can quote the body. Null on rows created before this column existed.
+    // Deleting the comment nulls it rather than cascading: the notification is
+    // history and stays in the feed and the unread count with its quote dropped,
+    // and — because `email_sent_at` below is the only quiet-period anchor —
+    // cascading would let delete-and-repost email the recipient without bound.
+    comment_id: bigint("comment_id", { mode: "number" }).references(() => comment.id, {
+      onDelete: "set null",
+    }),
+    // When this notification was emailed, or null if it never was (toggle off,
+    // or suppressed as part of a burst). Read back to decide whether a later
+    // notification about the same subject is still inside the quiet period, so
+    // sustained activity can't suppress every email after the first.
+    email_sent_at: timestamp("email_sent_at", { withTimezone: true }),
     read_at: timestamp("read_at", { withTimezone: true }),
   },
   // The bell feed and unread count both scan one recipient's rows, newest first.

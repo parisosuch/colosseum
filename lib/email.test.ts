@@ -91,6 +91,23 @@ test("renderEmail embeds the heading, CTA link, and a text fallback", () => {
   expect(text).toContain("ignore if not you");
 });
 
+test("renderEmail escapes interpolated text so quoted content stays inert", () => {
+  const { html, text } = renderEmail({
+    heading: 'Re: "a & b"',
+    body: 'Line one\n<img src=x onerror="alert(1)">',
+    buttonLabel: "View",
+    buttonUrl: "https://x.test/y",
+  });
+  // The template's own logo img is the only tag the body may not add another of.
+  expect(html.match(/<img/g)).toHaveLength(1);
+  expect(html).toContain("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;");
+  expect(html).toContain("&amp;");
+  // Newlines in the body still break lines in the HTML.
+  expect(html).toContain("Line one<br />");
+  // The plain-text fallback is unescaped — it is not HTML.
+  expect(text).toContain('<img src=x onerror="alert(1)">');
+});
+
 test("no provider configured neither sends nor throws", async () => {
   const fetchMock = mock(async () => new Response("{}", { status: 200 }));
   globalThis.fetch = fetchMock as unknown as typeof fetch;

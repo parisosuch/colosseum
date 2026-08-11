@@ -86,10 +86,9 @@ function ChannelColumnsView({
 export default async function UserPage({ params }: { params: Promise<{ handle: string }> }) {
   const { handle } = await params;
 
-  // determine if user is authenticated
-  const user = await getSessionUser();
-
-  const userProfile = await getPublicUserProfile(handle);
+  // The profile is keyed by the route's handle, not by the viewer, so the
+  // session lookup and the profile lookup don't depend on each other.
+  const [user, userProfile] = await Promise.all([getSessionUser(), getPublicUserProfile(handle)]);
 
   if (!userProfile) {
     return (
@@ -102,16 +101,23 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
 
   const match = !!user && userProfile.user_id === user.id;
 
-  // On your own profile you see all your channels; on someone else's you see
-  // their public/open channels plus any private group you've been invited to.
-  const channels: Channel[] = match
-    ? await getUserChannels(user!.id)
-    : await getVisibleUserChannels(userProfile.user_id, user?.id ?? null);
-
-  // Only on your own profile: the channels you've been invited to (not owned).
-  // They render in the same grid as your own, carrying the owner's handle (for
-  // the link) and a "Member of" badge. Owned channels come first.
-  const memberChannels = match ? await getMemberChannels(user!.id) : [];
+  // Both lists key off ids already in hand, so they resolve together.
+  //
+  // channels: on your own profile you see all your channels; on someone else's
+  // you see their public/open channels plus any private group you've been
+  // invited to.
+  //
+  // memberChannels: only on your own profile, the channels you've been invited
+  // to (not owned). They render in the same grid as your own, carrying the
+  // owner's handle (for the link) and a "Member of" badge. Owned channels come
+  // first.
+  const [channels, memberChannels]: [Channel[], Awaited<ReturnType<typeof getMemberChannels>>] =
+    await Promise.all([
+      match
+        ? getUserChannels(user!.id)
+        : getVisibleUserChannels(userProfile.user_id, user?.id ?? null),
+      match ? getMemberChannels(user!.id) : Promise.resolve([]),
+    ]);
   const entries = [
     ...channels.map((channel) => ({ channel, handle, memberOf: false })),
     ...memberChannels.map((channel) => ({ channel, handle: channel.handle, memberOf: true })),

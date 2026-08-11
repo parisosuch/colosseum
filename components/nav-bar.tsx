@@ -33,17 +33,20 @@ export default async function NavBar() {
   // onboarding has no profile yet, so render the nav without the avatar.
   const userProfile = await getUserProfile(user.id);
 
+  // Both only need the profile to exist, and neither needs the other. The nav
+  // renders in the root layout, so serializing them adds latency to every route.
   // The quick-add drawer needs the viewer's channels to pick a destination;
-  // only onboarded users see it, so skip the query otherwise.
-  const channels = userProfile
-    ? (await getUserChannels(user.id)).map((c) => ({
-        id: c.id,
-        title: c.title,
-        private: c.private,
-      }))
-    : [];
+  // only onboarded users see it, so skip both queries otherwise.
+  const [ownChannels, unread] = await Promise.all([
+    userProfile ? getUserChannels(user.id) : Promise.resolve([]),
+    userProfile ? unreadNotificationCount(user.id) : Promise.resolve(0),
+  ]);
 
-  const unread = userProfile ? await unreadNotificationCount(user.id) : 0;
+  const channels = ownChannels.map((c) => ({
+    id: c.id,
+    title: c.title,
+    private: c.private,
+  }));
 
   return (
     <nav className="chrome sticky top-0 z-40 w-full flex justify-between p-4">

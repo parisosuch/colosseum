@@ -75,10 +75,9 @@ export default async function ChannelPage({ params }: ChannelPageParams) {
     year: "numeric",
   });
 
-  // These three reads are mutually independent, so run them together instead of
-  // serializing three round-trips. ownerAvatarUrl depends on members and follows
-  // once they resolve.
-  const [initialScreenshots, myChannels, members] = await Promise.all([
+  // These four reads are mutually independent, so run them together instead of
+  // serializing the round-trips.
+  const [initialScreenshots, myChannels, members, ownerProfile] = await Promise.all([
     // Cached previews for the first page's URL blocks, so screenshots render at
     // first paint too. URLs without a cached row are simply absent; the board's
     // hydrate/poll effect fetches those.
@@ -96,11 +95,15 @@ export default async function ChannelPage({ params }: ChannelPageParams) {
     // Collaborators shown on the board itself (not just settings). Only public
     // and private channels have a roster; open channels let anyone add.
     channel.access !== "open" ? listChannelMembers(id) : Promise.resolve([]),
+    // Only rendered when the roster is non-empty, but it keys off the route's
+    // handle alone — so it joins the batch rather than waiting on `members` to
+    // find out whether it was needed. One query on a solo channel beats a whole
+    // serialized round-trip on every channel that has members.
+    getPublicUserProfile(handle),
   ]);
 
-  // Skip the owner-avatar lookup when there are no members to show.
-  const ownerAvatarUrl =
-    members.length > 0 ? ((await getPublicUserProfile(handle))?.avatar_url ?? null) : null;
+  // Shown beside the roster, so there's nothing to show without one.
+  const ownerAvatarUrl = members.length > 0 ? (ownerProfile?.avatar_url ?? null) : null;
 
   return (
     <ChannelBoard

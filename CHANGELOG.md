@@ -8,6 +8,8 @@ release.
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-07-26
+
 ### Added
 
 - Redis caching layer for hot, stable read queries — channel metadata
@@ -79,6 +81,13 @@ release.
   desktop spacing while the bar is still on screen. Where the bar isn't there
   at all — the landing and auth pages, and any signed-out or not-yet-onboarded
   viewer — toasts sit at the usual distance instead of floating above nothing.
+
+### Fixed
+
+- The mobile add-block sheet no longer opens cut off. After the keyboard had
+  been used on the first step, picking a channel showed a sliver of the list
+  instead of the whole picker, and stayed that way until the page was reloaded.
+  The sheet now keeps one height across both steps.
 
 ## [1.8.3] - 2026-07-24
 

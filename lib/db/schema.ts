@@ -251,6 +251,15 @@ export const column = pgTable(
     index("column_created_at_idx").on(t.created_at),
     // getChannelColumns / getChannelColumnCount filtering and sorting on channel_id, created_at.
     index("column_channel_id_created_at_idx").on(t.channel_id, t.created_at.desc()),
+    // The channel board's title_az / title_za sorts, and the block quota's
+    // count of a user's blocks — all three otherwise scan the whole table.
+    // Both title orderings are `nulls last` (untitled blocks sort to the end
+    // either way), and a btree only serves an ordering it was built with: the
+    // ascending index cannot answer `desc nulls last`, so the sorts need one
+    // index each.
+    index("column_channel_id_title_idx").on(t.channel_id, t.title),
+    index("column_channel_id_title_desc_idx").on(t.channel_id, t.title.desc()),
+    index("column_created_by_idx").on(t.created_by),
     // Screenshot GC checks whether any column still references a url (exact
     // match — this btree stays for equality lookups; the trigram index below is
     // only for ILIKE search).

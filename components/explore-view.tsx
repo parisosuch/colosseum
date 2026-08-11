@@ -13,6 +13,10 @@ import { FeedBlockModal } from "@/components/feed-block-modal";
 const FOCAL_CARD =
   "aspect-square w-full overflow-hidden rounded-lg border bg-card transition-colors group-hover:border-foreground/30";
 
+// Feed cards load their image eagerly until this many rows in; the rest wait
+// until they're scrolled near.
+const EAGER_FEED_CARDS = 2;
+
 // Stable, unique key for a feed item (used by the initial list and the
 // appended load-more pages).
 export function activityKey(item: ActivityItem): string {
@@ -54,7 +58,17 @@ const Muted = ({ children }: { children: ReactNode }) => (
 // Sync on purpose: an async component here renders through an async boundary,
 // and flex `gap` won't apply between such siblings. The async work (the URL
 // screenshot fetch) lives in the nested ColumnPreview, which is fine.
-export function ActivityRow({ item, viewerId }: { item: ActivityItem; viewerId: string | null }) {
+export function ActivityRow({
+  item,
+  viewerId,
+  priority = false,
+}: {
+  item: ActivityItem;
+  viewerId: string | null;
+  // Set for the first rows of the initial feed; pages appended by load-more are
+  // below the fold by definition and leave it off.
+  priority?: boolean;
+}) {
   const isChannelColumn = item.kind === "block" && item.column?.type === "channel";
   const linked = item.column?.linked_channel;
 
@@ -75,7 +89,7 @@ export function ActivityRow({ item, viewerId }: { item: ActivityItem; viewerId: 
     focalHref = linkedHref;
     focalAria = `Channel ${linked?.title ?? ""}`;
   } else if (item.kind === "block") {
-    focal = <ColumnPreview column={item.column!} />;
+    focal = <ColumnPreview column={item.column!} priority={priority} />;
     focalHref = `/${item.handle}/${item.channelId}/${item.column!.id}`;
     focalAria = `${item.label} in ${item.channelTitle}`;
   } else {
@@ -188,8 +202,15 @@ export default function ExploreView({
         // children don't in a centered column). Load-more appends its pages as
         // further siblings so they share the same spacing.
         <div className="flex flex-col items-center gap-16">
-          {activity.map((item) => (
-            <ActivityRow key={activityKey(item)} item={item} viewerId={viewerId} />
+          {activity.map((item, i) => (
+            <ActivityRow
+              key={activityKey(item)}
+              item={item}
+              viewerId={viewerId}
+              // Feed cards are full-width and stacked, so only the top couple
+              // are ever on screen at load.
+              priority={i < EAGER_FEED_CARDS}
+            />
           ))}
           <ExploreLoadMore
             initialCursor={activity[activity.length - 1].at}

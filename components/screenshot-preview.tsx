@@ -6,6 +6,7 @@ export default function ScreenShotPreview({
   image_url,
   version,
   url,
+  priority = false,
 }: {
   image_url: string | null;
   // Cache-busting token (the screenshot's captured_at). The storage object is
@@ -15,6 +16,10 @@ export default function ScreenShotPreview({
   // The block's URL, shown as the fallback when no screenshot could be captured
   // — the site may still resolve, so the block stays identifiable and usable.
   url?: string | null;
+  // Set for the handful of cards that start above the fold. Those load eagerly
+  // because deferring the one the viewer is looking at is what LCP measures;
+  // everything below it waits until it's scrolled near.
+  priority?: boolean;
 }) {
   const src =
     image_url && version != null
@@ -34,6 +39,8 @@ export default function ScreenShotPreview({
           src={src}
           alt={`Screenshot of website.`}
           onError={() => setErrored(true)}
+          loading={priority ? "eager" : "lazy"}
+          decoding="async"
           className="w-full h-full object-top object-cover rounded-lg"
         />
       ) : url ? (

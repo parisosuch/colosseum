@@ -51,6 +51,14 @@ release.
   answer a repeated or backspaced-to query from results already fetched. A
   nine-character search was 27 queries and is now three. Results stay on screen
   while the next search runs, so the list no longer empties and refills.
+- A shared block link now previews as the block. Pasting one into Slack,
+  iMessage, Discord, or X shows the block's own image, its title, and its
+  description instead of the same generic Colosseum card every block used to
+  get. Image blocks share their picture, URL blocks their captured preview, and
+  YouTube blocks the video thumbnail; anything with no picture of its own keeps
+  the site card. Shared channels now carry a picture from inside the channel.
+  Nothing changes for a private channel — its blocks unfurl as they always did,
+  giving away neither title nor image.
 - Profile search reads from an index. `user_profile.handle` and `about` gained
   trigram GIN indexes, matching what channel and column search already had;
   before this every palette keystroke and every `@`-mention character scanned

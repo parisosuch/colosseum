@@ -12,12 +12,16 @@ import SpotifyBlock from "./spotify-block";
 export default async function ColumnPreview({
   column,
   screenshot,
+  priority = false,
 }: {
   column: Column;
   // Pre-fetched screenshot for a url block, so a list of previews can batch the
   // lookup instead of each preview querying on its own. `undefined` means "not
   // provided — fetch it yourself"; `null` means "already looked up, none found".
   screenshot?: ColumnScreenshot | null;
+  // Set by callers for the previews that can start above the fold, so their
+  // images load eagerly and the rest wait until scrolled near.
+  priority?: boolean;
 }) {
   // return the preview based on the column type
 
@@ -49,6 +53,8 @@ export default async function ColumnPreview({
       <img
         src={`${column.image}?thumb`}
         alt={column.title ?? "Image column"}
+        loading={priority ? "eager" : "lazy"}
+        decoding="async"
         className="w-full h-full object-cover rounded-md"
       />
     );
@@ -121,6 +127,7 @@ export default async function ColumnPreview({
       image_url={data?.image_url ?? null}
       version={data?.captured_at ?? null}
       url={column.url}
+      priority={priority}
     />
   );
 }

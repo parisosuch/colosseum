@@ -36,6 +36,9 @@ type ColumnComponentProps = {
   // pass one stable handler (keeps the memo'd cards from re-rendering when the
   // open block — and only the open block — changes).
   onOpen: (id: number) => void;
+  // Set by the board for the cards that can start above the fold, so their
+  // thumbnails load eagerly and the rest wait until scrolled near.
+  priority?: boolean;
 };
 
 // The clickable block card in the channel grid. The modal itself is a single
@@ -47,6 +50,7 @@ const ColumnComponent = memo(function ColumnComponent({
   view = "grid",
   author,
   onOpen,
+  priority = false,
 }: ColumnComponentProps) {
   // Hovering the card starts fetching what the modal will show, so the click
   // opens onto a decoded image instead of one painting in as it arrives.
@@ -78,6 +82,8 @@ const ColumnComponent = memo(function ColumnComponent({
       <img
         src={`${column.image}?thumb`}
         alt={column.title ?? "Image column"}
+        loading={priority ? "eager" : "lazy"}
+        decoding="async"
         className="w-full h-full object-cover rounded-lg"
       />
     ) : column.type === "pdf" ? (
@@ -116,7 +122,12 @@ const ColumnComponent = memo(function ColumnComponent({
         <GradientSpin cellSize={4} />
       </div>
     ) : (
-      <ScreenShotPreview image_url={imageURL} version={screenshotVersion} url={column.url} />
+      <ScreenShotPreview
+        image_url={imageURL}
+        version={screenshotVersion}
+        url={column.url}
+        priority={priority}
+      />
     );
 
   if (view === "list") {

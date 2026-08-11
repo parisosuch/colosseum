@@ -35,6 +35,14 @@ import { toast } from "sonner";
 // Placeholder tiles shown while the first page loads — a few rows' worth.
 const SKELETON_COUNT = 18;
 
+// How many cards load their thumbnail eagerly; the rest are lazy and wait until
+// they're scrolled near. The grid tops out at six columns (2xl), so six covers
+// the widest first row — the row LCP is usually measured against — and costs at
+// most a few extra requests on a narrow screen. List rows are 40px thumbnails,
+// so many more of them fit above the fold before scrolling starts.
+const EAGER_GRID_THUMBS = 6;
+const EAGER_LIST_THUMBS = 16;
+
 // One placeholder tile, sized to match a real block in the current view (square
 // card in grid, compact row in list). Keeps the layout from reflowing when
 // blocks swap in.
@@ -532,13 +540,14 @@ export default function ChannelBoard({
                   ? Array.from({ length: SKELETON_COUNT }).map((_, i) => (
                       <BlockSkeleton view={view} key={i} />
                     ))
-                  : columns.map((column) => (
+                  : columns.map((column, i) => (
                       <ColumnComponent
                         column={column}
                         screenshot={column.url ? screenshots.get(column.url) : undefined}
                         view={view}
                         author={handle}
                         onOpen={openBlock}
+                        priority={i < EAGER_LIST_THUMBS}
                         key={column.id}
                       />
                     ))}
@@ -561,12 +570,15 @@ export default function ChannelBoard({
                 ? Array.from({ length: SKELETON_COUNT }).map((_, i) => (
                     <BlockSkeleton view={view} key={i} />
                   ))
-                : columns.map((column) => (
+                : columns.map((column, i) => (
                     <ColumnComponent
                       column={column}
                       screenshot={column.url ? screenshots.get(column.url) : undefined}
                       view={view}
                       onOpen={openBlock}
+                      // The add-block tile takes the first cell when it's there,
+                      // pushing one block out of the top row.
+                      priority={i < EAGER_GRID_THUMBS - (canContribute ? 1 : 0)}
                       key={column.id}
                     />
                   ))}

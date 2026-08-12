@@ -2,27 +2,33 @@
 // after deploying this change so existing images get thumbnails without anyone
 // eating the one-time resize on first view:
 //   bun run backfill-thumbnails
-// Idempotent (ensureThumbnail skips images already generated), so re-running is
-// a cheap stat per image and safe. New uploads and anything missed here
-// generate lazily on first `?thumb` request (see lib/colosseum/blob.ts).
+// Idempotent, and free once it has converged: it selects only blobs whose
+// `has_thumbnail` is still false, so a settled deployment reads no rows and
+// makes no storage calls. New uploads and anything missed here generate lazily
+// on first `?thumb` request (see lib/colosseum/blob.ts).
 // Needs the DB + STORAGE_DIR populated.
 //
-// It also marks `blobs.has_thumbnail`, which is what lets the serving route
-// skip its storage probe. A blob left unmarked still serves correctly — it
-// takes the lazy path and marks itself — so running this is a performance
-// step, not a correctness one, and it is worth running after a deploy that
-// adds the column so the first viewer of an old image doesn't pay for it.
+// The mark is what lets the serving route skip its storage probe. A blob left
+// unmarked still serves correctly — it takes the lazy path and marks itself —
+// so running this is a performance step, not a correctness one, and it is
+// worth running after a deploy that adds the column so the first viewer of an
+// old image doesn't pay for it.
 
-import { like } from "drizzle-orm";
+import { and, eq, like } from "drizzle-orm";
 
 import { ensureThumbnail } from "@/lib/colosseum/blob";
 import { db } from "@/lib/db";
 import { blobs } from "@/lib/db/schema";
 
+// Only the blobs that still need it. Skipping the marked ones in the query is
+// what keeps a re-run free: a deployment that has already converged selects no
+// rows and touches storage zero times, instead of one HEAD per image to learn
+// the same thing. An unmarked blob whose thumbnail does exist still costs that
+// HEAD once, and marks itself on the way through.
 const rows = await db
   .select({ sha256: blobs.sha256 })
   .from(blobs)
-  .where(like(blobs.mime, "image/%"));
+  .where(and(like(blobs.mime, "image/%"), eq(blobs.has_thumbnail, false)));
 
 let ok = 0;
 let failed = 0;

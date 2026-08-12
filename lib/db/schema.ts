@@ -378,6 +378,12 @@ export const blobs = pgTable("blobs", {
   sha256: text("sha256").primaryKey(),
   mime: text("mime").notNull(),
   size: bigint("size", { mode: "number" }).notNull(),
+  // Set once ensureThumbnail has stored the `.thumb` rendition, so the serving
+  // route can skip a storage probe it already knows the answer to. Only ever
+  // false→true, and false is always safe: it costs the probe, which is what
+  // every request paid before this existed. Never default it to true — a blob
+  // predating the thumbnail work has no rendition to find.
+  has_thumbnail: boolean("has_thumbnail").notNull().default(false),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   created_by: uuid("created_by")
     .notNull()

@@ -1,0 +1,1 @@
+ALTER TABLE "blobs" ADD COLUMN "has_thumbnail" boolean DEFAULT false NOT NULL;

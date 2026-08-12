@@ -6,6 +6,12 @@
 // a cheap stat per image and safe. New uploads and anything missed here
 // generate lazily on first `?thumb` request (see lib/colosseum/blob.ts).
 // Needs the DB + STORAGE_DIR populated.
+//
+// It also marks `blobs.has_thumbnail`, which is what lets the serving route
+// skip its storage probe. A blob left unmarked still serves correctly — it
+// takes the lazy path and marks itself — so running this is a performance
+// step, not a correctness one, and it is worth running after a deploy that
+// adds the column so the first viewer of an old image doesn't pay for it.
 
 import { like } from "drizzle-orm";
 

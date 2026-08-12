@@ -126,6 +126,22 @@ export function imageSrcFromHtml(html: string): string | null {
   return src && /^https?:\/\//i.test(src) ? src : null;
 }
 
+// The `<img src>` for a cached website screenshot: the stored object URL with
+// `?v=<version>` appended, or null when there's no screenshot. `version` is the
+// screenshot's captured_at — the storage object is overwritten in place on
+// refresh, so without the token the browser keeps serving the stale bytes.
+// Every caller goes through here so the URL is byte-for-byte identical: a
+// prefetch only warms the cache entry the renderer later asks for if the two
+// strings match exactly.
+export function screenshotSrc(
+  imageUrl: string | null | undefined,
+  version: string | number | null | undefined,
+): string | null {
+  if (!imageUrl) return null;
+  const v = version == null ? "" : String(version);
+  return v ? `${imageUrl}?v=${encodeURIComponent(v)}` : imageUrl;
+}
+
 // Escapes ilike wildcards so a literal `%`/`_` in a search term isn't treated
 // as one, and strips the characters PostgREST uses to delimit an `.or(...)`
 // filter so a search term can't break out of it.

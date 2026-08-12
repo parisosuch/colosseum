@@ -18,7 +18,7 @@ import { Markdown } from "./markdown";
 import TweetBlock from "./tweet-block";
 import YouTubeBlock from "./youtube-block";
 import SpotifyBlock from "./spotify-block";
-import { spotifyEmbedRef, tweetIdFromUrl, youtubeIdFromUrl } from "@/lib/utils";
+import { screenshotSrc, spotifyEmbedRef, tweetIdFromUrl, youtubeIdFromUrl } from "@/lib/utils";
 import type { Column } from "@/lib/colosseum/column";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import {
@@ -258,9 +258,8 @@ function BlockModalBody({
   // by block id in the parent, so this resets when navigating between blocks.
   const [imageErrored, setImageErrored] = useState(false);
 
-  const imageURL = screenshot?.image_url ?? null;
   const urlTitle = screenshot?.title ?? "";
-  const screenshotVersion = screenshot?.captured_at ?? null;
+  const imageSrc = screenshotSrc(screenshot?.image_url, screenshot?.captured_at);
 
   const isDirty =
     title !== (column.title ?? "") ||
@@ -473,13 +472,9 @@ function BlockModalBody({
               <span className="font-mono text-sm break-all">{column.url!}</span>
             </div>
             <div className="mt-2 w-full">
-              {imageURL && !imageErrored ? (
+              {imageSrc && !imageErrored ? (
                 <img
-                  src={
-                    screenshotVersion
-                      ? `${imageURL}?v=${encodeURIComponent(screenshotVersion)}`
-                      : imageURL
-                  }
+                  src={imageSrc}
                   alt={urlTitle || "Website screenshot"}
                   onError={() => setImageErrored(true)}
                   className="w-full rounded-md"

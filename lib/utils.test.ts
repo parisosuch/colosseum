@@ -5,6 +5,7 @@ import {
   isSpotifyUrl,
   isTweetUrl,
   isYouTubeUrl,
+  screenshotSrc,
   spotifyEmbedRef,
   tweetIdFromUrl,
   youtubeIdFromUrl,
@@ -95,4 +96,28 @@ test("imageSrcFromHtml returns null when there's no usable absolute image URL", 
   // Non-http(s) srcs (data:, blob:, relative) fall back to the clipboard file.
   expect(imageSrcFromHtml('<img src="data:image/png;base64,AAAA">')).toBeNull();
   expect(imageSrcFromHtml('<img src="/local/relative.gif">')).toBeNull();
+});
+
+test("screenshotSrc appends the cache-busting version token", () => {
+  expect(screenshotSrc("https://cdn.example.com/a.png", "2026-01-02T03:04:05.000Z")).toBe(
+    "https://cdn.example.com/a.png?v=2026-01-02T03%3A04%3A05.000Z",
+  );
+  // Numeric versions round-trip the same as string ones.
+  expect(screenshotSrc("https://cdn.example.com/a.png", 1735786800000)).toBe(
+    "https://cdn.example.com/a.png?v=1735786800000",
+  );
+});
+
+test("screenshotSrc falls back to the bare image URL when there's no version", () => {
+  const url = "https://cdn.example.com/a.png";
+  expect(screenshotSrc(url, null)).toBe(url);
+  expect(screenshotSrc(url, undefined)).toBe(url);
+  // An empty token would produce a `?v=` that no prefetch would ever match.
+  expect(screenshotSrc(url, "")).toBe(url);
+});
+
+test("screenshotSrc returns null when there's no screenshot", () => {
+  expect(screenshotSrc(null, "2026-01-02T03:04:05.000Z")).toBeNull();
+  expect(screenshotSrc(undefined, null)).toBeNull();
+  expect(screenshotSrc("", "2026-01-02T03:04:05.000Z")).toBeNull();
 });

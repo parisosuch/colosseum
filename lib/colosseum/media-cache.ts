@@ -29,6 +29,25 @@ export function mediaCacheControl(visibility: MediaVisibility): string {
   return visibility === "private" ? "private, no-cache" : "public, max-age=31536000, immutable";
 }
 
+// Cache policy for the 302 that hands public media off to the CDN, which is a
+// different question from the bytes above. A media id names one blob forever,
+// so the pointer is as immutable as what it points at — but `public` here would
+// let a shared cache keep answering for the route after the answer stops being
+// true. A channel flipping to private updates the media rows (and the route
+// starts 404ing) while the object stays readable at its CDN URL, so a shared
+// copy of the redirect would route a viewer who never had access straight past
+// the check. `private` keeps the copy in the one browser that already passed it.
+//
+// That browser can still be stale after a flip, which is the same trade the
+// immutable bytes above already make: a viewer who loaded the image while it
+// was public keeps their copy either way. What this avoids is handing the
+// pointer to viewers who never had it.
+//
+// The win is per-viewer anyway. Fifty tiles re-requesting the redirect on every
+// repeat view and every scroll back is what this removes; a shared cache would
+// only have helped each new viewer's first load.
+export const MEDIA_REDIRECT_CACHE_CONTROL = "private, max-age=31536000, immutable";
+
 // The `?thumb` rendition is different bytes derived from the same blob, so it
 // needs a tag of its own or the two would collide in the browser's cache.
 export function mediaEtag(sha256: string, thumb: boolean): string {

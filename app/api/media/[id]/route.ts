@@ -12,7 +12,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { blobKey, ensureThumbnail, getMedia, thumbKey } from "@/lib/colosseum/blob";
 import { canReadMedia } from "@/lib/colosseum/channel";
-import { etagMatches, mediaCacheControl, mediaEtag } from "@/lib/colosseum/media-cache";
+import {
+  etagMatches,
+  MEDIA_REDIRECT_CACHE_CONTROL,
+  mediaCacheControl,
+  mediaEtag,
+} from "@/lib/colosseum/media-cache";
 import { getObject, objectSize, publicUrl, signedUrl } from "@/lib/colosseum/storage";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -62,7 +67,13 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   if (item.visibility === "public") {
     const url = publicUrl(key);
     if (url) {
-      return NextResponse.redirect(url, 302);
+      // Cached in the viewer's own browser, not in any shared cache — see
+      // MEDIA_REDIRECT_CACHE_CONTROL for why a public redirect still gets a
+      // private policy. Without it a grid re-requests this per tile, per view.
+      return NextResponse.redirect(url, {
+        status: 302,
+        headers: { "Cache-Control": MEDIA_REDIRECT_CACHE_CONTROL },
+      });
     }
   } else {
     const url = await signedUrl(key);

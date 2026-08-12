@@ -14,7 +14,7 @@ import { isChannelMember } from "@/lib/colosseum/member";
 import { Column, getColumn } from "@/lib/colosseum/column";
 import { getScreenshot } from "@/lib/colosseum/screenshot-data";
 import { getSessionUser } from "@/lib/auth";
-import { spotifyEmbedRef, youtubeIdFromUrl } from "@/lib/utils";
+import { screenshotSrc, spotifyEmbedRef, youtubeIdFromUrl } from "@/lib/utils";
 
 type BlockPageParams = {
   params: Promise<{ handle: string; channel_id: string; block_id: string }>;
@@ -87,10 +87,7 @@ export default async function BlockPage({ params }: BlockPageParams) {
   // URL blocks render their cached screenshot full-size when one exists.
   const screenshot = column.type === "url" && column.url ? await getScreenshot(column.url) : null;
 
-  const screenshotSrc =
-    screenshot?.image_url && screenshot.captured_at
-      ? `${screenshot.image_url}?v=${encodeURIComponent(screenshot.captured_at)}`
-      : (screenshot?.image_url ?? null);
+  const imageSrc = screenshotSrc(screenshot?.image_url, screenshot?.captured_at);
 
   return (
     <div className="w-full p-6 sm:p-12 flex flex-col gap-8 lg:flex-1 lg:min-h-0 lg:overflow-hidden">
@@ -150,9 +147,9 @@ export default async function BlockPage({ params }: BlockPageParams) {
                 <span className="font-mono text-sm break-all">{column.url}</span>
               </div>
               <div className="mt-2 w-full">
-                {screenshotSrc ? (
+                {imageSrc ? (
                   <img
-                    src={screenshotSrc}
+                    src={imageSrc}
                     alt={column.title ?? "Website screenshot"}
                     className="w-full rounded-md"
                   />

@@ -8,6 +8,17 @@ release.
 
 ## [Unreleased]
 
+## [1.9.2] - 2026-08-15
+
+### Fixed
+
+- A link straight to an image file (`https://example.com/cat.gif`) now becomes an
+  image block instead of a link block. It used to be screenshotted, which
+  captured the browser's bare image viewer and froze a GIF on its first frame.
+  The image is fetched and stored like any other upload, so it's thumbnailed and
+  animates; a URL that turns out not to be a usable image still falls back to a
+  link block with its screenshot.
+
 ## [1.9.1] - 2026-08-15
 
 ### Fixed

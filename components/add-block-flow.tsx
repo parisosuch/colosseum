@@ -100,12 +100,15 @@ export function useAddBlockFlow(channels: PickableChannel[]) {
         }
       } else if (isURL(text)) {
         const url = text.startsWith("http") ? text : `https://${text}`;
-        await uploadURLColumnAction({ channelId, text: url });
+        const column = await uploadURLColumnAction({ channelId, text: url });
         // Best-effort: warm the screenshot in the background so the preview is
-        // ready by the time the channel is opened.
-        void fetch("/api/screenshot", { method: "POST", body: JSON.stringify({ url }) }).catch(
-          () => {},
-        );
+        // ready by the time the channel is opened. An image URL comes back as an
+        // image block, which carries its own bytes and has nothing to capture.
+        if (column.type === "url") {
+          void fetch("/api/screenshot", { method: "POST", body: JSON.stringify({ url }) }).catch(
+            () => {},
+          );
+        }
       } else {
         await uploadTextColumnAction({ channelId, text });
       }

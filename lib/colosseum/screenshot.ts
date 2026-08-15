@@ -4,6 +4,7 @@ import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import sharp from "sharp";
 
 import { createMedia, putBlob } from "./blob";
+import { consentCookies } from "./consent";
 import { DESKTOP_UA, fetchOgFallback } from "./og-meta";
 import { getScreenshot, upsertScreenshot, ScreenshotRow } from "./screenshot-data";
 import { logError, logInfo } from "@/lib/log";
@@ -72,6 +73,11 @@ export async function captureWebsiteScreenshot(
     await page.setViewport({ width: SCREENSHOT_SIZE, height: SCREENSHOT_SIZE });
     await page.setUserAgent(DESKTOP_UA);
     await page.setExtraHTTPHeaders({ "Accept-Language": "en-US,en;q=0.9" });
+
+    // Pre-answer a known consent interstitial, so the capture is the page and
+    // not the wall. No-op for sites we don't know one for.
+    const cookies = consentCookies(url);
+    if (cookies.length > 0) await browser.setCookie(...cookies);
 
     let response: HTTPResponse | null = null;
     try {

@@ -141,6 +141,10 @@ export async function putImageBlob(
 // Throws on a bad/unreachable/oversized/non-image URL; putImageBlob re-validates
 // type and size. ponytail: no SSRF allowlist, matching the screenshot capture's
 // existing posture — tighten both together if the threat model changes.
+// Matches the screenshot capture's navigation timeout, so a slow host costs the
+// same either way.
+const IMAGE_FETCH_TIMEOUT_MS = 15_000;
+
 export async function putImageBlobFromUrl(
   imageUrl: string,
   createdBy: string,
@@ -155,7 +159,14 @@ export async function putImageBlobFromUrl(
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error("Unsupported image URL.");
   }
-  const res = await fetch(url, { headers: { "User-Agent": DESKTOP_UA, Accept: "image/*" } });
+  // Bounded: a host that accepts the connection and then stalls would otherwise
+  // hold the request open forever, and this now runs on the add-a-block path.
+  const res = await fetch(url, {
+    headers: { "User-Agent": DESKTOP_UA, Accept: "image/*" },
+    signal: AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS),
+  }).catch(() => {
+    throw new Error("Couldn't fetch that image.");
+  });
   if (!res.ok) {
     throw new Error("Couldn't fetch that image.");
   }

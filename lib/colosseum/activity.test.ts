@@ -36,6 +36,28 @@ test("image, video, and channel fall back to a noun", () => {
   expect(blockLabel(b({ type: "channel" }))).toBe("a channel");
 });
 
+test("getActivityFeed: a member's block carries the channel owner's handle", async () => {
+  // Bob owns a public channel; Alice is a member and adds the block. The feed
+  // attributes it to Alice but the channel still lives under Bob.
+  const channel = await createChannel({
+    title: "Bob's public channel",
+    access: "public",
+    owner_id: USERS.bob.id,
+  });
+  await addChannelMemberByHandle(channel.id, USERS.alice.handle);
+  const block = await uploadURLColumn({
+    created_by: USERS.alice.id,
+    channel_id: channel.id,
+    text: "https://ponytail.example/explore-408-member-add",
+  });
+
+  const feed = await getActivityFeed(null, 200);
+  const item = feed.find((i) => i.kind === "block" && i.column?.id === block.id);
+
+  expect(item?.handle).toBe(USERS.alice.handle);
+  expect(item?.channelHandle).toBe(USERS.bob.handle);
+});
+
 test("getActivityFeed: private-channel blocks reach the owner and members, not outsiders", async () => {
   const hasBlock = (items: ActivityItem[], id: number) =>
     items.some((i) => i.kind === "block" && i.column?.id === id);

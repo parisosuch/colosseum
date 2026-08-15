@@ -315,7 +315,8 @@ export default function ColumnInput({
     onBlockAdded();
 
     // Only plain URL blocks get the async screenshot pass. A tweet block already
-    // carries its snapshot; a text block has nothing to capture.
+    // carries its snapshot; a text block has nothing to capture; a URL that
+    // pointed at an image file came back as an image block holding the bytes.
     if (column.type !== "url") {
       toast.success(
         column.type === "tweet"
@@ -324,7 +325,9 @@ export default function ColumnInput({
             ? "Video added."
             : column.type === "spotify"
               ? "Track added."
-              : "Column added.",
+              : column.type === "image"
+                ? "Image added."
+                : "Column added.",
       );
       return;
     }

@@ -84,6 +84,26 @@ export function isSpotifyUrl(url: string): boolean {
   return spotifyEmbedRef(url) !== null;
 }
 
+// The path extensions that map onto ALLOWED_IMAGE_TYPES (lib/colosseum/blob.ts).
+// SVG is deliberately absent: it isn't an allowed upload type either.
+const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "avif"];
+
+// Does this URL point straight at an image file? Judged by the path extension
+// alone — pure string parsing (no server-only deps, no network) so client
+// components can classify a pasted URL before submitting it. The server still
+// verifies the real bytes when it fetches them, and falls back to a plain link
+// block if the URL turns out not to be a usable image.
+export function isImageUrl(url: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(url.startsWith("http") ? url : `https://${url}`);
+  } catch {
+    return false;
+  }
+  const ext = u.pathname.split(".").pop()?.toLowerCase();
+  return !!ext && IMAGE_EXTENSIONS.includes(ext);
+}
+
 export function isURL(text: string): boolean {
   let url: URL;
   try {

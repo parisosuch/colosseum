@@ -8,6 +8,26 @@ release.
 
 ## [Unreleased]
 
+## [1.9.2] - 2026-08-15
+
+### Fixed
+
+- A link straight to an image file (`https://example.com/cat.gif`) now becomes an
+  image block instead of a link block. It used to be screenshotted, which
+  captured the browser's bare image viewer and froze a GIF on its first frame.
+  The image is fetched and stored like any other upload, so it's thumbnailed and
+  animates; a URL that turns out not to be a usable image still falls back to a
+  link block with its screenshot.
+
+## [1.9.1] - 2026-08-15
+
+### Fixed
+
+- Clicking a block in the Explore feed now opens its channel under the channel's
+  owner. When a member added a block to someone else's channel, the feed linked
+  the channel under the member instead, so the URL and the breadcrumbs named the
+  wrong user. The feed still attributes the block to whoever added it.
+
 ## [1.9.0] - 2026-07-26
 
 ### Added

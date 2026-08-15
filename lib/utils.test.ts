@@ -4,6 +4,7 @@ import {
   imageSrcFromHtml,
   isImageUrl,
   isSpotifyUrl,
+  youtubeChannelRef,
   isTweetUrl,
   isYouTubeUrl,
   screenshotSrc,
@@ -49,6 +50,38 @@ test("youtubeIdFromUrl rejects non-YouTube and malformed URLs", () => {
   expect(youtubeIdFromUrl("not a url")).toBeNull();
   expect(isYouTubeUrl("https://youtu.be/dQw4w9WgXcQ")).toBe(true);
   expect(isYouTubeUrl("https://example.com")).toBe(false);
+});
+
+test("youtubeChannelRef normalizes every channel URL form to the channel root", () => {
+  expect(youtubeChannelRef("https://www.youtube.com/@syntaxfm")).toEqual({
+    label: "@syntaxfm",
+    url: "https://www.youtube.com/@syntaxfm",
+  });
+  // A tab is still the same channel.
+  expect(youtubeChannelRef("https://www.youtube.com/@syntaxfm/videos")?.url).toBe(
+    "https://www.youtube.com/@syntaxfm",
+  );
+  expect(youtubeChannelRef("https://m.youtube.com/@syntaxfm/streams")?.label).toBe("@syntaxfm");
+  expect(youtubeChannelRef("https://www.youtube.com/channel/UCyU5wkjgQYGRB0hIHMwm2Sg")?.url).toBe(
+    "https://www.youtube.com/channel/UCyU5wkjgQYGRB0hIHMwm2Sg",
+  );
+  expect(youtubeChannelRef("youtube.com/c/SomeName/playlists")?.url).toBe(
+    "https://www.youtube.com/c/SomeName",
+  );
+  expect(youtubeChannelRef("https://www.youtube.com/user/SomeName")?.label).toBe("SomeName");
+});
+
+test("youtubeChannelRef rejects videos and non-channel pages", () => {
+  // Video URLs belong to youtubeIdFromUrl, not here.
+  expect(youtubeChannelRef("https://www.youtube.com/watch?v=dQw4w9WgXcQ")).toBeNull();
+  expect(youtubeChannelRef("https://www.youtube.com/shorts/dQw4w9WgXcQ")).toBeNull();
+  expect(youtubeChannelRef("https://youtu.be/dQw4w9WgXcQ")).toBeNull();
+  // A channel tab we know, versus a deeper page that isn't the channel.
+  expect(youtubeChannelRef("https://www.youtube.com/@syntaxfm/video/abc")).toBeNull();
+  expect(youtubeChannelRef("https://www.youtube.com/feed/subscriptions")).toBeNull();
+  expect(youtubeChannelRef("https://www.youtube.com/")).toBeNull();
+  expect(youtubeChannelRef("https://notyoutube.com/@syntaxfm")).toBeNull();
+  expect(youtubeChannelRef("not a url")).toBeNull();
 });
 
 test("spotifyEmbedRef extracts the type and id from open.spotify.com URLs", () => {

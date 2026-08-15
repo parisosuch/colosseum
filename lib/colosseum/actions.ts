@@ -47,13 +47,15 @@ import {
   uploadTextColumn,
   uploadTweetColumn,
   uploadYouTubeColumn,
+  uploadYouTubeChannelColumn,
   uploadSpotifyColumn,
   uploadURLColumn,
 } from "./column";
 import { ingestTweet } from "./tweet";
+import { fetchYouTubeChannelMeta } from "./youtube-channel";
 import { renderEmail, sendEmail } from "@/lib/email";
 import { logError } from "@/lib/log";
-import { isImageUrl, tweetIdFromUrl } from "@/lib/utils";
+import { isImageUrl, tweetIdFromUrl, youtubeChannelRef } from "@/lib/utils";
 import {
   Comment,
   createComment,
@@ -405,6 +407,50 @@ export async function uploadYouTubeColumnAction(input: {
     channel_id: input.channelId,
     url: input.url,
     title,
+  });
+}
+
+// Add a YouTube channel block. A channel has no embeddable player, so this
+// resolves the channel's name, blurb, and avatar up front and stores them — the
+// card renders from our own data instead of an iframe. The avatar is ingested
+// into blob storage like a tweet's media, so the card survives YouTube rotating
+// the image URL, and it's GC'd with the block. If YouTube can't be reached or
+// the page doesn't look like a channel, fall back to a plain URL block so the
+// user still gets a screenshot-backed link.
+export async function uploadYouTubeChannelColumnAction(input: {
+  channelId: number;
+  url: string;
+}): Promise<Column> {
+  const userId = await requireUserId();
+  const channel = await requireContributableChannel(input.channelId, userId);
+  const ref = youtubeChannelRef(input.url);
+  const meta = ref ? await fetchYouTubeChannelMeta(ref.url) : null;
+  if (!ref || !meta) {
+    return uploadURLColumn({ created_by: userId, channel_id: input.channelId, text: input.url });
+  }
+
+  // Best-effort: a channel with no avatar, or one we can't fetch, still makes a
+  // fine card — it falls back to the channel's initial.
+  let image: string | undefined;
+  if (meta.avatarUrl) {
+    try {
+      image = await putImageBlobFromUrl(
+        meta.avatarUrl,
+        userId,
+        channel.private ? "private" : "public",
+      );
+    } catch (e) {
+      logError("youtube.channel.avatar", `avatar fetch failed for ${meta.url}`, e);
+    }
+  }
+
+  return uploadYouTubeChannelColumn({
+    created_by: userId,
+    channel_id: input.channelId,
+    url: meta.url,
+    title: meta.title || ref.label,
+    description: meta.description || undefined,
+    image,
   });
 }
 

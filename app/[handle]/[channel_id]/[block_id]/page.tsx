@@ -6,6 +6,7 @@ import ColumnComments from "@/components/column-comments";
 import { Markdown } from "@/components/markdown";
 import YouTubeBlock from "@/components/youtube-block";
 import SpotifyBlock from "@/components/spotify-block";
+import YouTubeChannelBlock from "@/components/youtube-channel-block";
 import PageHeader from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { blockLabel, blockPreviewMeta } from "@/lib/colosseum/block-meta";
@@ -127,6 +128,15 @@ export default async function BlockPage({ params }: BlockPageParams) {
             </video>
           ) : column.type === "youtube" ? (
             <YouTubeBlock id={youtubeIdFromUrl(column.url ?? "") ?? ""} />
+          ) : column.type === "youtube_channel" ? (
+            <div className="w-full max-w-xl mx-auto">
+              <YouTubeChannelBlock
+                url={column.url ?? ""}
+                title={column.title ?? "YouTube channel"}
+                description={column.description ?? undefined}
+                image={column.image}
+              />
+            </div>
           ) : column.type === "spotify" ? (
             <div className="w-full max-w-2xl mx-auto">
               <SpotifyBlock

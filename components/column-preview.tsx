@@ -8,6 +8,7 @@ import ScreenShotPreview from "./screenshot-preview";
 import TweetBlock from "./tweet-block";
 import YouTubeBlock from "./youtube-block";
 import SpotifyBlock from "./spotify-block";
+import YouTubeChannelBlock from "./youtube-channel-block";
 
 export default async function ColumnPreview({
   column,
@@ -96,6 +97,17 @@ export default async function ColumnPreview({
 
   if (column.type === "youtube") {
     return <YouTubeBlock id={youtubeIdFromUrl(column.url ?? "") ?? ""} compact />;
+  }
+
+  if (column.type === "youtube_channel") {
+    return (
+      <YouTubeChannelBlock
+        url={column.url ?? ""}
+        title={column.title ?? "YouTube channel"}
+        image={column.image}
+        compact
+      />
+    );
   }
 
   if (column.type === "spotify") {

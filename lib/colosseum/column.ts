@@ -23,7 +23,17 @@ import { tweetIdFromUrl } from "@/lib/utils";
 export type Column = {
   id: number;
   created_at: string;
-  type: "url" | "text" | "image" | "channel" | "pdf" | "video" | "tweet" | "youtube" | "spotify";
+  type:
+    | "url"
+    | "text"
+    | "image"
+    | "channel"
+    | "pdf"
+    | "video"
+    | "tweet"
+    | "youtube"
+    | "youtube_channel"
+    | "spotify";
   title?: string;
   description?: string;
   url?: string;
@@ -361,6 +371,33 @@ export async function uploadYouTubeColumn(input: {
       type: "youtube",
       url: input.url,
       title: input.title,
+      channel_id: input.channel_id,
+      created_by: input.created_by,
+    })
+    .returning();
+  return toColumn(row);
+}
+
+// A YouTube channel block. There's no embeddable player for a channel, so this
+// stores what a card needs: the channel URL, its name as the block title, its
+// blurb as the description, and its avatar in `image` (ingested into our own
+// storage, so the card doesn't break when YouTube rotates the URL).
+export async function uploadYouTubeChannelColumn(input: {
+  created_by: string;
+  channel_id: number;
+  url: string;
+  title?: string;
+  description?: string;
+  image?: string;
+}): Promise<Column> {
+  const [row] = await db
+    .insert(column)
+    .values({
+      type: "youtube_channel",
+      url: input.url,
+      title: input.title,
+      description: input.description,
+      image: input.image,
       channel_id: input.channel_id,
       created_by: input.created_by,
     })

@@ -5,6 +5,7 @@ import {
   uploadURLColumnAction,
   uploadTweetColumnAction,
   uploadYouTubeColumnAction,
+  uploadYouTubeChannelColumnAction,
   uploadSpotifyColumnAction,
   uploadTextColumnAction,
   uploadImageColumnAction,
@@ -15,7 +16,14 @@ import {
 } from "@/lib/colosseum/actions";
 import type { Column } from "@/lib/colosseum/column";
 import { columnLimitMessage } from "@/lib/quota";
-import { imageSrcFromHtml, isTweetUrl, isYouTubeUrl, isSpotifyUrl, isURL } from "@/lib/utils";
+import {
+  imageSrcFromHtml,
+  isTweetUrl,
+  isYouTubeUrl,
+  isSpotifyUrl,
+  isURL,
+  isYouTubeChannelUrl,
+} from "@/lib/utils";
 import { resumeVideoUploads, startVideoUpload, type UploadHandlers } from "@/lib/resumable-upload";
 import type { SessionUser } from "@/components/channel-board";
 import type { Channel } from "@/lib/colosseum/channel";
@@ -287,6 +295,8 @@ export default function ColumnInput({
     try {
       if (isTweetUrl(text)) {
         column = await uploadTweetColumnAction({ channelId: channel.id, url: urlText });
+      } else if (isYouTubeChannelUrl(text)) {
+        column = await uploadYouTubeChannelColumnAction({ channelId: channel.id, url: urlText });
       } else if (isYouTubeUrl(text)) {
         column = await uploadYouTubeColumnAction({ channelId: channel.id, url: urlText });
       } else if (isSpotifyUrl(text)) {
@@ -323,11 +333,13 @@ export default function ColumnInput({
           ? "Tweet added."
           : column.type === "youtube"
             ? "Video added."
-            : column.type === "spotify"
-              ? "Track added."
-              : column.type === "image"
-                ? "Image added."
-                : "Column added.",
+            : column.type === "youtube_channel"
+              ? "Channel added."
+              : column.type === "spotify"
+                ? "Track added."
+                : column.type === "image"
+                  ? "Image added."
+                  : "Column added.",
       );
       return;
     }

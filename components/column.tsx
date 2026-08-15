@@ -10,6 +10,7 @@ import ScreenShotPreview from "./screenshot-preview";
 import TweetBlock from "./tweet-block";
 import YouTubeBlock from "./youtube-block";
 import SpotifyBlock from "./spotify-block";
+import YouTubeChannelBlock from "./youtube-channel-block";
 import { GradientSpin } from "./gradient-spin";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 
@@ -110,6 +111,13 @@ const ColumnComponent = memo(function ColumnComponent({
       <TweetBlock id={tweetIdFromUrl(column.url ?? "") ?? ""} compact />
     ) : column.type === "youtube" ? (
       <YouTubeBlock id={youtubeIdFromUrl(column.url ?? "") ?? ""} compact />
+    ) : column.type === "youtube_channel" ? (
+      <YouTubeChannelBlock
+        url={column.url ?? ""}
+        title={column.title ?? "YouTube channel"}
+        image={column.image}
+        compact
+      />
     ) : column.type === "spotify" ? (
       (() => {
         const ref = spotifyEmbedRef(column.url ?? "");
@@ -137,6 +145,7 @@ const ColumnComponent = memo(function ColumnComponent({
       column.type === "url" ||
       column.type === "tweet" ||
       column.type === "youtube" ||
+      column.type === "youtube_channel" ||
       column.type === "spotify"
         ? (column.url ?? "").replace(/^https?:\/\//, "")
         : column.type === "text"

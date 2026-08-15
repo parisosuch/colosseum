@@ -8,6 +8,15 @@ release.
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-08-15
+
+### Fixed
+
+- Clicking a block in the Explore feed now opens its channel under the channel's
+  owner. When a member added a block to someone else's channel, the feed linked
+  the channel under the member instead, so the URL and the breadcrumbs named the
+  wrong user. The feed still attributes the block to whoever added it.
+
 ## [1.9.0] - 2026-07-26
 
 ### Added

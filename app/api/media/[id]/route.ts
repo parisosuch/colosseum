@@ -47,13 +47,20 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   // `?thumb` serves a downsized webp derived from the same bytes (used by grid
   // previews). Generation is idempotent + cached; a non-image blob (or any
   // failure) falls back to the full bytes.
+  //
+  // The row already tells us whether the rendition is stored, so the common
+  // case — every tile of every grid — goes straight to the key. Only a blob
+  // that predates its thumbnail takes the lazy path, which probes storage and
+  // resizes on the way through, then marks the row so the next request doesn't.
   let key = blobKey(item.sha256);
   let contentType = item.mime;
   let servingThumb = false;
   if (req.nextUrl.searchParams.has("thumb")) {
-    const thumb = await ensureThumbnail(item.sha256).catch(() => null);
+    const thumb = item.has_thumbnail
+      ? thumbKey(item.sha256)
+      : await ensureThumbnail(item.sha256).catch(() => null);
     if (thumb) {
-      key = thumbKey(item.sha256);
+      key = thumb;
       contentType = "image/webp";
       servingThumb = true;
     }

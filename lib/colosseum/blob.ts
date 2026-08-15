@@ -17,6 +17,7 @@ import sharp from "sharp";
 
 import { db } from "@/lib/db";
 import { blobs, media } from "@/lib/db/schema";
+import { logError } from "@/lib/log";
 import { DESKTOP_UA } from "./og-meta";
 import { deleteObject, getBytes, objectExists, putObject } from "./storage";
 
@@ -52,9 +53,17 @@ export function thumbKey(sha256: string): string {
 // Generate (once) a downsized webp thumbnail for a stored image blob and return
 // its storage key. Idempotent: an existing thumbnail is left as-is. Throws if
 // the blob isn't a decodable image, so callers fall back to the full bytes.
+//
+// Every path that creates a thumbnail comes through here — upload, backfill,
+// and the serving route's lazy fallback — so this is also where the blob row
+// gets marked. The serving route reads that mark to skip the probe below.
 export async function ensureThumbnail(sha256: string): Promise<string> {
   const key = thumbKey(sha256);
   if (await objectExists(key)) {
+    // Already stored, but we only learned that by probing — which means the row
+    // says otherwise (or nothing asked it). Record it so the next request
+    // doesn't probe again. Covers blobs thumbnailed before the column existed.
+    await markThumbnail(sha256);
     return key;
   }
   const src = await getBytes(blobKey(sha256));
@@ -69,7 +78,22 @@ export async function ensureThumbnail(sha256: string): Promise<string> {
     .webp({ quality: 72 })
     .toBuffer();
   await putObject(key, out, "image/webp");
+  // After the bytes land, never before — a row marked ahead of a failed write
+  // would send the route to a key that isn't there, with the probe that would
+  // have caught it now skipped.
+  await markThumbnail(sha256);
   return key;
+}
+
+// Record that this blob's thumbnail is stored. Best-effort: losing the write
+// costs a probe on the next request, which is what happened before the column
+// existed, so it must never fail a thumbnail that was generated fine.
+async function markThumbnail(sha256: string): Promise<void> {
+  try {
+    await db.update(blobs).set({ has_thumbnail: true }).where(eq(blobs.sha256, sha256));
+  } catch (e) {
+    logError("blob.thumbnail", `couldn't mark ${sha256} as thumbnailed`, e);
+  }
 }
 
 export function mediaUrl(id: string): string {
@@ -223,15 +247,22 @@ export async function putVideoBlob(
 }
 
 // Everything the serving route needs to authorize and stream one media id.
-export async function getMedia(
-  id: string,
-): Promise<{ owner_id: string; visibility: MediaVisibility; sha256: string; mime: string } | null> {
+export async function getMedia(id: string): Promise<{
+  owner_id: string;
+  visibility: MediaVisibility;
+  sha256: string;
+  mime: string;
+  has_thumbnail: boolean;
+} | null> {
   const rows = await db
     .select({
       owner_id: media.owner_id,
       visibility: media.visibility,
       sha256: blobs.sha256,
       mime: blobs.mime,
+      // Already joining blobs, so this rides along for free — and it is what
+      // lets the route serve `?thumb` without a storage round trip.
+      has_thumbnail: blobs.has_thumbnail,
     })
     .from(media)
     .innerJoin(blobs, eq(media.blob_sha256, blobs.sha256))

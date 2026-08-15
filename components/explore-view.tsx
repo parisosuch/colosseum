@@ -73,7 +73,9 @@ export function ActivityRow({
   const linked = item.column?.linked_channel;
 
   const userHref = `/${item.handle}`;
-  const hostHref = `/${item.handle}/${item.channelId}`; // the channel it was added to / created
+  // The channel it was added to / created. Channels live under their owner, so
+  // this is the owner's handle — the actor may be a member who added to it.
+  const hostHref = `/${item.channelHandle ?? item.handle}/${item.channelId}`;
   const linkedHref = linked ? `/${linked.handle}/${item.column!.linked_channel_id}` : hostHref;
 
   // Focal element, where it links, and its aria.
@@ -90,7 +92,7 @@ export function ActivityRow({
     focalAria = `Channel ${linked?.title ?? ""}`;
   } else if (item.kind === "block") {
     focal = <ColumnPreview column={item.column!} priority={priority} />;
-    focalHref = `/${item.handle}/${item.channelId}/${item.column!.id}`;
+    focalHref = `${hostHref}/${item.column!.id}`;
     focalAria = `${item.label} in ${item.channelTitle}`;
   } else {
     focal = <ChannelFocal title={item.channelTitle!} description={item.channelDescription} />;
@@ -159,7 +161,7 @@ export function ActivityRow({
       {opensModal ? (
         <FeedBlockModal
           column={item.column!}
-          handle={item.handle}
+          handle={item.channelHandle ?? item.handle}
           screenshot={item.screenshot}
           aria={focalAria}
           viewerId={viewerId}

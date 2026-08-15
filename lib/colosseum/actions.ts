@@ -53,7 +53,7 @@ import {
 import { ingestTweet } from "./tweet";
 import { renderEmail, sendEmail } from "@/lib/email";
 import { logError } from "@/lib/log";
-import { tweetIdFromUrl } from "@/lib/utils";
+import { isImageUrl, tweetIdFromUrl } from "@/lib/utils";
 import {
   Comment,
   createComment,
@@ -323,12 +323,30 @@ export async function getChannelColumnsAction(
   return getChannelColumns(channelId, query, await currentUserId());
 }
 
+// Add a link block. A URL that points straight at an image file becomes an
+// image block instead — screenshotting one renders the browser's bare image
+// viewer, and for a GIF it freezes the first frame. The bytes are ingested the
+// same way the paste-from-URL flow does it, so the block is self-hosted and
+// thumbnailed. Anything the fetch rejects (dead link, not really an image,
+// oversized) falls back to a plain URL block, which still gets its screenshot.
 export async function uploadURLColumnAction(input: {
   channelId: number;
   text: string;
 }): Promise<Column> {
   const userId = await requireUserId();
-  await requireContributableChannel(input.channelId, userId);
+  const channel = await requireContributableChannel(input.channelId, userId);
+  if (isImageUrl(input.text)) {
+    try {
+      const image = await putImageBlobFromUrl(
+        input.text,
+        userId,
+        channel.private ? "private" : "public",
+      );
+      return uploadImageColumn({ created_by: userId, channel_id: input.channelId, image });
+    } catch (e) {
+      logError("column.url.image", `image ingest failed for ${input.text}`, e);
+    }
+  }
   return uploadURLColumn({ created_by: userId, channel_id: input.channelId, text: input.text });
 }
 

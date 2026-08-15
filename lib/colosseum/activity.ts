@@ -1,6 +1,7 @@
 import "server-only";
 
 import { and, desc, eq, lt, ne, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 
 import { db } from "@/lib/db";
 import { channel, channelMember, column, userProfile } from "@/lib/db/schema";
@@ -27,6 +28,10 @@ export type ActivityItem = {
   // block / channel only.
   channelId?: number;
   channelTitle?: string;
+  // The channel owner's handle. A channel lives under its owner, so its links
+  // are `/{channelHandle}/{channelId}` — not `handle`, which is the actor and
+  // for a block is whoever added it (a member, not necessarily the owner).
+  channelHandle?: string;
   // channel (created) only — shown on the focal card like a normal channel.
   channelDescription?: string;
   label?: string;
@@ -70,17 +75,23 @@ export async function getActivityFeed(
   before?: string,
 ): Promise<ActivityItem[]> {
   const cursor = before ? new Date(before) : null;
+  // The block's creator and the channel's owner are different people whenever a
+  // member adds to someone else's channel, so resolve both handles.
+  const creator = alias(userProfile, "creator_profile");
+  const owner = alias(userProfile, "owner_profile");
   const [blocks, channels, joins] = await Promise.all([
     db
       .select({
         col: column,
-        handle: userProfile.handle,
-        avatar: userProfile.avatar_url,
+        handle: creator.handle,
+        avatar: creator.avatar_url,
         channelTitle: channel.title,
+        channelHandle: owner.handle,
       })
       .from(column)
       .innerJoin(channel, eq(channel.id, column.channel_id))
-      .innerJoin(userProfile, eq(userProfile.user_id, column.created_by))
+      .innerJoin(creator, eq(creator.user_id, column.created_by))
+      .innerJoin(owner, eq(owner.user_id, channel.owner_id))
       .where(
         and(
           // Non-private channels are visible to everyone; a private channel's
@@ -144,13 +155,14 @@ export async function getActivityFeed(
   ]);
 
   const items: ActivityItem[] = [
-    ...blocks.map(({ col, handle, avatar, channelTitle }, i) => ({
+    ...blocks.map(({ col, handle, avatar, channelTitle, channelHandle }, i) => ({
       kind: "block" as const,
       at: col.created_at.toISOString(),
       handle,
       avatarUrl: avatar ?? undefined,
       channelId: col.channel_id,
       channelTitle,
+      channelHandle,
       label: blockLabel(col),
       column: blockColumns[i],
       screenshot: col.type === "url" && col.url ? shots.get(col.url) : undefined,
@@ -162,6 +174,8 @@ export async function getActivityFeed(
       avatarUrl: c.avatar ?? undefined,
       channelId: c.channelId,
       channelTitle: c.channelTitle,
+      // Joined on owner_id, so the actor is the owner here.
+      channelHandle: c.handle,
       channelDescription: c.channelDescription ?? undefined,
     })),
     ...joins.map((u) => ({

@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 
 import {
   imageSrcFromHtml,
+  isImageUrl,
   isSpotifyUrl,
   isTweetUrl,
   isYouTubeUrl,
@@ -77,6 +78,23 @@ test("spotifyEmbedRef rejects non-Spotify and unsupported URLs", () => {
   expect(spotifyEmbedRef("not a url")).toBeNull();
   expect(isSpotifyUrl("https://open.spotify.com/track/6rqhFgbbKwnb9MLmUQDhG6")).toBe(true);
   expect(isSpotifyUrl("https://example.com")).toBe(false);
+});
+
+test("isImageUrl spots a URL pointing straight at an image file", () => {
+  expect(isImageUrl("https://i.sstatic.net/zpzPO.gif")).toBe(true);
+  expect(isImageUrl("i.sstatic.net/zpzPO.gif")).toBe(true);
+  expect(isImageUrl("https://example.com/a/b/photo.JPEG?w=100")).toBe(true);
+  expect(isImageUrl("https://example.com/pic.avif#top")).toBe(true);
+});
+
+test("isImageUrl rejects pages, unsupported types, and malformed input", () => {
+  expect(isImageUrl("https://example.com")).toBe(false);
+  expect(isImageUrl("https://example.com/gallery")).toBe(false);
+  // The query string names an image, the path doesn't.
+  expect(isImageUrl("https://example.com/view?src=cat.gif")).toBe(false);
+  // SVG isn't an allowed upload type, so it stays a link block.
+  expect(isImageUrl("https://example.com/logo.svg")).toBe(false);
+  expect(isImageUrl("not a url")).toBe(false);
 });
 
 test("imageSrcFromHtml pulls the absolute <img> source a browser image-copy drops", () => {

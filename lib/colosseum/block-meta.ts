@@ -18,6 +18,7 @@ export function blockLabel(column: Column): string {
   if (column.type === "pdf") return "PDF column";
   if (column.type === "video") return "Video column";
   if (column.type === "youtube") return "YouTube video";
+  if (column.type === "youtube_channel") return "YouTube channel";
   if (column.type === "spotify") return "Spotify";
   return "Column";
 }
@@ -46,6 +47,11 @@ export function blockShareImage(
     // Captures are stored as a fixed square; saying so lets a client lay the
     // card out before it has fetched the bytes.
     return { url: previewUrl, width: 1200, height: 1200 };
+  }
+  // A channel block's avatar is stored media, public for a public channel —
+  // same as an image block's.
+  if (column.type === "youtube_channel" && column.image) {
+    return { url: column.image };
   }
   if (column.type === "youtube" && column.url) {
     const id = youtubeIdFromUrl(column.url);

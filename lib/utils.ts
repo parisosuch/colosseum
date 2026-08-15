@@ -57,6 +57,63 @@ export function isYouTubeUrl(url: string): boolean {
   return youtubeIdFromUrl(url) !== null;
 }
 
+// The tabs a channel URL can carry after its identifier. Anything else after
+// the identifier is some other kind of page, not the channel itself.
+const YOUTUBE_CHANNEL_TABS = new Set([
+  "featured",
+  "videos",
+  "shorts",
+  "streams",
+  "live",
+  "playlists",
+  "podcasts",
+  "releases",
+  "courses",
+  "community",
+  "posts",
+  "channels",
+  "store",
+  "about",
+]);
+
+// A YouTube channel URL → the channel's canonical URL and the label it goes by
+// (`@syntaxfm`, or the id/name for the older forms), or null for anything else.
+// Handles /@handle, /channel/UC…, /c/name, and /user/name, each with an optional
+// tab (/videos, /streams, …) — a channel is the same channel whichever tab was
+// copied, so they all normalize to its root. Video URLs never match: those are
+// /watch, /shorts/<id>, /embed/<id>, and youtu.be, which youtubeIdFromUrl owns.
+// Pure string parsing (no server-only deps) so client components can classify a
+// pasted URL as a channel.
+export function youtubeChannelRef(url: string): { label: string; url: string } | null {
+  let u: URL;
+  try {
+    u = new URL(url.startsWith("http") ? url : `https://${url}`);
+  } catch {
+    return null;
+  }
+  if (u.hostname.replace(/^(www\.|m\.)/, "") !== "youtube.com") return null;
+
+  const [first, second, third] = u.pathname.split("/").filter(Boolean);
+  if (!first) return null;
+
+  const root = (path: string, label: string, tab: string | undefined) =>
+    !tab || YOUTUBE_CHANNEL_TABS.has(tab)
+      ? { label, url: `https://www.youtube.com/${path}` }
+      : null;
+
+  if (first.startsWith("@") && first.length > 1) {
+    return root(first, first, second);
+  }
+  if ((first === "channel" || first === "c" || first === "user") && second) {
+    return root(`${first}/${second}`, second, third);
+  }
+  return null;
+}
+
+export function isYouTubeChannelUrl(url: string): boolean {
+  return youtubeChannelRef(url) !== null;
+}
+
 // The embeddable content types Spotify's iframe player supports.
 const SPOTIFY_TYPES = ["track", "album", "playlist", "artist", "episode", "show"];
 

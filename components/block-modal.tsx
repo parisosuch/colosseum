@@ -4,6 +4,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { useRef, useState } from "react";
 import Link from "next/link";
 import {
+  Check,
   ChevronLeft,
   ChevronRight,
   Copy,
@@ -258,6 +259,9 @@ function BlockModalBody({
   // A stored screenshot can 404; fall back to the placeholder. The body is keyed
   // by block id in the parent, so this resets when navigating between blocks.
   const [imageErrored, setImageErrored] = useState(false);
+  // Swaps the copy button for a tick for a moment after a successful copy —
+  // the clipboard gives no other feedback that it worked.
+  const [urlCopied, setUrlCopied] = useState(false);
 
   const urlTitle = screenshot?.title ?? "";
   const imageSrc = screenshotSrc(screenshot?.image_url, screenshot?.captured_at);
@@ -274,6 +278,19 @@ function BlockModalBody({
   // Horizontal-swipe navigation (mobile). Fire only when the gesture is clearly
   // horizontal and past a threshold, so vertical scrolling still works.
   const touchStart = useRef<{ x: number; y: number } | null>(null);
+  // Copy the block's own URL (the site it points at, not its permalink).
+  const handleCopyUrl = async () => {
+    if (!column.url) return;
+    try {
+      await navigator.clipboard.writeText(column.url);
+      setUrlCopied(true);
+      setTimeout(() => setUrlCopied(false), 1500);
+    } catch (e) {
+      console.error(e);
+      toast.error("Couldn't copy that link.");
+    }
+  };
+
   const handleTouchStart = (e: React.TouchEvent) => {
     const t = e.touches[0];
     touchStart.current = { x: t.clientX, y: t.clientY };
@@ -476,12 +493,31 @@ function BlockModalBody({
             </span>
           </Link>
         ) : (
-          <a href={column.url} target="_blank" className="block w-full max-w-3xl">
+          <div className="block w-full max-w-3xl">
+            {/* The address bar: the URL opens the site, the button copies it.
+                Two separate controls, so neither is nested inside the other's
+                hit area. */}
             <div className="flex flex-row items-center gap-2 border rounded-md px-2 py-1">
               <GlobeIcon className="size-4 shrink-0" />
-              <span className="font-mono text-sm break-all">{column.url!}</span>
+              <a
+                href={column.url}
+                target="_blank"
+                rel="noreferrer"
+                className="min-w-0 flex-1 font-mono text-sm break-all hover:underline"
+              >
+                {column.url!}
+              </a>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={urlCopied ? "Link copied" : "Copy link"}
+                onClick={handleCopyUrl}
+                className="size-7 shrink-0"
+              >
+                {urlCopied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+              </Button>
             </div>
-            <div className="mt-2 w-full">
+            <a href={column.url} target="_blank" rel="noreferrer" className="mt-2 block w-full">
               {imageSrc && !imageErrored ? (
                 <img
                   src={imageSrc}
@@ -494,8 +530,8 @@ function BlockModalBody({
                   No screenshot available
                 </div>
               )}
-            </div>
-          </a>
+            </a>
+          </div>
         )}
       </div>
       <div className="w-full md:w-1/4 space-y-2 md:flex md:flex-col md:min-h-0">

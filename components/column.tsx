@@ -2,12 +2,12 @@
 
 import { memo } from "react";
 import { FileText, Play } from "lucide-react";
-import { Markdown } from "./markdown";
+import { RenderedMarkdown } from "./rendered-markdown";
 import type { Column } from "@/lib/colosseum/column";
 import { useBlockMediaPrefetch } from "@/components/block-prefetch";
 import { spotifyEmbedRef, timeAgo, tweetIdFromUrl, youtubeIdFromUrl } from "@/lib/utils";
 import ScreenShotPreview from "./screenshot-preview";
-import TweetBlock from "./tweet-block";
+import TweetBlock from "./tweet-block-lazy";
 import YouTubeBlock from "./youtube-block";
 import SpotifyBlock from "./spotify-block";
 import YouTubeChannelBlock from "./youtube-channel-block";
@@ -77,7 +77,7 @@ const ColumnComponent = memo(function ColumnComponent({
       </div>
     ) : column.type === "text" ? (
       <div className="h-full w-full overflow-hidden p-2">
-        <Markdown text={column.text ?? ""} className="text-xs" />
+        <RenderedMarkdown html={column.html ?? ""} className="text-xs" />
       </div>
     ) : column.type === "image" ? (
       <img

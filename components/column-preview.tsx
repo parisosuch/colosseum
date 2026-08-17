@@ -5,7 +5,7 @@ import { getScreenshot, type ColumnScreenshot } from "@/lib/colosseum/screenshot
 import { spotifyEmbedRef, tweetIdFromUrl, youtubeIdFromUrl } from "@/lib/utils";
 import { Markdown } from "./markdown";
 import ScreenShotPreview from "./screenshot-preview";
-import TweetBlock from "./tweet-block";
+import TweetBlock from "./tweet-block-lazy";
 import YouTubeBlock from "./youtube-block";
 import SpotifyBlock from "./spotify-block";
 import YouTubeChannelBlock from "./youtube-channel-block";

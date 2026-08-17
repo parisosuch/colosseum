@@ -9,6 +9,7 @@ import {
   isYouTubeUrl,
   screenshotSrc,
   spotifyEmbedRef,
+  thumbSrc,
   tweetIdFromUrl,
   youtubeIdFromUrl,
 } from "./utils";
@@ -171,4 +172,16 @@ test("screenshotSrc returns null when there's no screenshot", () => {
   expect(screenshotSrc(null, "2026-01-02T03:04:05.000Z")).toBeNull();
   expect(screenshotSrc(undefined, null)).toBeNull();
   expect(screenshotSrc("", "2026-01-02T03:04:05.000Z")).toBeNull();
+});
+
+test("thumbSrc points at the same rendition the grid card renders", () => {
+  // Byte-for-byte identical to the card's URL, or the modal's placeholder is a
+  // second request instead of a cache hit.
+  expect(thumbSrc("/api/media/abc")).toBe("/api/media/abc?thumb");
+});
+
+test("thumbSrc returns null when the block has no image", () => {
+  expect(thumbSrc(null)).toBeNull();
+  expect(thumbSrc(undefined)).toBeNull();
+  expect(thumbSrc("")).toBeNull();
 });

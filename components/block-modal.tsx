@@ -1,7 +1,7 @@
 "use client";
 
 import type { Dispatch, SetStateAction } from "react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
@@ -21,7 +21,15 @@ import TweetBlock from "./tweet-block-lazy";
 import YouTubeBlock from "./youtube-block";
 import SpotifyBlock from "./spotify-block";
 import YouTubeChannelBlock from "./youtube-channel-block";
-import { screenshotSrc, spotifyEmbedRef, tweetIdFromUrl, youtubeIdFromUrl } from "@/lib/utils";
+import {
+  cn,
+  screenshotSrc,
+  spotifyEmbedRef,
+  THUMB_MAX_WIDTH,
+  thumbSrc,
+  tweetIdFromUrl,
+  youtubeIdFromUrl,
+} from "@/lib/utils";
 import type { Column } from "@/lib/colosseum/column";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import {
@@ -95,6 +103,84 @@ const MarkdownPreview = dynamic(() => import("./markdown-preview"), {
   ssr: false,
   loading: () => <p className="text-sm text-muted-foreground">Rendering preview…</p>,
 });
+
+// The full-size image, with the grid's thumbnail painted behind it until it
+// arrives. The card the modal was opened from has already decoded that
+// thumbnail, so the placeholder costs no request and paints in the first frame —
+// which covers both a cold open of a large image and a run of arrow presses
+// fast enough to outpace the neighbour prefetch.
+//
+// The thumbnail is the element that sizes the box: the full-size image has no
+// intrinsic dimensions until it loads, whereas the thumbnail has the source's
+// aspect ratio from the start. The full-size image then fills that box, and
+// `object-scale-down` reproduces what plain `max-w`/`max-h` did before — natural
+// size when it fits, contained when it doesn't — so nothing moves when it lands.
+//
+// On md the box is the whole panel, so how far the thumbnail may be blown up to
+// fill it comes from the thumbnail's own width: the resize never enlarges, so
+// one narrower than THUMB_MAX_WIDTH is the source itself and is drawn at that
+// size, exactly where the full-size image will land. A downsized one is drawn
+// to fill, which is exact for a source larger than the panel — the case this is
+// for — and generous for one in between, blurred, for the moment it shows.
+function BlockImage({ src, alt }: { src: string | undefined; alt: string }) {
+  const thumb = thumbSrc(src);
+  const [loaded, setLoaded] = useState(false);
+  const [downsized, setDownsized] = useState(true);
+  const fullRef = useRef<HTMLImageElement>(null);
+  const thumbRef = useRef<HTMLImageElement>(null);
+
+  const measureThumb = () => {
+    const width = thumbRef.current?.naturalWidth ?? 0;
+    if (width > 0) setDownsized(width >= THUMB_MAX_WIDTH);
+  };
+
+  // An image served from cache can finish before React attaches its handlers,
+  // which would leave the blurred thumbnail up for good. `complete` catches it.
+  useEffect(() => {
+    if (fullRef.current?.complete) setLoaded(true);
+    if (thumbRef.current?.complete) measureThumb();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a mount-only read of the two <img> elements; measureThumb is stable enough for it.
+  }, []);
+
+  // Nothing to paint behind: fall back to the bare image.
+  if (!thumb) {
+    return (
+      <img
+        src={src}
+        alt={alt}
+        className="max-h-[70vh] md:max-h-full max-w-full object-contain rounded-md"
+      />
+    );
+  }
+
+  return (
+    <div className="relative flex max-h-[70vh] max-w-full items-center justify-center overflow-hidden rounded-md md:h-full md:w-full md:max-h-full">
+      <img
+        ref={thumbRef}
+        src={thumb}
+        alt=""
+        aria-hidden
+        onLoad={measureThumb}
+        className={cn(
+          "max-h-[70vh] max-w-full blur-[6px] md:absolute md:inset-0 md:h-full md:w-full md:max-h-none",
+          downsized ? "object-contain" : "object-scale-down",
+          // Kept in flow (not `hidden`) so the box it sizes on mobile survives.
+          loaded && "opacity-0",
+        )}
+      />
+      <img
+        ref={fullRef}
+        src={src}
+        alt={alt}
+        onLoad={() => setLoaded(true)}
+        className={cn(
+          "absolute inset-0 h-full w-full object-scale-down transition-opacity duration-200",
+          loaded ? "opacity-100" : "opacity-0",
+        )}
+      />
+    </div>
+  );
+}
 
 // A text block is markdown. Viewers see it rendered; editors get GitHub-style
 // Write/Preview tabs over a monospace textarea (raw syntax stays visible while
@@ -454,11 +540,7 @@ function BlockModalBody({
             textRef={textInputRef}
           />
         ) : column.type === "image" ? (
-          <img
-            src={column.image}
-            alt={column.title ?? "Image column"}
-            className="max-h-[70vh] md:max-h-full max-w-full object-contain rounded-md"
-          />
+          <BlockImage src={column.image} alt={column.title ?? "Image column"} />
         ) : column.type === "pdf" ? (
           <object
             data={column.image}

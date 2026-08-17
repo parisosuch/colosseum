@@ -18,6 +18,7 @@ import sharp from "sharp";
 import { db } from "@/lib/db";
 import { blobs, media } from "@/lib/db/schema";
 import { logError } from "@/lib/log";
+import { THUMB_MAX_WIDTH } from "@/lib/utils";
 import { DESKTOP_UA } from "./og-meta";
 import { deleteObject, getBytes, objectExists, putObject } from "./storage";
 
@@ -40,9 +41,6 @@ export const ALLOWED_IMAGE_TYPES = [
 export function blobKey(sha256: string): string {
   return `${sha256.slice(0, 2)}/${sha256}`;
 }
-
-// Grid thumbnails render columns a few hundred px wide; 600 covers 2x DPR.
-const THUMB_MAX_WIDTH = 600;
 
 // The thumbnail derives from the immutable blob bytes, so it's content-addressed
 // too and shares the blob's lifetime.

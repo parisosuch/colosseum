@@ -5,7 +5,7 @@ import { FileText, Play } from "lucide-react";
 import { RenderedMarkdown } from "./rendered-markdown";
 import type { Column } from "@/lib/colosseum/column";
 import { useBlockMediaPrefetch } from "@/components/block-prefetch";
-import { spotifyEmbedRef, timeAgo, tweetIdFromUrl, youtubeIdFromUrl } from "@/lib/utils";
+import { spotifyEmbedRef, thumbSrc, timeAgo, tweetIdFromUrl, youtubeIdFromUrl } from "@/lib/utils";
 import ScreenShotPreview from "./screenshot-preview";
 import TweetBlock from "./tweet-block-lazy";
 import YouTubeBlock from "./youtube-block";
@@ -81,7 +81,7 @@ const ColumnComponent = memo(function ColumnComponent({
       </div>
     ) : column.type === "image" ? (
       <img
-        src={`${column.image}?thumb`}
+        src={thumbSrc(column.image) ?? undefined}
         alt={column.title ?? "Image column"}
         loading={priority ? "eager" : "lazy"}
         decoding="async"

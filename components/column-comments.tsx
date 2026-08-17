@@ -14,6 +14,7 @@ import {
   getColumnCommentsAction,
   searchProfilesAction,
 } from "@/lib/colosseum/actions";
+import { fetchComments, peekComments, writeComments } from "@/lib/comment-cache";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -49,8 +50,12 @@ type ColumnCommentsProps = {
 };
 
 export default function ColumnComments({ columnId, viewerId, isOwner }: ColumnCommentsProps) {
-  // null while the initial fetch is in flight; [] once loaded and empty.
-  const [comments, setComments] = useState<Comment[] | null>(null);
+  // null while the initial fetch is in flight; [] once loaded and empty. Seeded
+  // from the client-side cache so stepping between blocks paints the thread
+  // straight away instead of flashing "Loading…" every time. Always null on the
+  // server (the cache is browser-only), so the permalink page's HTML and its
+  // hydration agree.
+  const [comments, setComments] = useState<Comment[] | null>(() => peekComments(columnId));
   const [body, setBody] = useState("");
   const [posting, setPosting] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -65,12 +70,18 @@ export default function ColumnComments({ columnId, viewerId, isOwner }: ColumnCo
   // Mobile accordion: collapsed until tapped. Ignored on desktop (always shown).
   const [open, setOpen] = useState(false);
 
-  // Keyed by block id in the modal, so this remounts (and refetches) per block.
+  // Keyed by block id in the modal, so this remounts per block. Show whatever
+  // the cache has for this block (null when it has nothing, which is the
+  // "Loading…" state), then revalidate underneath — a comment posted from
+  // another session shows up within one view. The cache skips the request for
+  // an entry inside its freshness window and shares one already in flight, so
+  // arriving on a block a neighbour prefetch just warmed costs nothing.
   useEffect(() => {
     let active = true;
-    getColumnCommentsAction(columnId)
+    setComments(peekComments(columnId));
+    fetchComments(columnId, getColumnCommentsAction)
       .then((c) => active && setComments(c))
-      .catch(() => active && setComments([]));
+      .catch(() => active && setComments((prev) => prev ?? []));
     return () => {
       active = false;
     };
@@ -91,7 +102,11 @@ export default function ColumnComments({ columnId, viewerId, isOwner }: ColumnCo
     setPosting(true);
     try {
       const created = await createCommentAction(columnId, trimmed);
-      setComments((prev) => [...(prev ?? []), created]);
+      // Write through, so reopening this block doesn't flash the thread as it
+      // was before the post.
+      const next = [...(comments ?? []), created];
+      setComments(next);
+      writeComments(columnId, next);
       setBody("");
     } catch (e) {
       console.error(e);
@@ -103,12 +118,15 @@ export default function ColumnComments({ columnId, viewerId, isOwner }: ColumnCo
 
   const remove = async (id: number) => {
     const previous = comments ?? [];
-    setComments(previous.filter((c) => c.id !== id));
+    const next = previous.filter((c) => c.id !== id);
+    setComments(next);
+    writeComments(columnId, next);
     try {
       await deleteCommentAction(id);
     } catch (e) {
       console.error(e);
       setComments(previous);
+      writeComments(columnId, previous);
       toast.error("Couldn't delete that comment. Please try again.");
     }
   };

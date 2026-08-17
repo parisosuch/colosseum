@@ -12,6 +12,7 @@ import ExportChannelButton from "@/components/export-channel-button";
 import AdminDeleteButton from "@/components/admin-delete-button";
 import { ViewToggle } from "@/components/view-toggle";
 import { PAGE_SIZE } from "@/lib/pagination";
+import { SCREENSHOT_MAX_ATTEMPTS, nextScreenshotPoll, whenVisible } from "@/lib/screenshot-poll";
 import ColumnInput from "@/components/column-input";
 import ChannelControls from "@/components/channel-controls";
 import { Badge } from "@/components/ui/badge";
@@ -174,11 +175,10 @@ export default function ChannelBoard({
   // instead of caching "no preview" on the very first miss. Not component
   // state: a bump doesn't need its own render.
   const screenshotRetries = useRef(new Map<string, number>());
-  // ponytail: fixed poll interval + attempt cap (no websocket/SSE); bump this
-  // to re-run the hydrate effect on a timer.
+  // ponytail: polled with backoff + an attempt cap (no websocket/SSE); bump
+  // this to re-run the hydrate effect, either off a timer or when a hidden tab
+  // comes back.
   const [pollTick, setPollTick] = useState(0);
-  const SCREENSHOT_POLL_MS = 5000;
-  const SCREENSHOT_MAX_RETRIES = 60; // ~5 minutes before settling on "no preview"
 
   const metaData = useMemo(() => {
     let lastModified = "-";
@@ -305,7 +305,16 @@ export default function ChannelBoard({
       return;
     }
 
+    // A tab nobody is looking at shouldn't spend server actions on previews it
+    // isn't painting. Sit the round out and pick it back up on the way in.
+    if (document.hidden) {
+      return whenVisible(document, () => setPollTick((t) => t + 1));
+    }
+
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let stopWaiting: (() => void) | null = null;
+
     (async () => {
       try {
         const fetched = new Map(await getScreenshotsForUrlsAction(missing));
@@ -315,11 +324,11 @@ export default function ChannelBoard({
         // something actually resolved. `screenshots` is a dependency of this
         // same effect — writing a new Map reference on every round (even one
         // where every URL is still pending) would retrigger this effect
-        // immediately, cascading into itself and orphaning every scheduled
-        // poll timer below (each instance gets cancelled by the next before
-        // its own timer fires). Skipping the write when nothing changed is
-        // what keeps the 5s cadence real instead of racing itself.
-        let stillPending = false;
+        // immediately, cascading into itself and orphaning whatever the round
+        // scheduled below (each instance gets cancelled by the next before its
+        // own timer fires). Skipping the write when nothing changed is what
+        // keeps the backoff real instead of racing itself.
+        let pendingAttempts: number | null = null;
         const updates = new Map<string, ColumnScreenshot>();
         for (const url of missing) {
           const row = fetched.get(url);
@@ -340,10 +349,10 @@ export default function ChannelBoard({
           // bounded number of times before settling on "no preview" for good.
           const attempts = (screenshotRetries.current.get(url) ?? 0) + 1;
           screenshotRetries.current.set(url, attempts);
-          if (attempts >= SCREENSHOT_MAX_RETRIES) {
+          if (attempts >= SCREENSHOT_MAX_ATTEMPTS) {
             updates.set(url, { url, image_url: null, title: null, captured_at: null });
           } else {
-            stillPending = true;
+            pendingAttempts = Math.min(pendingAttempts ?? attempts, attempts);
           }
         }
 
@@ -355,10 +364,18 @@ export default function ChannelBoard({
           });
         }
 
-        if (stillPending) {
-          setTimeout(() => {
+        const decision = nextScreenshotPoll(pendingAttempts, document.hidden);
+        if (decision.kind === "schedule") {
+          timer = setTimeout(() => {
             if (!cancelled) setPollTick((t) => t + 1);
-          }, SCREENSHOT_POLL_MS);
+          }, decision.delayMs);
+        } else if (decision.kind === "await-visible") {
+          // Went to the background mid-round. No point holding a timer that
+          // would fire into a hidden tab and be turned away by the guard
+          // above; wait for the tab to come back instead.
+          stopWaiting = whenVisible(document, () => {
+            if (!cancelled) setPollTick((t) => t + 1);
+          });
         }
       } catch (e) {
         console.error(e);
@@ -367,6 +384,8 @@ export default function ChannelBoard({
 
     return () => {
       cancelled = true;
+      if (timer !== null) clearTimeout(timer);
+      stopWaiting?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- pollTick only retriggers the effect; it's not read inside.
   }, [columns, screenshots, capturing, pollTick]);

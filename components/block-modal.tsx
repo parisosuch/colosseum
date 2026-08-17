@@ -17,7 +17,7 @@ import {
 import { toast } from "sonner";
 import ColumnComments from "./column-comments";
 import { RenderedMarkdown } from "./rendered-markdown";
-import TweetBlock from "./tweet-block";
+import TweetBlock from "./tweet-block-lazy";
 import YouTubeBlock from "./youtube-block";
 import SpotifyBlock from "./spotify-block";
 import YouTubeChannelBlock from "./youtube-channel-block";

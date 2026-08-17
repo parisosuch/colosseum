@@ -451,7 +451,7 @@ export default function ChannelBoard({
   // Warm the blocks either side of the open one — their media and their comment
   // thread — so stepping with ← / → arrives on something already loaded. Inert
   // while the modal is closed (openIndex is -1).
-  useNeighbourPrefetch(columns, openIndex);
+  useNeighbourPrefetch(columns, openIndex, screenshots);
 
   // If the open block leaves the list (deleted, or filtered out by a control
   // change), close the modal instead of stranding it on a gone block.

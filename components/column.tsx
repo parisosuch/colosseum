@@ -54,8 +54,10 @@ const ColumnComponent = memo(function ColumnComponent({
   priority = false,
 }: ColumnComponentProps) {
   // Hovering the card starts fetching what the modal will show, so the click
-  // opens onto a decoded image instead of one painting in as it arrives.
-  const prefetch = useBlockMediaPrefetch(column);
+  // opens onto a decoded image instead of one painting in as it arrives. An
+  // embed block opens its connections here instead — the iframe can't be
+  // fetched ahead.
+  const prefetch = useBlockMediaPrefetch(column, screenshot);
   const imageURL = screenshot?.image_url ?? null;
   const urlTitle = screenshot?.title ?? "";
   // cache-busting token for the shared storage object (bumped on refresh)

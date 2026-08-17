@@ -33,7 +33,7 @@ export function FeedBlockModal({
   const [open, setOpen] = useState(false);
   // Same as the channel grid: warm the modal's image while the pointer rests
   // on the card (lib/prefetch.ts).
-  const prefetch = useBlockMediaPrefetch(column);
+  const prefetch = useBlockMediaPrefetch(column, screenshot);
 
   return (
     <>

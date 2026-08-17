@@ -4,18 +4,32 @@
 // either side of whichever one is open, so stepping with the arrow keys doesn't
 // start cold — once the modal is open the pointer is nowhere near the grid.
 //
-// Only image blocks are worth prefetching. The grid card shows a downsized
-// `?thumb`, so the modal's full-size fetch always starts cold — that's the
-// visible top-to-bottom render. The other types have nothing to gain: a video
-// streams as it plays, a PDF renders progressively inside its own viewer, and a
-// tweet snapshot is already in SWR's cache from the card that rendered it.
+// Three kinds of block are worth warming:
 //
-// Client-side only (`new Image()`); the guard keeps it inert if a server render
-// ever reaches it. The React side — the hover timing that calls this — lives in
-// components/block-prefetch.ts, so this module stays unit-testable under the
-// suite's `--conditions=react-server` (that build of React has no hooks).
+// - `image`, whose grid card shows a downsized `?thumb`, so the modal's
+//   full-size fetch always starts cold — that's the visible top-to-bottom
+//   render.
+// - `url`, whose modal shows the same cached screenshot as the card. Usually
+//   already warm, but not when the card is scrolled out of the grid or its
+//   capture landed after the card painted.
+// - `youtube` / `spotify`, whose embed is a third-party iframe that can't be
+//   fetched ahead — but DNS + TCP + TLS to the embed host is most of the delay
+//   before it draws, and a `preconnect` hint warms exactly that.
+//
+// The other types have nothing to gain: a video streams as it plays, a PDF
+// renders progressively inside its own viewer, a tweet snapshot is already in
+// SWR's cache from the card that rendered it, and text/channel blocks carry
+// their content in the block row.
+//
+// Client-side only (`new Image()`, `document.head`); the guards keep it inert
+// if a server render ever reaches it. The React side — the hover timing that
+// calls this — lives in components/block-prefetch.ts, so this module stays
+// unit-testable under the suite's `--conditions=react-server` (that build of
+// React has no hooks).
 
 import type { Column } from "@/lib/colosseum/column";
+import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
+import { screenshotSrc } from "@/lib/utils";
 
 // A pointer crossing the grid on its way somewhere else shouldn't pull a
 // full-size image for every card it passes over — only a deliberate pause does.
@@ -37,11 +51,41 @@ const requested = new Set<string>();
 // it, since a decoded full-size bitmap is far too big to keep around.
 const inFlight = new Set<HTMLImageElement>();
 
+// Third-party origins each embed type connects to as soon as its iframe
+// mounts. YouTube's player pulls its poster frame from i.ytimg.com, which is a
+// separate connection from the embed document's.
+const EMBED_ORIGINS: Partial<Record<Column["type"], readonly string[]>> = {
+  youtube: ["https://www.youtube.com", "https://i.ytimg.com"],
+  spotify: ["https://open.spotify.com"],
+};
+
+// Origins already hinted this page load. Stepping along a row of YouTube blocks
+// should append one <link> per origin, not one per block.
+const preconnected = new Set<string>();
+
 // The URL the modal will load for this block, or null when there's nothing
 // worth prefetching. `pdf` blocks reuse `image` for their stored file, so match
-// on the type rather than on the field being set.
-export function blockMediaUrl(column: Column): string | null {
-  return column.type === "image" ? (column.image ?? null) : null;
+// on the type rather than on the field being set. A `url` block's screenshot is
+// whatever the board's batched map holds for it; the `?v=` token comes from the
+// shared helper, so the warmed entry is the one the renderer asks for.
+export function blockMediaUrl(column: Column, screenshot?: ColumnScreenshot | null): string | null {
+  if (column.type === "image") return column.image ?? null;
+  if (column.type === "url") return screenshotSrc(screenshot?.image_url, screenshot?.captured_at);
+  return null;
+}
+
+// The origins worth a preconnect hint before this block's modal opens, or an
+// empty list for everything that isn't a third-party embed.
+export function blockPreconnectOrigins(column: Column): readonly string[] {
+  return EMBED_ORIGINS[column.type] ?? [];
+}
+
+// Records `origin` as hinted and reports whether this is the call that has to
+// append the <link>. Every later call for the same origin gets false back.
+export function claimPreconnect(origin: string): boolean {
+  if (preconnected.has(origin)) return false;
+  preconnected.add(origin);
+  return true;
 }
 
 // The viewer has asked for reduced data use. Nothing speculative should go out
@@ -75,10 +119,10 @@ export function neighbourBlocks(
 // Fire-and-forget: start fetching this block's full-size media, at most once
 // per URL. Failures are ignored — a prefetch that 404s or is refused costs the
 // viewer nothing, and the modal will surface the real error if they open it.
-export function prefetchBlockMedia(column: Column): void {
+export function prefetchBlockMedia(column: Column, screenshot?: ColumnScreenshot | null): void {
   if (typeof window === "undefined") return;
 
-  const url = blockMediaUrl(column);
+  const url = blockMediaUrl(column, screenshot);
   if (!url || requested.has(url)) return;
 
   // Don't spend a metered connection on something that hasn't been opened.
@@ -91,4 +135,26 @@ export function prefetchBlockMedia(column: Column): void {
   img.addEventListener("load", settled, { once: true });
   img.addEventListener("error", settled, { once: true });
   img.src = url;
+}
+
+// Open the connections this block's embed will need, so the iframe spends its
+// first moments transferring rather than shaking hands. No `crossOrigin`: the
+// embed document and the poster <img> both use the browser's non-CORS
+// connection pool, and setting it would warm the other one.
+export function preconnectBlockOrigins(column: Column): void {
+  if (typeof document === "undefined") return;
+
+  const origins = blockPreconnectOrigins(column);
+  if (origins.length === 0) return;
+
+  // A handshake still costs radio time on a metered connection.
+  if (prefersReducedData()) return;
+
+  for (const origin of origins) {
+    if (!claimPreconnect(origin)) continue;
+    const link = document.createElement("link");
+    link.rel = "preconnect";
+    link.href = origin;
+    document.head.appendChild(link);
+  }
 }

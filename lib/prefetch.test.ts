@@ -1,7 +1,15 @@
 import { expect, test } from "bun:test";
 
 import type { Column } from "./colosseum/column";
-import { blockMediaUrl, neighbourBlocks, prefersReducedData } from "./prefetch";
+import type { ColumnScreenshot } from "./colosseum/screenshot-data";
+import {
+  blockMediaUrl,
+  blockPreconnectOrigins,
+  claimPreconnect,
+  neighbourBlocks,
+  prefersReducedData,
+} from "./prefetch";
+import { screenshotSrc } from "./utils";
 
 const column = (over: Partial<Column>): Column => ({
   id: 1,
@@ -13,8 +21,36 @@ const column = (over: Partial<Column>): Column => ({
   ...over,
 });
 
+const shot = (over: Partial<ColumnScreenshot> = {}): ColumnScreenshot => ({
+  url: "https://example.com",
+  image_url: "https://cdn.example.com/shot.png",
+  title: "Example",
+  captured_at: "2026-01-02T03:04:05.000Z",
+  ...over,
+});
+
 test("blockMediaUrl returns the full-size media of an image block", () => {
   expect(blockMediaUrl(column({ type: "image", image: "/api/media/abc" }))).toBe("/api/media/abc");
+});
+
+test("blockMediaUrl returns the cached screenshot of a url block", () => {
+  const block = column({ type: "url", url: "https://example.com" });
+  // Byte-for-byte what the card and the modal render, cache-busting token and
+  // all — a different string would warm an entry neither of them asks for.
+  expect(blockMediaUrl(block, shot())).toBe(
+    "https://cdn.example.com/shot.png?v=2026-01-02T03%3A04%3A05.000Z",
+  );
+  expect(blockMediaUrl(block, shot())).toBe(
+    screenshotSrc("https://cdn.example.com/shot.png", "2026-01-02T03:04:05.000Z"),
+  );
+});
+
+test("blockMediaUrl returns null for a url block with nothing captured yet", () => {
+  const block = column({ type: "url", url: "https://example.com" });
+  // No entry in the board's map at all (still capturing), and a row recording a
+  // capture that permanently failed.
+  expect(blockMediaUrl(block)).toBeNull();
+  expect(blockMediaUrl(block, shot({ image_url: null }))).toBeNull();
 });
 
 test("blockMediaUrl ignores every other block type", () => {
@@ -22,13 +58,52 @@ test("blockMediaUrl ignores every other block type", () => {
   // viewer that streams — there's nothing to warm.
   expect(blockMediaUrl(column({ type: "pdf", image: "/api/media/abc" }))).toBeNull();
   expect(blockMediaUrl(column({ type: "video", image: "/api/media/abc" }))).toBeNull();
-  expect(blockMediaUrl(column({ type: "url", url: "https://example.com" }))).toBeNull();
   expect(blockMediaUrl(column({ type: "text", text: "hello" }))).toBeNull();
+  expect(blockMediaUrl(column({ type: "channel", linked_channel_id: 2 }))).toBeNull();
   expect(blockMediaUrl(column({ type: "tweet", url: "https://x.com/jack/status/20" }))).toBeNull();
+  // An embed is warmed with a preconnect hint, not a fetch.
+  expect(
+    blockMediaUrl(column({ type: "youtube", url: "https://youtu.be/dQw4w9WgXcQ" })),
+  ).toBeNull();
+  expect(
+    blockMediaUrl(column({ type: "spotify", url: "https://open.spotify.com/track/1" })),
+  ).toBeNull();
+  // A screenshot handed to a non-url block is ignored rather than fetched.
+  expect(blockMediaUrl(column({ type: "pdf" }), shot())).toBeNull();
 });
 
 test("blockMediaUrl returns null for an image block with no media", () => {
   expect(blockMediaUrl(column({ type: "image", image: undefined }))).toBeNull();
+});
+
+test("blockPreconnectOrigins covers the embed hosts each iframe reaches for", () => {
+  // i.ytimg.com serves the player's poster frame from a separate connection.
+  expect(blockPreconnectOrigins(column({ type: "youtube" }))).toEqual([
+    "https://www.youtube.com",
+    "https://i.ytimg.com",
+  ]);
+  expect(blockPreconnectOrigins(column({ type: "spotify" }))).toEqual(["https://open.spotify.com"]);
+});
+
+test("blockPreconnectOrigins hints nothing for a block with no third-party embed", () => {
+  for (const type of ["image", "url", "text", "channel", "pdf", "video", "tweet"] as const) {
+    expect(blockPreconnectOrigins(column({ type }))).toEqual([]);
+  }
+  // The channel block links out but renders an avatar and a title, no iframe.
+  expect(blockPreconnectOrigins(column({ type: "youtube_channel" }))).toEqual([]);
+});
+
+test("claimPreconnect hands out one <link> per origin per page load", () => {
+  // Stepping along a row of YouTube blocks: the first block appends the links,
+  // every block after it finds both origins already hinted.
+  expect(claimPreconnect("https://a.test")).toBe(true);
+  expect(claimPreconnect("https://a.test")).toBe(false);
+  expect(claimPreconnect("https://a.test")).toBe(false);
+  // Origins are tracked apart, so a Spotify block after a YouTube one still
+  // gets its own hint.
+  expect(claimPreconnect("https://b.test")).toBe(true);
+  expect(claimPreconnect("https://b.test")).toBe(false);
+  expect(claimPreconnect("https://a.test")).toBe(false);
 });
 
 const board = [1, 2, 3, 4, 5].map((id) => column({ id }));

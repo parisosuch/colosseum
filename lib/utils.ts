@@ -219,6 +219,22 @@ export function screenshotSrc(
   return v ? `${imageUrl}?v=${encodeURIComponent(v)}` : imageUrl;
 }
 
+// The downsized rendition of a block image: what the grid card renders, and
+// what the modal paints behind the full-size image while that loads. The two
+// share a cache entry only while the URL is byte-for-byte identical, so the
+// card and the modal both build it here rather than each appending `?thumb`
+// themselves — the modal's placeholder is then already decoded, at no request.
+export function thumbSrc(image: string | null | undefined): string | null {
+  return image ? `${image}?thumb` : null;
+}
+
+// The width every thumbnail is downsized to (grid cards render a few hundred px
+// wide, so 600 covers 2x DPR). Lives here rather than beside the sharp pipeline
+// that applies it because the browser needs it too: the resize never enlarges,
+// so a thumbnail narrower than this is the source at its own size, which is how
+// the modal knows whether its placeholder can be blown up to fill the panel.
+export const THUMB_MAX_WIDTH = 600;
+
 // Escapes ilike wildcards so a literal `%`/`_` in a search term isn't treated
 // as one, and strips the characters PostgREST uses to delimit an `.or(...)`
 // filter so a search term can't break out of it.

@@ -3,6 +3,7 @@
 import PageHeader from "@/components/page-header";
 import ColumnComponent, { LIST_GRID } from "@/components/column";
 import BlockModal from "@/components/block-modal";
+import { useNeighbourPrefetch } from "@/components/block-prefetch";
 import ConnectChannelButton from "@/components/connect-channel-button";
 import type { PickableChannel } from "@/components/add-block-drawer";
 import ManageChannelButton from "@/components/manage-channel-button";
@@ -427,6 +428,11 @@ export default function ChannelBoard({
   const openColumn = openIndex >= 0 ? columns[openIndex] : null;
   const hasPrev = openIndex > 0;
   const hasNext = openIndex >= 0 && openIndex < columns.length - 1;
+
+  // Warm the blocks either side of the open one — their media and their comment
+  // thread — so stepping with ← / → arrives on something already loaded. Inert
+  // while the modal is closed (openIndex is -1).
+  useNeighbourPrefetch(columns, openIndex);
 
   // If the open block leaves the list (deleted, or filtered out by a control
   // change), close the modal instead of stranding it on a gone block.

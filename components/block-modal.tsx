@@ -2,6 +2,7 @@
 
 import type { Dispatch, SetStateAction } from "react";
 import { useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
   Check,
@@ -15,7 +16,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import ColumnComments from "./column-comments";
-import { Markdown } from "./markdown";
+import { RenderedMarkdown } from "./rendered-markdown";
 import TweetBlock from "./tweet-block";
 import YouTubeBlock from "./youtube-block";
 import SpotifyBlock from "./spotify-block";
@@ -86,16 +87,33 @@ type BlockModalProps = {
   hasNext: boolean;
 };
 
+// Renders a live draft in the browser, the one case the server can't cover.
+// Loaded on demand so marked and sanitize-html stay out of the page bundle: an
+// unedited draft reuses the block's server-rendered HTML (below), so the chunk
+// is only fetched once an editor changes something.
+const MarkdownPreview = dynamic(() => import("./markdown-preview"), {
+  ssr: false,
+  loading: () => <p className="text-sm text-muted-foreground">Rendering preview…</p>,
+});
+
 // A text block is markdown. Viewers see it rendered; editors get GitHub-style
 // Write/Preview tabs over a monospace textarea (raw syntax stays visible while
 // writing), Preview rendering the current draft.
+//
+// `savedHtml` is the block's markdown as the server rendered and sanitized it.
+// It covers every read-only path — viewers, and editors who haven't touched the
+// draft — so the browser only needs a renderer for genuinely unsaved text.
 function MarkdownEditor({
   text,
+  savedText,
+  savedHtml,
   setText,
   canEdit,
   textRef,
 }: {
   text: string;
+  savedText: string;
+  savedHtml: string;
   setText: (v: string) => void;
   canEdit: boolean;
   textRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -106,7 +124,7 @@ function MarkdownEditor({
   if (!canEdit) {
     return (
       <div className="w-full max-h-full overflow-y-auto">
-        <Markdown text={text} />
+        <RenderedMarkdown html={savedHtml} />
       </div>
     );
   }
@@ -142,10 +160,12 @@ function MarkdownEditor({
         />
       ) : (
         <div className="min-h-40 w-full flex-1 overflow-y-auto rounded-md border p-3">
-          {text.trim() ? (
-            <Markdown text={text} />
-          ) : (
+          {!text.trim() ? (
             <p className="text-sm text-muted-foreground">Nothing to preview.</p>
+          ) : text === savedText ? (
+            <RenderedMarkdown html={savedHtml} />
+          ) : (
+            <MarkdownPreview text={text} />
           )}
         </div>
       )}
@@ -330,9 +350,12 @@ function BlockModalBody({
   };
 
   const handleTextChange = async () => {
-    await updateColumnTextAction(column.id, text);
+    // The action hands back the saved markdown already rendered and sanitized,
+    // so the card and the Preview tab pick up the edit without the browser
+    // re-parsing it.
+    const html = await updateColumnTextAction(column.id, text);
     textInputRef.current?.blur();
-    setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, text } : c)));
+    setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, text, html } : c)));
   };
 
   // Tags persist eagerly on each add/remove, so they stay out of the Save flow.
@@ -422,7 +445,14 @@ function BlockModalBody({
     >
       <div className="flex w-full min-h-0 items-center justify-center p-2 md:w-3/4 md:p-6">
         {column.type === "text" ? (
-          <MarkdownEditor text={text} setText={setText} canEdit={canEdit} textRef={textInputRef} />
+          <MarkdownEditor
+            text={text}
+            savedText={column.text ?? ""}
+            savedHtml={column.html ?? ""}
+            setText={setText}
+            canEdit={canEdit}
+            textRef={textInputRef}
+          />
         ) : column.type === "image" ? (
           <img
             src={column.image}

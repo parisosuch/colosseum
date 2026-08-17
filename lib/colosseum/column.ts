@@ -15,6 +15,7 @@ import {
 
 import { db } from "@/lib/db";
 import { channel, channelMember, column, screenshot, userProfile } from "@/lib/db/schema";
+import { renderMarkdown } from "@/lib/markdown";
 import { sanitizeSearch } from "@/lib/utils";
 import { deleteMediaByUrl } from "./blob";
 import { deleteTweetIfUnreferenced } from "./tweet";
@@ -38,6 +39,12 @@ export type Column = {
   description?: string;
   url?: string;
   text?: string;
+  // A `text` block's markdown rendered to sanitized HTML, filled by toColumn so
+  // every block carries it however it was fetched (first page, load-more,
+  // just-created). Clients render this instead of parsing the markdown
+  // themselves, which keeps `marked` and `sanitize-html` out of the browser and
+  // makes the server the only place HTML is ever produced.
+  html?: string;
   // Media URL of the uploaded blob for `image` columns, and reused for `pdf`
   // columns (the stored file is a PDF, served by /api/media with its own mime).
   image?: string;
@@ -56,6 +63,9 @@ export type Column = {
 };
 
 type ColumnRow = typeof column.$inferSelect;
+// The single row → Column conversion. Every fetch, insert and update path in the
+// data layer goes through it, which is why the rendered markdown is produced
+// here: there is no way to obtain a Column whose `html` is missing or stale.
 export function toColumn(row: ColumnRow): Column {
   return {
     id: row.id,
@@ -65,6 +75,7 @@ export function toColumn(row: ColumnRow): Column {
     description: row.description ?? undefined,
     url: row.url ?? undefined,
     text: row.text ?? undefined,
+    html: row.type === "text" && row.text ? renderMarkdown(row.text) : undefined,
     image: row.image ?? undefined,
     created_by: row.created_by,
     channel_id: row.channel_id,
@@ -673,6 +684,10 @@ export async function getChannelColumnCounts(channelIds: number[]): Promise<Map<
   return counts;
 }
 
-export async function updateColumnText(column_id: number, text: string): Promise<void> {
-  await db.update(column).set({ text }).where(eq(column.id, column_id));
+// Save a text block's markdown, returning the updated block so the caller gets
+// the freshly rendered `html` back with it (the grid card shows that, not the
+// source). Null when the block no longer exists.
+export async function updateColumnText(column_id: number, text: string): Promise<Column | null> {
+  const [row] = await db.update(column).set({ text }).where(eq(column.id, column_id)).returning();
+  return row ? toColumn(row) : null;
 }

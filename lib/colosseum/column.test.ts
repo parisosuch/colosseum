@@ -8,7 +8,9 @@ import {
   copyColumn,
   deleteColumn,
   getChannelColumns,
+  updateColumnText,
   uploadImageColumn,
+  uploadTextColumn,
   uploadURLColumn,
 } from "./column";
 import { getScreenshot, upsertScreenshot } from "./screenshot-data";
@@ -104,4 +106,73 @@ test("deleting the last column for a URL GCs its cached screenshot; a shared one
   // Last one gone → the shared screenshot row and its media reference are GC'd.
   await deleteColumn(b.id);
   expect(await getScreenshot(url)).toBeNull();
+});
+
+test("a text block carries its markdown rendered to sanitized HTML", async () => {
+  const ch = await createChannel({ title: "Notes", access: "public", owner_id: USERS.alice.id });
+  const created = await uploadTextColumn({
+    created_by: USERS.alice.id,
+    channel_id: ch.id,
+    text: "# Heading\n\n**bold** <script>alert('xss')</script>",
+  });
+
+  // The insert path renders it, so a just-created block is renderable without a
+  // refetch (the grid prepends the returned block straight into its list).
+  expect(created.html).toContain("<h1>Heading</h1>");
+  expect(created.html).toContain("<strong>bold</strong>");
+  // Sanitization runs server-side on the same pass; the script never survives
+  // into the field the client passes to dangerouslySetInnerHTML.
+  expect(created.html).not.toContain("<script");
+  expect(created.html).not.toContain("alert(");
+
+  // And the read path renders it identically.
+  const [fetched] = await getChannelColumns(ch.id);
+  expect(fetched.html).toBe(created.html);
+});
+
+test("only text blocks get html; other types leave it unset", async () => {
+  const ch = await createChannel({ title: "Mixed", access: "public", owner_id: USERS.alice.id });
+  await uploadURLColumn({
+    created_by: USERS.alice.id,
+    channel_id: ch.id,
+    text: "https://example.com/",
+  });
+  await uploadTextColumn({ created_by: USERS.alice.id, channel_id: ch.id, text: "a note" });
+
+  const cols = await getChannelColumns(ch.id);
+  const byType = new Map(cols.map((c) => [c.type, c]));
+  expect(byType.get("text")?.html).toContain("<p>a note</p>");
+  expect(byType.get("url")?.html).toBeUndefined();
+});
+
+test("paged fetches fill html too, so load-more blocks render like the first page", async () => {
+  const ch = await createChannel({ title: "Paged", access: "public", owner_id: USERS.alice.id });
+  for (const body of ["*first*", "*second*", "*third*"]) {
+    await uploadTextColumn({ created_by: USERS.alice.id, channel_id: ch.id, text: body });
+  }
+
+  // The channel page server-renders page one and the client fetches the rest
+  // through the same query, so every page has to arrive already rendered.
+  const page1 = await getChannelColumns(ch.id, { sort: "oldest", limit: 2, offset: 0 });
+  const page2 = await getChannelColumns(ch.id, { sort: "oldest", limit: 2, offset: 2 });
+  expect(page1.map((c) => c.html)).toEqual(["<p><em>first</em></p>\n", "<p><em>second</em></p>\n"]);
+  expect(page2.map((c) => c.html)).toEqual(["<p><em>third</em></p>\n"]);
+});
+
+test("updateColumnText returns the block with its html re-rendered from the new source", async () => {
+  const ch = await createChannel({ title: "Edits", access: "public", owner_id: USERS.alice.id });
+  const created = await uploadTextColumn({
+    created_by: USERS.alice.id,
+    channel_id: ch.id,
+    text: "before",
+  });
+
+  // The modal swaps this straight into the block it already holds, so a stale
+  // or unsanitized value here would land on a card.
+  const updated = await updateColumnText(created.id, "## after\n\n<img src=x onerror=alert(1)>");
+  expect(updated?.text).toBe("## after\n\n<img src=x onerror=alert(1)>");
+  expect(updated?.html).toContain("<h2>after</h2>");
+  expect(updated?.html).not.toContain("onerror");
+
+  expect(await updateColumnText(-1, "gone")).toBeNull();
 });

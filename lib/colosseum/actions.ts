@@ -581,10 +581,14 @@ export async function updateColumnDescriptionAction(
   await updateColumnDescription(columnId, description);
 }
 
-export async function updateColumnTextAction(columnId: number, text: string): Promise<void> {
+// Returns the saved markdown rendered to sanitized HTML, so the caller can swap
+// it into the block it already holds without re-rendering anything in the
+// browser. Empty string when the block vanished mid-edit.
+export async function updateColumnTextAction(columnId: number, text: string): Promise<string> {
   const userId = await requireUserId();
   await requireWritableBlock(columnId, userId);
-  await updateColumnText(columnId, text);
+  const updated = await updateColumnText(columnId, text);
+  return updated?.html ?? "";
 }
 
 export async function updateColumnTagsAction(columnId: number, tags: string[]): Promise<void> {

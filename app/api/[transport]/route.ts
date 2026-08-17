@@ -14,6 +14,7 @@ import {
   authorizeChannelContribute,
   authorizeChannelManage,
   authorizeChannelRead,
+  moveBlock,
   parseAccess,
   resolveApiToken,
 } from "@/lib/colosseum/api-auth";
@@ -337,6 +338,22 @@ const handler = createMcpHandler(
           return { block: await updateColumn(args.id, updates) };
         },
       ),
+    );
+
+    server.registerTool(
+      "move_block",
+      {
+        description:
+          "Move a block to another channel. You must own both the channel it is " +
+          "in and the one it is going to. The block keeps its id, creation time, " +
+          "title, description, tags, and any screenshot — unlike recreating it.",
+        inputSchema: { id: z.number().int(), channelId: z.number().int() },
+      },
+      asTool(async ({ id, channelId }: { id: number; channelId: number }, { userId }) => {
+        const moved = await moveBlock(id, channelId, userId);
+        if (moved instanceof NextResponse) throw await denialToError(moved);
+        return { block: moved };
+      }),
     );
 
     server.registerTool(

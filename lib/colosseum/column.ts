@@ -537,10 +537,17 @@ export async function updateColumnTags(column_id: number, tags: string[]): Promi
 }
 
 // Move a block to another channel. Only the channel_id changes, so the block
-// keeps its title, description, tags, and content. Authorization (owning both
-// channels) is enforced by the action.
-export async function moveColumn(column_id: number, channel_id: number): Promise<void> {
-  await db.update(column).set({ channel_id }).where(eq(column.id, column_id));
+// keeps its id, created_at, title, description, tags, and content — and, for a
+// url block, the screenshot cached against its URL. Returns the updated row, or
+// null when the block no longer exists. Authorization (owning both channels) is
+// enforced by the caller.
+export async function moveColumn(column_id: number, channel_id: number): Promise<Column | null> {
+  const [row] = await db
+    .update(column)
+    .set({ channel_id })
+    .where(eq(column.id, column_id))
+    .returning();
+  return row ? toColumn(row) : null;
 }
 
 // Duplicate a block into another channel, leaving the source untouched. The new

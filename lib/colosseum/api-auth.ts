@@ -15,8 +15,9 @@ import {
   canManageChannel,
   canReadChannel,
 } from "./channel";
+import { getChannel } from "./channel";
 import { isChannelMember } from "./member";
-import { Column } from "./column";
+import { Column, getColumn, moveColumn } from "./column";
 import { ApiToken } from "./api-token";
 import { getScreenshot, getScreenshotsForUrls } from "./screenshot-data";
 import { checkRateLimit } from "./rate-limit";
@@ -241,6 +242,37 @@ export async function authorizeBlockWrite(
     return apiError("You do not have permission to modify this resource.", 403);
   }
   return null;
+}
+
+// Reassign a block to another channel, authorizing both ends: the caller must
+// own the channel the block lives in now and the one it is going to. Composed
+// here, next to the rest of the matrix, so the rule has one home rather than
+// being reassembled at each call site. Returns the updated block, or the denial
+// NextResponse to hand back (which the MCP tool turns into a tool error). A
+// missing block — or a channel the caller cannot even read — is a 404, so this
+// never confirms that someone else's private channel exists.
+export async function moveBlock(
+  blockId: number,
+  destinationChannelId: number,
+  userId: string,
+): Promise<Column | NextResponse> {
+  const block = await getColumn(blockId);
+  if (!block) return apiError("Not found.", 404);
+
+  const sourceDenial = await authorizeChannelManage(await getChannel(block.channel_id), userId);
+  if (sourceDenial) return sourceDenial;
+
+  const destinationDenial = await authorizeChannelManage(
+    await getChannel(destinationChannelId),
+    userId,
+  );
+  if (destinationDenial) return destinationDenial;
+
+  // Already where it was asked to go — nothing to write.
+  if (block.channel_id === destinationChannelId) return block;
+
+  const moved = await moveColumn(blockId, destinationChannelId);
+  return moved ?? apiError("Not found.", 404);
 }
 
 // url blocks capture a preview asynchronously (see triggerScreenshotCapture in

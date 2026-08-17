@@ -52,8 +52,9 @@ missing token gets a `401` before any tool runs.
 
 ## Tools
 
-One tool per REST endpoint. Reads are visible if a channel is public or you
-own it; writes require ownership.
+One tool per REST endpoint, plus `move_block`, which has no REST equivalent.
+Reads are visible if a channel is public or you own it; writes require
+ownership.
 
 | Tool             | Equivalent                         | Notes                                                            |
 | ---------------- | ---------------------------------- | ---------------------------------------------------------------- |
@@ -67,11 +68,17 @@ own it; writes require ownership.
 | `get_block`      | `GET /api/v1/blocks/:id`           | `id`.                                                            |
 | `update_block`   | `PATCH /api/v1/blocks/:id`         | `id` + editable fields for that block's type.                    |
 | `delete_block`   | `DELETE /api/v1/blocks/:id`        | `id`.                                                            |
+| `move_block`     | —                                  | `id`, `channelId`. You must own both channels.                   |
 
 `create_block`/`update_block` field rules match the REST API: exactly one of
 `text`/`url`/`image` for creation (matching `type`), and only that type's
 field (plus `title`/`description`) on update. URL blocks added this way are
 **not** screenshotted — that capture flow is web-app-only.
+
+`move_block` only rewrites the block's `channel_id`, so the block keeps its id,
+`created_at`, tags, content, and any cached screenshot. `update_block` can't do
+this (`channel_id` isn't editable), and create-then-delete drops the timestamp
+and the screenshot.
 
 A failed call (bad input, not found, not yours) comes back as an MCP tool
 error (`isError: true`) with a human-readable message — the agent sees it

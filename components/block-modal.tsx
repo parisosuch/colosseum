@@ -11,7 +11,6 @@ import {
   Copy,
   FolderInput,
   GlobeIcon,
-  LayersIcon,
   LinkIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -45,26 +44,8 @@ import {
 import type { PickableChannel } from "@/components/add-block-drawer";
 import AdminDeleteButton from "@/components/admin-delete-button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import {
-  CommandDialog,
-  CommandEmpty,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import TagInput from "@/components/tag-input";
@@ -103,6 +84,41 @@ const MarkdownPreview = dynamic(() => import("./markdown-preview"), {
   ssr: false,
   loading: () => <p className="text-sm text-muted-foreground">Rendering preview…</p>,
 });
+
+// The Move/Copy picker (cmdk) and the delete confirmation (the alert dialog).
+// The channel board renders this modal on every channel page, so a static
+// import would put both in the bundle for anyone who opens a block — and
+// neither is on the way to reading one. Move is owner-only and behind a click,
+// Copy needs a signed-in viewer with a channel of their own, Delete is a click
+// plus a confirmation.
+//
+// No `loading` placeholder: nothing of either is meant to be on screen until
+// its own dialog opens. The button that opens one warms its chunk on hover
+// (see `warm`), so the click usually finds it already there.
+const loadChannelPicker = () => import("./block-channel-picker");
+const loadDeleteDialog = () => import("./delete-block-dialog");
+const BlockChannelPicker = dynamic(loadChannelPicker, { ssr: false });
+const DeleteBlockDialog = dynamic(loadDeleteDialog, { ssr: false });
+
+// A dialog whose contents are code-split: nothing renders (so no chunk is
+// fetched) until the trigger is used, and once it has been, the dialog stays
+// mounted so closing still plays its exit animation.
+function useDeferredDialog(load: () => Promise<unknown>) {
+  const [used, setUsed] = useState(false);
+  const [open, setOpen] = useState(false);
+  return {
+    mounted: used,
+    open,
+    setOpen,
+    show: () => {
+      setUsed(true);
+      setOpen(true);
+    },
+    // Hovering (or focusing) the trigger starts the chunk, the same bet the
+    // grid makes on a card's full-size image.
+    warm: () => void load(),
+  };
+}
 
 // The full-size image, with the grid's thumbnail painted behind it until it
 // arrives. The card the modal was opened from has already decoded that
@@ -455,6 +471,8 @@ function BlockModalBody({
     }
   };
 
+  const confirmDelete = useDeferredDialog(loadDeleteDialog);
+
   const handleDelete = async () => {
     try {
       await deleteColumnAction(column.id);
@@ -469,7 +487,7 @@ function BlockModalBody({
   // already in. (On someone else's channel, none is excluded — it isn't yours.)
   const moveTargets = channels.filter((c) => c.id !== column.channel_id);
   const copyTargets = moveTargets;
-  const [moveOpen, setMoveOpen] = useState(false);
+  const move = useDeferredDialog(loadChannelPicker);
   const [moving, setMoving] = useState(false);
 
   const handleMove = async (targetChannelId: number) => {
@@ -477,7 +495,7 @@ function BlockModalBody({
     setMoving(true);
     try {
       await moveColumnAction(column.id, targetChannelId);
-      setMoveOpen(false);
+      move.setOpen(false);
       // The block no longer belongs to this channel: drop it, which clears the
       // open id in the parent and closes the modal (same path as delete).
       setColumns((cols) => cols.filter((c) => c.id !== column.id));
@@ -489,7 +507,7 @@ function BlockModalBody({
     }
   };
 
-  const [copyOpen, setCopyOpen] = useState(false);
+  const copy = useDeferredDialog(loadChannelPicker);
   const [copying, setCopying] = useState(false);
 
   // Copy leaves the source in place, so — unlike move — the current board is
@@ -499,7 +517,7 @@ function BlockModalBody({
     setCopying(true);
     try {
       await copyColumnAction(column.id, targetChannelId);
-      setCopyOpen(false);
+      copy.setOpen(false);
       toast.success("Copied.");
     } catch (e) {
       console.error(e);
@@ -742,7 +760,9 @@ function BlockModalBody({
                       size="icon"
                       aria-label="Move to another channel"
                       disabled={moving}
-                      onClick={() => setMoveOpen(true)}
+                      onPointerEnter={move.warm}
+                      onFocus={move.warm}
+                      onClick={move.show}
                     >
                       <FolderInput />
                     </Button>
@@ -750,34 +770,17 @@ function BlockModalBody({
                   <TooltipContent>Move to another channel</TooltipContent>
                 </Tooltip>
                 {/* Searchable picker so it scales past a handful of channels. */}
-                <CommandDialog
-                  open={moveOpen}
-                  onOpenChange={setMoveOpen}
-                  title="Move to channel"
-                  description="Search your channels and move this column to one of them."
-                >
-                  <CommandInput placeholder="Search channels…" />
-                  <CommandList>
-                    <CommandEmpty>No channels found.</CommandEmpty>
-                    {moveTargets.map((c) => (
-                      <CommandItem
-                        key={c.id}
-                        value={`channel-${c.id}`}
-                        keywords={[c.title]}
-                        disabled={moving}
-                        onSelect={() => handleMove(c.id)}
-                      >
-                        <LayersIcon />
-                        <span className="truncate">{c.title}</span>
-                        {c.private ? (
-                          <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-                            private
-                          </span>
-                        ) : null}
-                      </CommandItem>
-                    ))}
-                  </CommandList>
-                </CommandDialog>
+                {move.mounted ? (
+                  <BlockChannelPicker
+                    open={move.open}
+                    onOpenChange={move.setOpen}
+                    title="Move to channel"
+                    description="Search your channels and move this column to one of them."
+                    channels={moveTargets}
+                    busy={moving}
+                    onPick={handleMove}
+                  />
+                ) : null}
               </>
             ) : null}
             {/* Copy needs only read access to this block, so any signed-in viewer
@@ -792,72 +795,48 @@ function BlockModalBody({
                       size="icon"
                       aria-label="Copy to another channel"
                       disabled={copying}
-                      onClick={() => setCopyOpen(true)}
+                      onPointerEnter={copy.warm}
+                      onFocus={copy.warm}
+                      onClick={copy.show}
                     >
                       <Copy />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>Copy to one of your channels</TooltipContent>
                 </Tooltip>
-                <CommandDialog
-                  open={copyOpen}
-                  onOpenChange={setCopyOpen}
-                  title="Copy to channel"
-                  description="Search your channels and copy this column into one of them."
-                >
-                  <CommandInput placeholder="Search channels…" />
-                  <CommandList>
-                    <CommandEmpty>No channels found.</CommandEmpty>
-                    {copyTargets.map((c) => (
-                      <CommandItem
-                        key={c.id}
-                        value={`channel-${c.id}`}
-                        keywords={[c.title]}
-                        disabled={copying}
-                        onSelect={() => handleCopy(c.id)}
-                      >
-                        <LayersIcon />
-                        <span className="truncate">{c.title}</span>
-                        {c.private ? (
-                          <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-                            private
-                          </span>
-                        ) : null}
-                      </CommandItem>
-                    ))}
-                  </CommandList>
-                </CommandDialog>
+                {copy.mounted ? (
+                  <BlockChannelPicker
+                    open={copy.open}
+                    onOpenChange={copy.setOpen}
+                    title="Copy to channel"
+                    description="Search your channels and copy this column into one of them."
+                    channels={copyTargets}
+                    busy={copying}
+                    onPick={handleCopy}
+                  />
+                ) : null}
               </>
             ) : null}
             {canEdit ? (
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive hover:text-destructive"
-                  >
-                    Delete
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Delete this block?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This permanently removes the block from the channel. This can’t be undone.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction
-                      className="bg-destructive text-white hover:bg-destructive/90"
-                      onClick={handleDelete}
-                    >
-                      Delete
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onPointerEnter={confirmDelete.warm}
+                  onFocus={confirmDelete.warm}
+                  onClick={confirmDelete.show}
+                >
+                  Delete
+                </Button>
+                {confirmDelete.mounted ? (
+                  <DeleteBlockDialog
+                    open={confirmDelete.open}
+                    onOpenChange={confirmDelete.setOpen}
+                    onConfirm={handleDelete}
+                  />
+                ) : null}
+              </>
             ) : isAdmin ? (
               <AdminDeleteButton
                 label="Delete block"

@@ -28,6 +28,7 @@
     "db:migrate:drizzle": "drizzle-kit migrate",
     "db:seed": "bun --conditions=react-server scripts/seed.ts",
     "backfill-thumbnails": "bun --conditions=react-server scripts/backfill-thumbnails.ts",
+    "backfill-video-posters": "bun --conditions=react-server scripts/backfill-video-posters.ts",
     "export-blobs": "bun --conditions=react-server scripts/export-blobs.ts",
     "test": "bun test --conditions=react-server"
   },

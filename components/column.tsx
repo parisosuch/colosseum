@@ -1,7 +1,7 @@
 "use client";
 
 import { memo } from "react";
-import { FileText, Play } from "lucide-react";
+import { FileText } from "lucide-react";
 import { RenderedMarkdown } from "./rendered-markdown";
 import type { Column } from "@/lib/colosseum/column";
 import { useBlockMediaPrefetch } from "@/components/block-prefetch";
@@ -11,6 +11,7 @@ import TweetBlock from "./tweet-block-lazy";
 import YouTubeBlock from "./youtube-block";
 import SpotifyBlock from "./spotify-block";
 import YouTubeChannelBlock from "./youtube-channel-block";
+import VideoPoster from "./video-poster";
 import { GradientSpin } from "./gradient-spin";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 
@@ -95,20 +96,13 @@ const ColumnComponent = memo(function ColumnComponent({
         <span className="line-clamp-2 max-w-full break-words text-xs">{column.title || "PDF"}</span>
       </div>
     ) : column.type === "video" ? (
-      <div className="relative h-full w-full">
-        <video
-          src={column.image}
-          preload="metadata"
-          muted
-          playsInline
-          className="h-full w-full rounded-lg object-cover"
-        />
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <span className="rounded-full bg-black/50 p-2 text-white">
-            <Play className="size-4 fill-current" />
-          </span>
-        </div>
-      </div>
+      <VideoPoster
+        image={column.image}
+        alt={column.title ?? "Video column"}
+        priority={priority}
+        className="rounded-lg"
+        iconClassName="size-4"
+      />
     ) : column.type === "tweet" ? (
       <TweetBlock id={tweetIdFromUrl(column.url ?? "") ?? ""} compact />
     ) : column.type === "youtube" ? (

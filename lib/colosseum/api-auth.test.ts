@@ -2,7 +2,7 @@ import { beforeAll, expect, test } from "bun:test";
 import { NextResponse } from "next/server";
 
 import { seed, USERS } from "@/scripts/seed";
-import { moveBlock } from "./api-auth";
+import { attachPreview, attachPreviews, moveBlock } from "./api-auth";
 import { createMedia, putBlob } from "./blob";
 import { createChannel } from "./channel";
 import { Column, getChannelColumns, uploadTextColumn, uploadURLColumn } from "./column";
@@ -129,4 +129,26 @@ test("moveBlock 404s on a missing block or a missing destination channel", async
     status: 404,
     error: "Not found.",
   });
+});
+
+test("API block payloads carry the markdown source, not the rendered HTML", async () => {
+  const ch = await createChannel({ title: "Api", access: "public", owner_id: USERS.alice.id });
+  const block = await uploadTextColumn({
+    created_by: USERS.alice.id,
+    channel_id: ch.id,
+    text: "# hi",
+  });
+  // The write path still renders, because the web client prepends the returned
+  // block straight into the grid.
+  expect(block.html).toContain("<h1>hi</h1>");
+
+  // The API doesn't: a client that asked for the source gets the source, and
+  // the rendered copy would roughly double a text block's payload.
+  const single = await attachPreview(block);
+  expect(single.text).toBe("# hi");
+  expect("html" in single).toBe(false);
+
+  const [listed] = await attachPreviews([block]);
+  expect(listed.text).toBe("# hi");
+  expect("html" in listed).toBe(false);
 });

@@ -12,73 +12,55 @@ release.
 
 ### Added
 
-- GitHub links become their own block. A repo or profile URL now renders a card
-  built from GitHub's API — avatar, name, description, and a repo's primary
-  language — instead of a screenshot of a page that is mostly navigation. Set
-  `GITHUB_TOKEN` (no scopes needed) to lift the API's 60 requests/hour limit;
-  without one, a rate-limited link falls back to a plain link block. (#434)
-- A YouTube channel URL creates a channel block, with the channel's avatar,
-  name, and blurb resolved when the block is added. The avatar is stored in
-  your own blob storage, so the card survives YouTube rotating its image
-  URLs. (#414)
-- Block permalinks open on the channel. A shared block link now lands on the
-  channel board with that block's modal already open, so closing it leaves you
-  somewhere. Back and forward move between the modal and the channel without
-  reloading. (#433)
-- Both channel pickers — "Connect to channel" and the add-block flow — end with
-  a **New channel…** entry, so wanting a fresh channel no longer means
-  abandoning what you were doing. (#431)
-- Sharing a block gets a card for that block. Pasting a block link into Slack,
-  iMessage, Discord, or X now unfurls with the block's own image and text
-  instead of the generic site card. (#393)
-- Notifications say what they are about, and a burst of activity on one block
-  collapses into a single notification instead of one per event. (#363)
-- A link block's modal has a copy button for its URL, next to the address
-  bar. (#415)
-- A `move_block` MCP tool reassigns a block to another channel in place, keeping
-  its id, timestamps, tags, and any cached screenshot. (#417)
-- One-shot data fixes now run themselves. Upgrades apply the backfills and
-  byte-moves a release needs, tracked in a `data_migration` ledger the same way
-  drizzle tracks schema migrations, so there is no upgrade checklist to follow
-  and skipping releases is safe. See **Upgrading** in the README. (#436)
+- GitHub repos and profiles get their own block. Paste a link to one and you
+  get a card with its avatar, name, description, and the repo's main language,
+  instead of a screenshot of a page that's mostly navigation.
+- YouTube channels get their own block too, showing the channel's avatar, name,
+  and description.
+- Sharing a block now lands people on the channel with that block open, so
+  closing it leaves them somewhere to browse. Back and forward move between the
+  block and the channel.
+- Both channel pickers offer "New channel…", so wanting a fresh channel no
+  longer means abandoning what you were in the middle of.
+- Block links unfurl properly in Slack, iMessage, Discord, and X — the card
+  shows the block you shared rather than the generic Colosseum one.
+- Notifications say what they're about, and a burst of activity on one block
+  arrives as a single notification instead of one per event.
+- A link block's modal has a button to copy its URL.
+- The MCP integration can move a block from one channel to another.
 
 ### Changed
 
-- Channels open and scroll faster on a large board. Thumbnails below the fold
-  load lazily (#396), cards far from the viewport drop their media and keep
-  their frame (#427), and video cards render a poster frame stored at upload
-  instead of pulling metadata out of every video file (#426).
-- Text blocks arrive with their markdown already rendered, which takes `marked`
-  and `sanitize-html` out of the browser, and `react-tweet` loads only when a
-  tweet block actually renders (#419). The render is memoized and skipped
-  entirely where the HTML would be discarded (#425).
-- Stepping through blocks with ← and → arrives on something already loaded:
-  neighbouring blocks warm their media and comments ahead of the press (#418),
-  and a block modal paints the grid's thumbnail behind the full-size image
-  while it loads (#422).
-- Repeat visits reuse more. The service worker caches public media (#424),
-  the public media redirect and tweet snapshots are cacheable (#401, #400), and
-  block prefetch now covers link screenshots with a preconnect for embeds (#421).
-- Search stops querying on every keystroke; the three search surfaces share one
-  debounce (#366).
-- The channel board's screenshot poll backs off instead of running every five
-  seconds, and stops entirely in a background tab (#416).
-- Three database indexes cover queries that scanned the whole `column` table,
-  and the nav, channel, and profile pages run their independent lookups
-  together rather than one after another (#395, #397).
-- Serving a thumbnail reads a `has_thumbnail` column instead of probing
-  storage (#402).
-- The GitHub and YouTube channel cards share one label, mark, and link
-  treatment, so a mixed grid reads as one system (#437).
+- Channels open faster and stay smooth as you scroll, most noticeably on large
+  boards. Images load as they come into view, cards far off screen let their
+  media go, and videos show a still frame that's ready in advance.
+- Opening a block is immediate. The picture you clicked shows straight away
+  while the full-size version arrives behind it, and stepping between blocks
+  with the arrow keys lands on something already loaded.
+- Coming back to a channel reuses what your browser already has, so pages you
+  have visited before load with far less waiting.
+- Search keeps up with your typing.
+- The GitHub and YouTube cards share one look, so a channel holding both reads
+  as one thing.
 
 ### Fixed
 
-- Block search ranks by which field matched — title, then tags, then
-  description, then body text, then URL — and returns a stable set. It had no
-  ordering at all, so a block titled "ceramics" could sit below one that
-  mentioned it in passing, and which ten results came back could vary between
-  identical searches. (#432)
-- Toasts no longer appear underneath the mobile bottom bar. (#367)
+- Searching for a block puts the closest match first. A block named for what
+  you searched could land below one that only mentioned it in passing, and
+  repeating the same search could return a different set of results.
+- Toasts no longer appear underneath the bar at the bottom of the screen on
+  mobile.
+
+### For self-hosters
+
+- Upgrades now apply their own data fixes on boot, tracked the same way schema
+  migrations are, so there's no checklist to follow after updating and skipping
+  releases is safe. The backfill-thumbnails and backfill-video-posters
+  commands are gone; bun run data:migrate runs the set. See Upgrading in
+  the README.
+- GitHub blocks read GitHub's public API. Setting GITHUB_TOKEN (no scopes
+  needed) raises the request limit; without one, a link that gets rate-limited
+  falls back to a plain link block.
 
 ## [1.9.3] - 2026-08-19
 

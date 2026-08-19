@@ -31,51 +31,38 @@ export default function GitHubBlock({
   const owner = slash > 0 ? title.slice(0, slash) : null;
   const name = slash > 0 ? title.slice(slash + 1) : title;
 
-  // An avatar alone says nothing about where the block came from — the mark is
-  // what makes a card in a mixed grid read as GitHub at a glance. It badges the
-  // avatar's corner, and stands in for the avatar entirely when the account
-  // published none (or we couldn't fetch it).
-  const mark = (
-    <span
-      className={cn(
-        "absolute bottom-0 right-0 flex items-center justify-center rounded-full",
-        // Ringed in the card's own background so the mark separates from a busy
-        // avatar instead of dissolving into it.
-        "bg-foreground text-background ring-2 ring-background",
-        compact ? "size-5" : "size-8",
-      )}
-    >
-      <Github className={compact ? "size-3" : "size-5"} />
-    </span>
+  // Fallback when the account published no avatar, or we couldn't fetch it: the
+  // GitHub mark filling the circle, so the card still has a subject.
+  const avatar = image ? (
+    <img
+      src={compact ? `${image}?thumb` : image}
+      alt=""
+      className="aspect-square w-full rounded-full object-cover"
+    />
+  ) : (
+    <div className="flex aspect-square w-full items-center justify-center rounded-full bg-foreground text-background">
+      <Github className={compact ? "size-6" : "size-10"} />
+    </div>
   );
 
-  const avatar = (
-    <div className="relative">
-      {image ? (
-        <img
-          src={compact ? `${image}?thumb` : image}
-          alt=""
-          className="aspect-square w-full rounded-full object-cover"
-        />
-      ) : (
-        <div className="flex aspect-square w-full items-center justify-center rounded-full bg-foreground text-background">
-          <Github className={compact ? "size-6" : "size-10"} />
-        </div>
-      )}
-      {/* Only badge a real avatar: over the fallback it would be the same mark
-          twice, one inside the other. */}
-      {image ? mark : null}
-    </div>
+  // The mark sits with the name rather than on the avatar: it says what kind of
+  // block this is, which belongs next to the thing being named, not badged onto
+  // someone's face. Inline rather than a flex child so a long repo name wrapping
+  // to a second line leaves it beside the first character, instead of centering
+  // it against the whole wrapped block and stranding it out to the left.
+  const nameLine = (size: string) => (
+    <>
+      <Github className={cn("mr-1.5 inline align-[-0.15em]", size)} />
+      {owner ? <span className="text-muted-foreground">{owner}/</span> : null}
+      <span className="font-medium">{name}</span>
+    </>
   );
 
   if (compact) {
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center">
         <div className="w-1/2 max-w-24">{avatar}</div>
-        <span className="max-w-full break-words font-mono text-sm">
-          {owner ? <span className="text-muted-foreground">{owner}/</span> : null}
-          <span className="font-medium">{name}</span>
-        </span>
+        <span className="max-w-full break-words font-mono text-sm">{nameLine("size-3.5")}</span>
       </div>
     );
   }
@@ -83,10 +70,7 @@ export default function GitHubBlock({
   return (
     <div className="flex w-full flex-col items-center gap-3 p-6 text-center">
       <div className="w-32">{avatar}</div>
-      <h2 className="break-words font-mono text-xl">
-        {owner ? <span className="text-muted-foreground">{owner}/</span> : null}
-        <span className="font-medium">{name}</span>
-      </h2>
+      <h2 className="break-words font-mono text-xl">{nameLine("size-5")}</h2>
       {description ? (
         <p className="line-clamp-6 max-w-prose break-words text-sm text-muted-foreground">
           {description}
@@ -101,9 +85,8 @@ export default function GitHubBlock({
         href={url}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-1.5 text-sm underline underline-offset-4 hover:no-underline"
+        className="text-sm underline underline-offset-4 hover:no-underline"
       >
-        <Github className="size-3.5" />
         View on GitHub
       </a>
     </div>

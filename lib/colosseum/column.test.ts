@@ -9,7 +9,11 @@ import {
   deleteColumn,
   getChannelColumns,
   getColumn,
+  searchColumns,
+  updateColumnDescription,
+  updateColumnTags,
   updateColumnText,
+  updateColumnTitle,
   uploadImageColumn,
   uploadTextColumn,
   uploadURLColumn,
@@ -197,4 +201,33 @@ test("html: false hands back the markdown source with nothing rendered", async (
   const [rendered] = await getChannelColumns(ch.id);
   expect(rendered.html).toContain("<h1>Note</h1>");
   expect((await getColumn(created.id))?.html).toContain("<h1>Note</h1>");
+});
+
+test("searchColumns ranks title over tag over description over text over url", async () => {
+  const ch = await createChannel({
+    title: "Ranking",
+    access: "public",
+    owner_id: USERS.alice.id,
+  });
+  const mk = (text: string) =>
+    uploadTextColumn({ created_by: USERS.alice.id, channel_id: ch.id, text });
+
+  // Created worst-match first, so an unranked query hands these back in the
+  // reverse of what's expected and the assertion tests the ranking rather than
+  // the row order the database happens to produce.
+  const urled = await uploadURLColumn({
+    created_by: USERS.alice.id,
+    channel_id: ch.id,
+    text: "https://example.com/ceramics-guide",
+  });
+  const texted = await mk("a long note that mentions ceramics in passing");
+  const described = await mk("filler body");
+  await updateColumnDescription(described.id, "about ceramics");
+  const tagged = await mk("another filler body");
+  await updateColumnTags(tagged.id, ["ceramics"]);
+  const titled = await mk("yet more filler");
+  await updateColumnTitle(titled.id, "Ceramics");
+
+  const hits = await searchColumns(USERS.alice.id, "ceramics");
+  expect(hits.map((c) => c.id)).toEqual([titled.id, tagged.id, described.id, texted.id, urled.id]);
 });

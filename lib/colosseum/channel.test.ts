@@ -12,6 +12,7 @@ import {
   getUserPublicChannels,
   getVisibleUserChannels,
   searchChannels,
+  updateChannel,
 } from "./channel";
 import { isChannelMember } from "./member";
 import { searchColumns, uploadImageColumn, uploadURLColumn } from "./column";
@@ -163,6 +164,39 @@ test("searchChannels hides others' private channels but shows your own", async (
   expect((await searchChannels(USERS.alice.id, "private")).map((c) => c.title)).toContain(
     CHANNELS.alicePrivate.title,
   );
+});
+
+test("searchChannels ranks a title match above a tag, and a tag above a description", async () => {
+  // Created in the reverse of the expected order, so an unranked query returns
+  // them backwards and this test fails on the ranking rather than on the row
+  // order the database happens to hand back.
+  const described = await createChannel({
+    title: "Weekend Reading",
+    description: "mostly ceramics writing",
+    access: "public",
+    owner_id: USERS.alice.id,
+  });
+  const tagged = await createChannel({
+    title: "Studio Notes",
+    access: "public",
+    owner_id: USERS.alice.id,
+  });
+  await updateChannel(tagged.id, { title: tagged.title, access: "public", tags: ["ceramics"] });
+  const titled = await createChannel({
+    title: "Ceramics",
+    access: "public",
+    owner_id: USERS.alice.id,
+  });
+
+  expect((await searchChannels(USERS.alice.id, "ceramics")).map((c) => c.title)).toEqual([
+    "Ceramics",
+    "Studio Notes",
+    "Weekend Reading",
+  ]);
+
+  for (const c of [titled, tagged, described]) {
+    await deleteChannel(c.id);
+  }
 });
 
 test("searchColumns surfaces other users' public blocks but never private ones", async () => {

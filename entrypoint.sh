@@ -9,11 +9,14 @@ set -e
 echo "Applying database migrations..."
 bun run db:migrate:drizzle
 
-# Copy any disk-resident blobs into the object store when S3 is configured, so
-# switching an existing deployment to S3 doesn't orphan its images. No-op (one
-# HEAD) once done, and no-op entirely on the local-disk default.
-echo "Syncing blobs to object storage..."
-bun --conditions=react-server scripts/migrate-blobs.ts
+# One-shot data fixes (scripts/data/), tracked in the data_migration ledger the
+# same way drizzle tracks schema migrations. Each runs once and is skipped
+# thereafter, so a settled deployment costs a single SELECT. Runs after the
+# schema migrations so a data fix can rely on its column existing. A migration
+# marked `required` exits non-zero here and stops the container; the rest log
+# and let the boot continue.
+echo "Applying data migrations..."
+bun run data:migrate
 
 echo "Starting server..."
 exec bun run start

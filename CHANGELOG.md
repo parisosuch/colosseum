@@ -8,6 +8,13 @@ release.
 
 ## [Unreleased]
 
+## [1.10.1] - 2026-08-19
+
+### Changed
+
+- Release notes are written for the people using Colosseum rather than listing
+  pull requests, and the changelog page no longer shows stray formatting marks.
+
 ## [1.10.0] - 2026-08-19
 
 ### Added

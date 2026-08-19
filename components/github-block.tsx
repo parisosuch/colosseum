@@ -1,5 +1,7 @@
 import { Github } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 // Renders a GitHub repo or account. A screenshot of github.com is mostly nav
@@ -52,7 +54,7 @@ export default function GitHubBlock({
   // it against the whole wrapped block and stranding it out to the left.
   const nameLine = (size: string) => (
     <>
-      <Github className={cn("mr-1.5 inline align-[-0.15em]", size)} />
+      <Github className={cn("mr-2 inline align-middle", size)} />
       {owner ? <span className="text-muted-foreground">{owner}/</span> : null}
       <span className="font-medium">{name}</span>
     </>
@@ -62,7 +64,7 @@ export default function GitHubBlock({
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center">
         <div className="w-1/2 max-w-24">{avatar}</div>
-        <span className="max-w-full break-words font-mono text-sm">{nameLine("size-3.5")}</span>
+        <span className="max-w-full break-words font-mono text-sm">{nameLine("size-3")}</span>
       </div>
     );
   }
@@ -70,25 +72,22 @@ export default function GitHubBlock({
   return (
     <div className="flex w-full flex-col items-center gap-3 p-6 text-center">
       <div className="w-32">{avatar}</div>
-      <h2 className="break-words font-mono text-xl">{nameLine("size-5")}</h2>
+      <h2 className="text-heading break-words font-mono">{nameLine("size-4")}</h2>
       {description ? (
         <p className="line-clamp-6 max-w-prose break-words text-sm text-muted-foreground">
           {description}
         </p>
       ) : null}
       {language ? (
-        <span className="text-xs font-mono text-muted-foreground border rounded-full px-2 py-0.5">
+        <Badge variant="secondary" className="font-mono">
           {language}
-        </span>
+        </Badge>
       ) : null}
-      <a
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-sm underline underline-offset-4 hover:no-underline"
-      >
-        View on GitHub
-      </a>
+      <Button asChild variant="link" size="sm">
+        <a href={url} target="_blank" rel="noopener noreferrer">
+          View on GitHub
+        </a>
+      </Button>
     </div>
   );
 }

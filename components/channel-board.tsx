@@ -110,6 +110,11 @@ type ChannelBoardProps = {
   // Cached screenshots for the first page's URL blocks (entries, not a Map — a
   // Map isn't needed on the wire), so previews paint without a second fetch.
   initialScreenshots: [string, ColumnScreenshot][];
+  // The `?block=` deep-linked block, already visibility-checked by the page, so
+  // a shared link paints with its modal open. Resolved server-side because the
+  // block can be older than `initialColumns`, which stops at one page.
+  initialBlock: Column | null;
+  initialBlockScreenshot: ColumnScreenshot | null;
 };
 
 export default function ChannelBoard({
@@ -128,14 +133,22 @@ export default function ChannelBoard({
   ownerAvatarUrl,
   initialColumns,
   initialScreenshots,
+  initialBlock,
+  initialBlockScreenshot,
 }: ChannelBoardProps) {
   const router = useRouter();
   const [members, setMembers] = useState<ChannelMember[]>(initialMembers);
   const [channel, setChannel] = useState<Channel>(initialChannel);
   const [columns, setColumns] = useState<Column[]>(initialColumns);
-  const [screenshots, setScreenshots] = useState<Map<string, ColumnScreenshot>>(
-    () => new Map(initialScreenshots),
-  );
+  const [screenshots, setScreenshots] = useState<Map<string, ColumnScreenshot>>(() => {
+    const map = new Map(initialScreenshots);
+    // The deep-linked block can be past the first page, so its preview isn't in
+    // initialScreenshots — seed it or the opened modal shows an empty frame.
+    if (initialBlock?.url && initialBlockScreenshot) {
+      map.set(initialBlock.url, initialBlockScreenshot);
+    }
+    return map;
+  });
 
   // Channel-wide stats, kept independent of the paged/filtered `columns` list so
   // the meta panel always reflects the whole channel.
@@ -161,8 +174,13 @@ export default function ChannelBoard({
   const [adding, setAdding] = useState(false);
 
   // Which block's modal is open, so it can step to a sibling block in place.
-  const [openId, setOpenId] = useState<number | null>(null);
+  // Seeded from the `?block=` deep link so a shared URL opens straight into it.
+  const [openId, setOpenId] = useState<number | null>(initialBlock?.id ?? null);
   const openBlock = useCallback((id: number) => setOpenId(id), []);
+  // The deep-linked block may sit past the first page, so it isn't in `columns`
+  // and can't be found there. Keep it as a standalone fallback until the user
+  // opens something else.
+  const deepLinked = openId != null && openId === initialBlock?.id ? initialBlock : null;
 
   // URLs whose screenshot is being captured in the background. The hydrate
   // effect skips these so the row keeps showing a spinner (instead of resolving
@@ -444,7 +462,10 @@ export default function ChannelBoard({
   );
 
   const openIndex = openId == null ? -1 : columns.findIndex((c) => c.id === openId);
-  const openColumn = openIndex >= 0 ? columns[openIndex] : null;
+  // Falls back to the deep-linked block when it isn't in the loaded page. There
+  // are no siblings to step to in that case, so the arrows stay off until the
+  // user scrolls far enough for it to join `columns`.
+  const openColumn = openIndex >= 0 ? columns[openIndex] : deepLinked;
   const hasPrev = openIndex > 0;
   const hasNext = openIndex >= 0 && openIndex < columns.length - 1;
 
@@ -454,10 +475,54 @@ export default function ChannelBoard({
   useNeighbourPrefetch(columns, openIndex, screenshots);
 
   // If the open block leaves the list (deleted, or filtered out by a control
-  // change), close the modal instead of stranding it on a gone block.
+  // change), close the modal instead of stranding it on a gone block. The
+  // deep-linked block is exempt — it legitimately isn't in `columns` when it
+  // sits past the first page, and closing it would defeat the whole deep link.
   useEffect(() => {
-    if (openId != null && !columns.some((c) => c.id === openId)) setOpenId(null);
-  }, [columns, openId]);
+    if (openId != null && openId !== initialBlock?.id && !columns.some((c) => c.id === openId)) {
+      setOpenId(null);
+    }
+  }, [columns, openId, initialBlock?.id]);
+
+  // Keep the URL in step with the modal, so a permalink can be copied from the
+  // address bar and Back closes the modal rather than leaving the channel.
+  // history.pushState (not router.push) because this is the same route either
+  // way — a router navigation would re-run the server component and throw away
+  // the loaded pages behind the modal.
+  //
+  // Opening pushes an entry so Back can pop it; stepping between blocks with
+  // the arrows replaces, or a walk through a channel would bury the entry the
+  // user actually arrived on. `skipUrlSync` covers the popstate-driven updates,
+  // where the URL is already what it should be.
+  const skipUrlSync = useRef(true);
+  const lastOpenId = useRef<number | null>(openId);
+  useEffect(() => {
+    if (skipUrlSync.current) {
+      skipUrlSync.current = false;
+      lastOpenId.current = openId;
+      return;
+    }
+    const base = `/${handle}/${channel.id}`;
+    const url = openId == null ? base : `${base}?block=${openId}`;
+    // Stepping between blocks: replace. Opening or closing: push.
+    const stepping = openId != null && lastOpenId.current != null;
+    lastOpenId.current = openId;
+    if (stepping) window.history.replaceState(null, "", url);
+    else window.history.pushState(null, "", url);
+  }, [openId, handle, channel.id]);
+
+  // Back/forward: read the modal state back out of the URL. Same-route history
+  // moves don't re-render the server component, so nothing else would notice.
+  useEffect(() => {
+    const onPopState = () => {
+      const block = new URLSearchParams(window.location.search).get("block");
+      const id = block ? parseInt(block, 10) : NaN;
+      skipUrlSync.current = true;
+      setOpenId(Number.isNaN(id) ? null : id);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   return (
     <div className="w-full p-6 sm:p-12 space-y-8">

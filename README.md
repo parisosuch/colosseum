@@ -233,6 +233,30 @@ sudo apt-get update && sudo apt-get install -y \
 
 On Ubuntu 22.04 and earlier, use `libasound2` instead of `libasound2t64`.
 
+### Video posters (ffmpeg)
+
+A video block's card shows a poster frame decoded at upload time, so a channel
+full of videos loads a row of small images rather than fetching part of every
+file. The decoding is done by **ffmpeg**, which the Docker image installs. If
+you run outside the image, put it on `PATH` (or point `FFMPEG_PATH` at a build):
+
+```bash
+sudo apt-get install -y ffmpeg
+```
+
+It's optional. Without it, uploads and playback work exactly as before — the
+cards just show a placeholder with a play badge instead of a frame.
+
+Already have video blocks? Decode their posters once, after installing ffmpeg:
+
+```bash
+bun run backfill-video-posters
+```
+
+It only reads blobs that don't have a rendition yet, so re-running it after it
+has converged does nothing. Anything it skips is retried lazily the first time
+a card asks for that poster.
+
 ## Contributing
 
 Contributions are welcome! Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for

@@ -10,7 +10,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
-import { blobKey, ensureThumbnail, getMedia, thumbKey } from "@/lib/colosseum/blob";
+import { blobKey, ensureThumbnail, getMedia, isVideoMime, thumbKey } from "@/lib/colosseum/blob";
 import { canReadMedia } from "@/lib/colosseum/channel";
 import {
   etagMatches,
@@ -45,8 +45,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   }
 
   // `?thumb` serves a downsized webp derived from the same bytes (used by grid
-  // previews). Generation is idempotent + cached; a non-image blob (or any
-  // failure) falls back to the full bytes.
+  // previews) — the image itself, or a decoded frame for a video. Generation is
+  // idempotent + cached; an undecodable blob (or any failure) falls back to the
+  // full bytes.
   //
   // The row already tells us whether the rendition is stored, so the common
   // case — every tile of every grid — goes straight to the key. Only a blob
@@ -58,11 +59,17 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   if (req.nextUrl.searchParams.has("thumb")) {
     const thumb = item.has_thumbnail
       ? thumbKey(item.sha256)
-      : await ensureThumbnail(item.sha256).catch(() => null);
+      : await ensureThumbnail(item.sha256, item.mime).catch(() => null);
     if (thumb) {
       key = thumb;
       contentType = "image/webp";
       servingThumb = true;
+    } else if (isVideoMime(item.mime)) {
+      // No poster could be made (no ffmpeg, or a file it can't decode). The
+      // asker is an <img>, so falling through would hand it the whole video —
+      // the exact request `?thumb` exists to replace. 404 instead; the card
+      // draws its placeholder off the error.
+      return NextResponse.json({ error: "Not found." }, { status: 404 });
     }
   }
 

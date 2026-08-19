@@ -5,9 +5,12 @@
 FROM oven/bun:1.3
 
 # Debian's Chromium for the screenshot capture (puppeteer drives it via
-# PUPPETEER_EXECUTABLE_PATH and skips downloading its own copy below).
+# PUPPETEER_EXECUTABLE_PATH and skips downloading its own copy below), plus
+# ffmpeg, which decodes the poster frame a video block's card renders instead of
+# the video itself (lib/colosseum/video-frame.ts). ffmpeg is optional at runtime
+# — without it video blocks still work, their cards just show a placeholder.
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends chromium fonts-liberation ca-certificates && \
+    apt-get install -y --no-install-recommends chromium ffmpeg fonts-liberation ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 ENV PUPPETEER_SKIP_DOWNLOAD=1 \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium

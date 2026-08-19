@@ -21,6 +21,7 @@ import { logError } from "@/lib/log";
 import { THUMB_MAX_WIDTH } from "@/lib/utils";
 import { DESKTOP_UA } from "./og-meta";
 import { deleteObject, getBytes, objectExists, putObject } from "./storage";
+import { extractVideoFrame, ffmpegAvailable } from "./video-frame";
 
 export type MediaVisibility = "public" | "private";
 
@@ -43,19 +44,32 @@ export function blobKey(sha256: string): string {
 }
 
 // The thumbnail derives from the immutable blob bytes, so it's content-addressed
-// too and shares the blob's lifetime.
+// too and shares the blob's lifetime. A video blob's poster frame is stored
+// here as well: it is the same "small webp rendition of these bytes", reached
+// by the same `?thumb`, so it needs no second key, column, or media reference.
 export function thumbKey(sha256: string): string {
   return `${blobKey(sha256)}.thumb`;
 }
 
-// Generate (once) a downsized webp thumbnail for a stored image blob and return
-// its storage key. Idempotent: an existing thumbnail is left as-is. Throws if
-// the blob isn't a decodable image, so callers fall back to the full bytes.
+export function isVideoMime(mime: string | null | undefined): boolean {
+  return typeof mime === "string" && mime.startsWith("video/");
+}
+
+// Generate (once) a downsized webp thumbnail for a stored blob and return its
+// storage key. For an image that's the image; for a video it's a decoded frame,
+// so the card can be an `<img>` instead of a `<video>` that ranged-reads the
+// file. Idempotent: an existing thumbnail is left as-is. Throws if there's
+// nothing decodable — a caller either falls back to the full bytes (images) or
+// to no poster (videos).
+//
+// `mime` says which pipeline to run. It's optional because the blob's bytes are
+// the source of truth everywhere else; omitting it takes the image path, which
+// is what every caller that predates video posters wanted.
 //
 // Every path that creates a thumbnail comes through here — upload, backfill,
 // and the serving route's lazy fallback — so this is also where the blob row
 // gets marked. The serving route reads that mark to skip the probe below.
-export async function ensureThumbnail(sha256: string): Promise<string> {
+export async function ensureThumbnail(sha256: string, mime?: string): Promise<string> {
   const key = thumbKey(sha256);
   if (await objectExists(key)) {
     // Already stored, but we only learned that by probing — which means the row
@@ -64,14 +78,22 @@ export async function ensureThumbnail(sha256: string): Promise<string> {
     await markThumbnail(sha256);
     return key;
   }
+  const video = isVideoMime(mime);
+  // Bail before the download, not after: a deployment without ffmpeg would
+  // otherwise pull up to 100MB out of the object store on every un-postered
+  // video just to find there's no decoder.
+  if (video && !(await ffmpegAvailable())) {
+    throw new Error("ffmpeg is not available");
+  }
   const src = await getBytes(blobKey(sha256));
   if (!src) {
     throw new Error(`blob ${sha256} not found`);
   }
+  const frame = video ? await extractVideoFrame(src, mime!) : src;
   // `animated: true` reads every frame so an animated GIF/WebP thumbnails to an
   // animated webp instead of a frozen first frame. Harmless for static images
-  // (a single page).
-  const out = await sharp(src, { animated: true })
+  // (a single page). A poster is one PNG frame, so it never applies there.
+  const out = await sharp(frame, { animated: !video })
     .resize({ width: THUMB_MAX_WIDTH, withoutEnlargement: true })
     .webp({ quality: 72 })
     .toBuffer();
@@ -227,8 +249,6 @@ export const MAX_VIDEO_BYTES = 100 * 1024 * 1024; // 100MB
 export const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/webm", "video/quicktime", "video/ogg"];
 
 // Validate + store a user-uploaded video, returning the media URL to persist.
-// No thumbnail (sharp can't rasterize a video); the block renders the video
-// element itself, which shows its first frame in the grid.
 export async function putVideoBlob(
   file: File,
   createdBy: string,
@@ -241,6 +261,10 @@ export async function putVideoBlob(
     throw new Error("That video is too large (max 100MB).");
   }
   const sha256 = await putBlob(Buffer.from(await file.arrayBuffer()), file.type, createdBy);
+  // Decode the poster frame now so the grid card has an image to point at.
+  // Must never fail the upload: without ffmpeg, or on a file ffmpeg can't read,
+  // the block still exists and its card falls back to a plain placeholder.
+  await ensureThumbnail(sha256, file.type).catch(() => {});
   return createMedia(sha256, createdBy, visibility);
 }
 

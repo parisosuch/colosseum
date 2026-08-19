@@ -8,6 +8,7 @@ import {
   copyColumn,
   deleteColumn,
   getChannelColumns,
+  getColumn,
   updateColumnText,
   uploadImageColumn,
   uploadTextColumn,
@@ -175,4 +176,25 @@ test("updateColumnText returns the block with its html re-rendered from the new 
   expect(updated?.html).not.toContain("onerror");
 
   expect(await updateColumnText(-1, "gone")).toBeNull();
+});
+
+test("html: false hands back the markdown source with nothing rendered", async () => {
+  const ch = await createChannel({ title: "Source", access: "public", owner_id: USERS.alice.id });
+  const created = await uploadTextColumn({
+    created_by: USERS.alice.id,
+    channel_id: ch.id,
+    text: "# Note\n\nbody",
+  });
+
+  // The export and the REST/MCP reads return `text` and drop `html`, so they
+  // ask for the source and skip marked + sanitize-html entirely.
+  const [source] = await getChannelColumns(ch.id, { html: false });
+  expect(source.text).toBe("# Note\n\nbody");
+  expect(source.html).toBeUndefined();
+  expect(await getColumn(created.id, { html: false })).toMatchObject({ html: undefined });
+
+  // Every other caller keeps the default and gets the block rendered.
+  const [rendered] = await getChannelColumns(ch.id);
+  expect(rendered.html).toContain("<h1>Note</h1>");
+  expect((await getColumn(created.id))?.html).toContain("<h1>Note</h1>");
 });

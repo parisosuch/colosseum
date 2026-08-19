@@ -39,11 +39,14 @@ export default function ExportChannelButton({ channel }: ExportChannelButtonProp
   // Pull the whole channel at export time rather than relying on whatever the
   // page currently has loaded — the channel page paginates, so its in-memory
   // columns are only the visible slice. An export must always be complete.
+  // `html: false` because an export carries each text block's markdown source:
+  // rendering it would be server CPU spent on a field buildChannelExport drops,
+  // on an unbounded number of blocks.
   const exportAs = async (format: "json" | "csv") => {
     if (exporting) return;
     setExporting(true);
     try {
-      const columns = await getChannelColumnsAction(channel.id);
+      const columns = await getChannelColumnsAction(channel.id, { html: false });
       const urls = columns.filter((c) => c.type === "url" && c.url).map((c) => c.url!);
       const screenshots = new Map(await getScreenshotsForUrlsAction(urls));
       const data = buildChannelExport(channel, columns, screenshots);

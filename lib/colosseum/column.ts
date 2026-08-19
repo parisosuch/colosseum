@@ -44,6 +44,10 @@ export type Column = {
   // just-created). Clients render this instead of parsing the markdown
   // themselves, which keeps `marked` and `sanitize-html` out of the browser and
   // makes the server the only place HTML is ever produced.
+  //
+  // Absent on the fetch paths that pass `{ html: false }` — the export and the
+  // REST/MCP reads, which return the markdown source and never render it. Every
+  // path that puts a block in front of a viewer takes the default and gets it.
   html?: string;
   // Media URL of the uploaded blob for `image` columns, and reused for `pdf`
   // columns (the stored file is a PDF, served by /api/media with its own mime).
@@ -63,10 +67,22 @@ export type Column = {
 };
 
 type ColumnRow = typeof column.$inferSelect;
+
+// Per-call rendering options for the row → Column conversion.
+export type ColumnRender = {
+  // Render a `text` block's markdown into `html`. Defaults to true, so a block
+  // carries its HTML however it was fetched. Pass false only where the result
+  // is known never to be rendered — the channel export and the REST/MCP reads,
+  // which hand back the markdown source — since the render is pure CPU there
+  // and doubles a text block's payload on the way out.
+  html?: boolean;
+};
+
 // The single row → Column conversion. Every fetch, insert and update path in the
 // data layer goes through it, which is why the rendered markdown is produced
-// here: there is no way to obtain a Column whose `html` is missing or stale.
-export function toColumn(row: ColumnRow): Column {
+// here: a Column's `html` can never be stale, and can only be missing where a
+// caller explicitly opted out of rendering it.
+export function toColumn(row: ColumnRow, render: ColumnRender = {}): Column {
   return {
     id: row.id,
     created_at: row.created_at.toISOString(),
@@ -75,7 +91,10 @@ export function toColumn(row: ColumnRow): Column {
     description: row.description ?? undefined,
     url: row.url ?? undefined,
     text: row.text ?? undefined,
-    html: row.type === "text" && row.text ? renderMarkdown(row.text) : undefined,
+    html:
+      render.html !== false && row.type === "text" && row.text
+        ? renderMarkdown(row.text)
+        : undefined,
     image: row.image ?? undefined,
     created_by: row.created_by,
     channel_id: row.channel_id,
@@ -158,7 +177,10 @@ export async function withCreators(cols: Column[]): Promise<Column[]> {
 
 // Fetch a single block by id. Returns null when it doesn't exist. Visibility is
 // NOT enforced here — callers authorize via the block's channel first.
-export async function getColumn(column_id: number): Promise<Column | null> {
+export async function getColumn(
+  column_id: number,
+  render: ColumnRender = {},
+): Promise<Column | null> {
   // A non-numeric route param (e.g. parseInt("foo") → NaN) is never a real id;
   // treat it as not-found instead of letting Postgres reject NaN for a bigint.
   if (!Number.isFinite(column_id)) {
@@ -166,7 +188,7 @@ export async function getColumn(column_id: number): Promise<Column | null> {
   }
   const [row] = await db.select().from(column).where(eq(column.id, column_id)).limit(1);
   if (!row) return null;
-  const [enriched] = await withCreators([toColumn(row)]);
+  const [enriched] = await withCreators([toColumn(row, render)]);
   return enriched;
 }
 
@@ -187,6 +209,11 @@ export type ColumnQuery = {
   limit?: number;
   // Row offset for paged load-more; used together with `limit`.
   offset?: number;
+  // Render text blocks' markdown into `html` (see ColumnRender). Defaults to
+  // true; the export and the REST/MCP list pass false. An unbounded read of a
+  // channel full of long text blocks is the most expensive shape this query
+  // has, and those callers hand back the markdown source instead.
+  html?: boolean;
 };
 
 // Callers must authorize the channel's visibility before calling this (see the
@@ -196,7 +223,7 @@ export async function getChannelColumns(
   query: ColumnQuery = {},
   viewerId: string | null = null,
 ): Promise<Column[]> {
-  const { search, type = "all", sort = "newest", limit, offset = 0 } = query;
+  const { search, type = "all", sort = "newest", limit, offset = 0, html } = query;
 
   const filters: SQL[] = [eq(column.channel_id, channel_id)];
 
@@ -240,7 +267,12 @@ export async function getChannelColumns(
     .limit(limit ?? Number.MAX_SAFE_INTEGER)
     .offset(offset);
 
-  return withCreators(await withLinkedChannels(rows.map(toColumn), viewerId));
+  return withCreators(
+    await withLinkedChannels(
+      rows.map((row) => toColumn(row, { html })),
+      viewerId,
+    ),
+  );
 }
 
 // The `perChannel` newest blocks for each of `channelIds`, as one windowed query

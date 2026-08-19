@@ -30,7 +30,8 @@ export async function GET(req: Request, { params }: Ctx) {
   const blockId = parseId((await params).id);
   if (blockId === null) return apiError("Invalid block id.", 400);
 
-  const block = await getColumn(blockId);
+  // The response returns the markdown source, so skip rendering it to HTML.
+  const block = await getColumn(blockId, { html: false });
   if (!block) return apiError("Not found.", 404);
 
   const channel = await getChannel(block.channel_id);
@@ -56,7 +57,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
   const blockId = parseId((await params).id);
   if (blockId === null) return apiError("Invalid block id.", 400);
 
-  const block = await getColumn(blockId);
+  const block = await getColumn(blockId, { html: false });
   if (!block) return apiError("Not found.", 404);
 
   const channel = await getChannel(block.channel_id);
@@ -102,7 +103,7 @@ export async function DELETE(req: Request, { params }: Ctx) {
   const blockId = parseId((await params).id);
   if (blockId === null) return apiError("Invalid block id.", 400);
 
-  const block = await getColumn(blockId);
+  const block = await getColumn(blockId, { html: false });
   if (!block) return apiError("Not found.", 404);
 
   const channel = await getChannel(block.channel_id);

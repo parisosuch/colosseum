@@ -336,6 +336,19 @@ export async function searchColumns(
 
   const pattern = `%${term}%`;
   const tag = term.replace(/["\\]/g, "");
+  // Five fields match equally in the WHERE above, which is too flat to order
+  // by: a block titled "ceramics" would sit below one that mentions ceramics
+  // somewhere in its body. Rank by how deliberate the match is — a title, then
+  // a tag someone applied, then the description, then body text, and last a URL,
+  // where the term is usually an incidental substring of a long link. Newest
+  // first inside a rank, which also keeps the `limit` below deterministic.
+  const rank = sql<number>`case
+    when ${column.title} ilike ${pattern} then 0
+    when ${column.tags} @> ARRAY[${tag}]::text[] then 1
+    when ${column.description} ilike ${pattern} then 2
+    when ${column.text} ilike ${pattern} then 3
+    else 4
+  end`;
   const rows = await db
     .select({ col: column, handle: userProfile.handle })
     .from(column)
@@ -357,6 +370,7 @@ export async function searchColumns(
         ),
       ),
     )
+    .orderBy(rank, desc(column.created_at), desc(column.id))
     .limit(10);
   return rows.map(({ col, handle }) => ({ ...toColumn(col), handle }));
 }

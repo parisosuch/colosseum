@@ -8,6 +8,14 @@ release.
 
 ## [Unreleased]
 
+## [1.10.2] - 2026-08-19
+
+### Fixed
+
+- A link added from the quick-add drawer becomes the same kind of block as one
+  pasted into the channel, so a GitHub, YouTube, Spotify, or tweet link added
+  that way stops arriving as a plain link with a screenshot.
+
 ## [1.10.1] - 2026-08-19
 
 ### Changed

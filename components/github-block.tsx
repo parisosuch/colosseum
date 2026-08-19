@@ -64,7 +64,13 @@ export default function GitHubBlock({
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center">
         <div className="w-1/2 max-w-24">{avatar}</div>
-        <span className="max-w-full break-words font-mono text-sm">{nameLine("size-3")}</span>
+        {/* The grid's card-label treatment (column.tsx, column-preview.tsx),
+            not a bespoke one — a mixed grid should read as one system. Two
+            lines are reserved so a name that wraps doesn't push its avatar up
+            relative to the card beside it. */}
+        <span className="line-clamp-2 min-h-14 max-w-full break-words font-serif text-lg font-medium">
+          {nameLine("size-4")}
+        </span>
       </div>
     );
   }
@@ -72,7 +78,7 @@ export default function GitHubBlock({
   return (
     <div className="flex w-full flex-col items-center gap-3 p-6 text-center">
       <div className="w-32">{avatar}</div>
-      <h2 className="text-heading break-words font-mono">{nameLine("size-4")}</h2>
+      <h2 className="text-heading break-words">{nameLine("size-4")}</h2>
       {description ? (
         <p className="line-clamp-6 max-w-prose break-words text-sm text-muted-foreground">
           {description}

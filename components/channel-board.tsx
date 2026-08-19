@@ -480,8 +480,10 @@ export default function ChannelBoard({
             isPrivate={channel.private}
           />
         ) : null}
-        {/* Any signed-in viewer can nest a public channel into one of their own. */}
-        {!channel.private ? (
+        {/* Any signed-in viewer can nest a public channel into one of their own —
+            into an existing channel or one created from the picker, so this
+            shows even when they have none yet. */}
+        {!channel.private && user ? (
           <ConnectChannelButton channelId={channel.id} channels={channels} />
         ) : null}
         <ExportChannelButton channel={channel} />

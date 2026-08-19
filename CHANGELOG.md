@@ -8,6 +8,17 @@ release.
 
 ## [Unreleased]
 
+## [1.9.3] - 2026-08-19
+
+### Fixed
+
+- Channel search now puts name matches first, then tag matches, then channels
+  that only mention the term in their description. Searching "design" led with
+  whichever channel the database happened to return first, so a channel named
+  Design could sit below one whose description mentioned design in passing.
+  Results with the same rank are ordered newest first, which also makes the
+  ten-result cap return a consistent ten.
+
 ## [1.9.2] - 2026-08-15
 
 ### Fixed

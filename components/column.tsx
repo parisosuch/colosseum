@@ -5,6 +5,7 @@ import { FileText, Play } from "lucide-react";
 import { RenderedMarkdown } from "./rendered-markdown";
 import type { Column } from "@/lib/colosseum/column";
 import { useBlockMediaPrefetch } from "@/components/block-prefetch";
+import { useNearViewport } from "@/components/near-viewport";
 import { spotifyEmbedRef, thumbSrc, timeAgo, tweetIdFromUrl, youtubeIdFromUrl } from "@/lib/utils";
 import ScreenShotPreview from "./screenshot-preview";
 import TweetBlock from "./tweet-block-lazy";
@@ -58,6 +59,18 @@ const ColumnComponent = memo(function ColumnComponent({
   // embed block opens its connections here instead — the iframe can't be
   // fetched ahead.
   const prefetch = useBlockMediaPrefetch(column, screenshot);
+  // A channel read ten pages deep keeps every card it ever loaded mounted, and
+  // the expensive part of a card is its media: a decoded thumbnail, or for a
+  // tweet a whole react-tweet embed. Cards far from the viewport keep their
+  // frame and caption and drop the media, so what a channel holds stays
+  // proportional to what is on screen instead of to how far someone has read.
+  //
+  // The board's `columns` array is untouched, so the modal's index — and the
+  // neighbours warmed off that index — mean exactly what they did before. The
+  // warmth survives a card being parked too: the prefetch's requested and
+  // preconnected sets, the comment cache, and react-tweet's SWR cache are all
+  // module-level, so nothing fetched for a card is thrown away with its media.
+  const { ref: cardRef, near } = useNearViewport();
   const imageURL = screenshot?.image_url ?? null;
   const urlTitle = screenshot?.title ?? "";
   // cache-busting token for the shared storage object (bumped on refresh)
@@ -140,6 +153,13 @@ const ColumnComponent = memo(function ColumnComponent({
       />
     );
 
+  // What the card actually renders in its frame. Parking costs no layout: the
+  // frame is sized in CSS either way (a square card in the grid, a 40px thumb in
+  // the list). Scrolling back re-mounts it — public media is served `immutable`,
+  // so the bytes come from the browser cache rather than the network, and a
+  // tweet repaints from the SWR entry its first mount filled.
+  const media = near ? thumbnail : null;
+
   if (view === "list") {
     // Content column: the domain/path for a link, the text itself for a text
     // block, the linked channel's name for a channel, the title for an image.
@@ -168,7 +188,7 @@ const ColumnComponent = memo(function ColumnComponent({
                 {(column.linked_channel?.title ?? "Ch").slice(0, 2).toUpperCase()}
               </div>
             ) : (
-              thumbnail
+              media
             )}
           </div>
           <span className="truncate text-sm">{content}</span>
@@ -183,6 +203,7 @@ const ColumnComponent = memo(function ColumnComponent({
 
     return (
       <button
+        ref={cardRef}
         type="button"
         aria-label="Open column"
         onClick={() => onOpen(column.id)}
@@ -204,7 +225,7 @@ const ColumnComponent = memo(function ColumnComponent({
 
   const gridInner = (
     <div className="group relative w-full">
-      <div className="w-full aspect-square border rounded-lg text-left">{thumbnail}</div>
+      <div className="w-full aspect-square border rounded-lg text-left">{media}</div>
       <p className="group-hover:hidden truncate pt-1 text-caption">{gridTitle}</p>
       <p className="hidden group-hover:block truncate pt-1 text-caption">
         {timeAgo(new Date(column.created_at))}
@@ -221,6 +242,7 @@ const ColumnComponent = memo(function ColumnComponent({
   if (column.type === "tweet") {
     return (
       <div
+        ref={cardRef}
         role="button"
         tabIndex={0}
         onClick={() => onOpen(column.id)}
@@ -240,6 +262,7 @@ const ColumnComponent = memo(function ColumnComponent({
 
   return (
     <button
+      ref={cardRef}
       type="button"
       onClick={() => onOpen(column.id)}
       {...prefetch}

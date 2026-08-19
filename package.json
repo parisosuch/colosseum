@@ -1,6 +1,6 @@
 {
   "name": "colosseum",
-  "version": "1.10.0",
+  "version": "1.10.2",
   "private": true,
   "description": "A self-hostable, Are.na-style tool for collecting and organizing the web into channels of blocks.",
   "homepage": "https://github.com/parisosuch/colosseum#readme",

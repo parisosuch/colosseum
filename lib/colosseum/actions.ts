@@ -57,7 +57,7 @@ import { fetchYouTubeChannelMeta } from "./youtube-channel";
 import { fetchGitHubMeta } from "./github";
 import { renderEmail, sendEmail } from "@/lib/email";
 import { logError } from "@/lib/log";
-import { githubRef, isImageUrl, tweetIdFromUrl, youtubeChannelRef } from "@/lib/utils";
+import { githubRef, tweetIdFromUrl, urlBlockKind, youtubeChannelRef } from "@/lib/utils";
 import {
   Comment,
   createComment,
@@ -339,18 +339,42 @@ export async function uploadURLColumnAction(input: {
 }): Promise<Column> {
   const userId = await requireUserId();
   const channel = await requireContributableChannel(input.channelId, userId);
-  if (isImageUrl(input.text)) {
-    try {
-      const image = await putImageBlobFromUrl(
-        input.text,
-        userId,
-        channel.private ? "private" : "public",
-      );
-      return uploadImageColumn({ created_by: userId, channel_id: input.channelId, image });
-    } catch (e) {
-      logError("column.url.image", `image ingest failed for ${input.text}`, e);
-    }
+
+  // Every path that accepts a URL ends up here — the channel input, the
+  // quick-add drawer, and anything added later — so this is where a URL's block
+  // type is decided. It used to be decided in the channel input alone, which
+  // meant the same link pasted into the drawer came out a plain link block.
+  //
+  // Each specialised action falls back to a plain URL block on its own when its
+  // lookup fails, so none of them can loop back into this function.
+  const url = input.text;
+  switch (urlBlockKind(url)) {
+    case "tweet":
+      return uploadTweetColumnAction({ channelId: input.channelId, url });
+    case "youtube_channel":
+      return uploadYouTubeChannelColumnAction({ channelId: input.channelId, url });
+    case "youtube":
+      return uploadYouTubeColumnAction({ channelId: input.channelId, url });
+    case "spotify":
+      return uploadSpotifyColumnAction({ channelId: input.channelId, url });
+    case "github":
+      return uploadGitHubColumnAction({ channelId: input.channelId, url });
+    case "image":
+      try {
+        const image = await putImageBlobFromUrl(
+          url,
+          userId,
+          channel.private ? "private" : "public",
+        );
+        return uploadImageColumn({ created_by: userId, channel_id: input.channelId, image });
+      } catch (e) {
+        logError("column.url.image", `image ingest failed for ${url}`, e);
+      }
+      break;
+    case "url":
+      break;
   }
+
   return uploadURLColumn({ created_by: userId, channel_id: input.channelId, text: input.text });
 }
 

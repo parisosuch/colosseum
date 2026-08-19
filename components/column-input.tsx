@@ -3,11 +3,6 @@
 import { Dispatch, SetStateAction, useEffect, useState, useRef } from "react";
 import {
   uploadURLColumnAction,
-  uploadTweetColumnAction,
-  uploadYouTubeColumnAction,
-  uploadYouTubeChannelColumnAction,
-  uploadSpotifyColumnAction,
-  uploadGitHubColumnAction,
   uploadTextColumnAction,
   uploadImageColumnAction,
   uploadImageColumnFromUrlAction,
@@ -17,15 +12,7 @@ import {
 } from "@/lib/colosseum/actions";
 import type { Column } from "@/lib/colosseum/column";
 import { columnLimitMessage } from "@/lib/quota";
-import {
-  imageSrcFromHtml,
-  isTweetUrl,
-  isYouTubeUrl,
-  isSpotifyUrl,
-  isGitHubUrl,
-  isURL,
-  isYouTubeChannelUrl,
-} from "@/lib/utils";
+import { imageSrcFromHtml, isURL } from "@/lib/utils";
 import { resumeVideoUploads, startVideoUpload, type UploadHandlers } from "@/lib/resumable-upload";
 import type { SessionUser } from "@/components/channel-board";
 import type { Channel } from "@/lib/colosseum/channel";
@@ -295,17 +282,10 @@ export default function ColumnInput({
     // back to a plain URL block, which the screenshot pass below then handles.
     let column: Column;
     try {
-      if (isTweetUrl(text)) {
-        column = await uploadTweetColumnAction({ channelId: channel.id, url: urlText });
-      } else if (isYouTubeChannelUrl(text)) {
-        column = await uploadYouTubeChannelColumnAction({ channelId: channel.id, url: urlText });
-      } else if (isYouTubeUrl(text)) {
-        column = await uploadYouTubeColumnAction({ channelId: channel.id, url: urlText });
-      } else if (isSpotifyUrl(text)) {
-        column = await uploadSpotifyColumnAction({ channelId: channel.id, url: urlText });
-      } else if (isGitHubUrl(text)) {
-        column = await uploadGitHubColumnAction({ channelId: channel.id, url: urlText });
-      } else if (isUrlInput) {
+      if (isUrlInput) {
+        // One server-side classifier decides what a URL becomes
+        // (uploadURLColumnAction), so a link pasted here and the same link added
+        // from the quick-add drawer come out as the same kind of block.
         column = await uploadURLColumnAction({
           channelId: channel.id,
           text: urlText,

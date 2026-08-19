@@ -7,6 +7,7 @@ import {
   uploadYouTubeColumnAction,
   uploadYouTubeChannelColumnAction,
   uploadSpotifyColumnAction,
+  uploadGitHubColumnAction,
   uploadTextColumnAction,
   uploadImageColumnAction,
   uploadImageColumnFromUrlAction,
@@ -21,6 +22,7 @@ import {
   isTweetUrl,
   isYouTubeUrl,
   isSpotifyUrl,
+  isGitHubUrl,
   isURL,
   isYouTubeChannelUrl,
 } from "@/lib/utils";
@@ -301,6 +303,8 @@ export default function ColumnInput({
         column = await uploadYouTubeColumnAction({ channelId: channel.id, url: urlText });
       } else if (isSpotifyUrl(text)) {
         column = await uploadSpotifyColumnAction({ channelId: channel.id, url: urlText });
+      } else if (isGitHubUrl(text)) {
+        column = await uploadGitHubColumnAction({ channelId: channel.id, url: urlText });
       } else if (isUrlInput) {
         column = await uploadURLColumnAction({
           channelId: channel.id,
@@ -337,9 +341,14 @@ export default function ColumnInput({
               ? "Channel added."
               : column.type === "spotify"
                 ? "Track added."
-                : column.type === "image"
-                  ? "Image added."
-                  : "Column added.",
+                : column.type === "github"
+                  ? // "owner/repo" means a repo; an account title has no slash.
+                    column.title?.includes("/")
+                    ? "Repo added."
+                    : "Profile added."
+                  : column.type === "image"
+                    ? "Image added."
+                    : "Column added.",
       );
       return;
     }

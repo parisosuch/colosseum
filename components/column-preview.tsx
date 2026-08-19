@@ -9,6 +9,7 @@ import TweetBlock from "./tweet-block-lazy";
 import YouTubeBlock from "./youtube-block";
 import SpotifyBlock from "./spotify-block";
 import YouTubeChannelBlock from "./youtube-channel-block";
+import GitHubBlock from "./github-block";
 import VideoPoster from "./video-poster";
 
 export default async function ColumnPreview({
@@ -99,6 +100,17 @@ export default async function ColumnPreview({
       <YouTubeChannelBlock
         url={column.url ?? ""}
         title={column.title ?? "YouTube channel"}
+        image={column.image}
+        compact
+      />
+    );
+  }
+
+  if (column.type === "github") {
+    return (
+      <GitHubBlock
+        url={column.url ?? ""}
+        title={column.title ?? "GitHub"}
         image={column.image}
         compact
       />

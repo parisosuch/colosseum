@@ -40,6 +40,10 @@ services:
       S3_ENDPOINT: ${S3_ENDPOINT:-}
       # Public CDN/edge base URL in front of the bucket (optional; needs S3).
       CDN_URL: ${CDN_URL:-}
+      # Optional GitHub API token for GitHub blocks. Unset → metadata is fetched
+      # unauthenticated (60 req/hour/IP), and a rate-limited block falls back to
+      # a plain link block. A token needs no scopes; it only reads public data.
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       # Runtime toggles, read at request time so they can change without a
       # rebuild. Unset → their in-app defaults (sign-ups open; 100 req / 60s).
       DISABLE_SIGNUPS: ${DISABLE_SIGNUPS:-}

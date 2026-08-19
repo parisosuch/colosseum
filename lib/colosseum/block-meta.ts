@@ -20,6 +20,7 @@ export function blockLabel(column: Column): string {
   if (column.type === "youtube") return "YouTube video";
   if (column.type === "youtube_channel") return "YouTube channel";
   if (column.type === "spotify") return "Spotify";
+  if (column.type === "github") return "GitHub";
   return "Column";
 }
 
@@ -50,7 +51,7 @@ export function blockShareImage(
   }
   // A channel block's avatar is stored media, public for a public channel —
   // same as an image block's.
-  if (column.type === "youtube_channel" && column.image) {
+  if ((column.type === "youtube_channel" || column.type === "github") && column.image) {
     return { url: column.image };
   }
   if (column.type === "youtube" && column.url) {

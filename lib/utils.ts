@@ -141,6 +141,72 @@ export function isSpotifyUrl(url: string): boolean {
   return spotifyEmbedRef(url) !== null;
 }
 
+// Reserved github.com paths that look like an account but aren't one, so
+// /features or /pricing stays a plain URL block instead of becoming a broken
+// profile card.
+const GITHUB_RESERVED = new Set([
+  "about",
+  "apps",
+  "collections",
+  "contact",
+  "customer-stories",
+  "enterprise",
+  "events",
+  "explore",
+  "features",
+  "issues",
+  "login",
+  "marketplace",
+  "notifications",
+  "orgs",
+  "pricing",
+  "pulls",
+  "readme",
+  "search",
+  "security",
+  "settings",
+  "sponsors",
+  "topics",
+  "trending",
+]);
+
+// A github.com URL → the repo or account it points at, or null for anything
+// else. `/owner` is an account, `/owner/repo` is a repo; deeper paths resolve to
+// the repo that contains them, so a link to a file or a release still makes a
+// repo card. Pure string parsing (no server-only deps) so client components can
+// classify a pasted URL.
+export function githubRef(
+  url: string,
+):
+  | { kind: "repo"; owner: string; repo: string; url: string }
+  | { kind: "account"; owner: string; url: string }
+  | null {
+  let u: URL;
+  try {
+    u = new URL(url.startsWith("http") ? url : `https://${url}`);
+  } catch {
+    return null;
+  }
+  if (u.hostname.replace(/^www\./, "") !== "github.com") return null;
+
+  const [owner, repo] = u.pathname.split("/").filter(Boolean);
+  // GitHub's own rules: names are alphanumeric with hyphens (and dots/underscores
+  // for repos), so anything else is a path we don't understand.
+  if (!owner || !/^[A-Za-z0-9-]+$/.test(owner) || GITHUB_RESERVED.has(owner.toLowerCase())) {
+    return null;
+  }
+  if (!repo) {
+    return { kind: "account", owner, url: `https://github.com/${owner}` };
+  }
+  const name = repo.replace(/\.git$/, "");
+  if (!/^[A-Za-z0-9._-]+$/.test(name)) return null;
+  return { kind: "repo", owner, repo: name, url: `https://github.com/${owner}/${name}` };
+}
+
+export function isGitHubUrl(url: string): boolean {
+  return githubRef(url) !== null;
+}
+
 // The path extensions that map onto ALLOWED_IMAGE_TYPES (lib/colosseum/blob.ts).
 // SVG is deliberately absent: it isn't an allowed upload type either.
 const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "avif"];

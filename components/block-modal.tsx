@@ -740,7 +740,10 @@ function BlockModalBody({
           ) : null}
           <div className="p-3 w-full flex justify-end items-center gap-2">
             <Button asChild variant="link" size="sm">
-              <Link href={`/${handle}/${column.channel_id}/${column.id}`}>
+              {/* Deep link, not the standalone block page: sharing this drops
+                  the recipient on the channel with the block already open, so
+                  closing it leaves them somewhere instead of nowhere. */}
+              <Link href={`/${handle}/${column.channel_id}?block=${column.id}`}>
                 <LinkIcon className="size-3" />
                 Permalink
               </Link>

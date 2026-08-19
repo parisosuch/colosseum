@@ -10,9 +10,7 @@ import YouTubeChannelBlock from "@/components/youtube-channel-block";
 import PageHeader from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { blockLabel, blockPreviewMeta } from "@/lib/colosseum/block-meta";
-import { Channel, canReadChannel, getChannel } from "@/lib/colosseum/channel";
-import { isChannelMember } from "@/lib/colosseum/member";
-import { Column, getColumn } from "@/lib/colosseum/column";
+import { loadVisibleBlock } from "@/lib/colosseum/block-access";
 import { getScreenshot } from "@/lib/colosseum/screenshot-data";
 import { getSessionUser } from "@/lib/auth";
 import { screenshotSrc, spotifyEmbedRef, youtubeIdFromUrl } from "@/lib/utils";
@@ -20,33 +18,6 @@ import { screenshotSrc, spotifyEmbedRef, youtubeIdFromUrl } from "@/lib/utils";
 type BlockPageParams = {
   params: Promise<{ handle: string; channel_id: string; block_id: string }>;
 };
-
-// Resolve the block and its channel, enforcing visibility in app code (this
-// connection bypasses RLS): a block is visible only when it belongs to the
-// channel in the URL and that channel is public or owned by the viewer. Returns
-// null for any not-found/hidden case so a private block is never leaked (not
-// even its title, via metadata). A private channel is visible to its owner or an
-// invited member; public/open channels to anyone.
-async function loadVisibleBlock(
-  channelId: number,
-  blockId: number,
-): Promise<{ column: Column; channel: Channel } | null> {
-  const column = await getColumn(blockId);
-  if (!column || column.channel_id !== channelId) {
-    return null;
-  }
-  const channel = await getChannel(channelId);
-  if (!channel) {
-    return null;
-  }
-  const user = channel.access === "private" ? await getSessionUser() : null;
-  const isMember =
-    channel.access === "private" && user ? await isChannelMember(channel.id, user.id) : false;
-  if (!canReadChannel(channel, user?.id ?? null, isMember)) {
-    return null;
-  }
-  return { column, channel };
-}
 
 export async function generateMetadata({ params }: BlockPageParams): Promise<Metadata> {
   const { handle, channel_id, block_id } = await params;

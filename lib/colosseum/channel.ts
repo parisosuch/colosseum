@@ -216,6 +216,16 @@ export async function searchChannels(
 
   const pattern = `%${term}%`;
   const tag = term.replace(/["\\]/g, "");
+  // A title match is what the searcher meant; a tag is a deliberate label; a
+  // description mention is the weakest signal. Rank them in that order so
+  // searching "design" finds the channel called Design before one that only
+  // mentions design. Newest-first breaks ties, which also keeps the `limit`
+  // below from returning an arbitrary ten rows.
+  const rank = sql<number>`case
+    when ${channel.title} ilike ${pattern} then 0
+    when ${channel.tags} @> ARRAY[${tag}]::text[] then 1
+    else 2
+  end`;
   const rows = await db
     .select({ ch: channel, handle: userProfile.handle })
     .from(channel)
@@ -230,6 +240,7 @@ export async function searchChannels(
         ),
       ),
     )
+    .orderBy(rank, desc(channel.created_at), desc(channel.id))
     .limit(10);
   return rows.map(({ ch, handle }) => ({ ...toChannel(ch), handle }));
 }

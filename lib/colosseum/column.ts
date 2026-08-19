@@ -34,7 +34,8 @@ export type Column = {
     | "tweet"
     | "youtube"
     | "youtube_channel"
-    | "spotify";
+    | "spotify"
+    | "github";
   title?: string;
   description?: string;
   url?: string;
@@ -455,6 +456,37 @@ export async function uploadYouTubeChannelColumn(input: {
       title: input.title,
       description: input.description,
       image: input.image,
+      channel_id: input.channel_id,
+      created_by: input.created_by,
+    })
+    .returning();
+  return toColumn(row);
+}
+
+// A GitHub block stores what the card draws: the canonical github.com URL, the
+// repo or account name as the title, its description/bio, and the owner avatar
+// ingested into blob storage (so the card survives GitHub rotating the image
+// URL, and the blob is GC'd with the block). `text` holds the primary language
+// for a repo, which is the one extra field the card shows and the only place
+// left to put it without a migration.
+export async function uploadGitHubColumn(input: {
+  created_by: string;
+  channel_id: number;
+  url: string;
+  title: string;
+  description?: string;
+  image?: string;
+  language?: string;
+}): Promise<Column> {
+  const [row] = await db
+    .insert(column)
+    .values({
+      type: "github",
+      url: input.url,
+      title: input.title,
+      description: input.description,
+      image: input.image,
+      text: input.language,
       channel_id: input.channel_id,
       created_by: input.created_by,
     })

@@ -12,6 +12,7 @@ import TweetBlock from "./tweet-block-lazy";
 import YouTubeBlock from "./youtube-block";
 import SpotifyBlock from "./spotify-block";
 import YouTubeChannelBlock from "./youtube-channel-block";
+import GitHubBlock from "./github-block";
 import VideoPoster from "./video-poster";
 import { GradientSpin } from "./gradient-spin";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
@@ -127,6 +128,13 @@ const ColumnComponent = memo(function ColumnComponent({
         image={column.image}
         compact
       />
+    ) : column.type === "github" ? (
+      <GitHubBlock
+        url={column.url ?? ""}
+        title={column.title ?? "GitHub"}
+        image={column.image}
+        compact
+      />
     ) : column.type === "spotify" ? (
       (() => {
         const ref = spotifyEmbedRef(column.url ?? "");
@@ -162,6 +170,7 @@ const ColumnComponent = memo(function ColumnComponent({
       column.type === "tweet" ||
       column.type === "youtube" ||
       column.type === "youtube_channel" ||
+      column.type === "github" ||
       column.type === "spotify"
         ? (column.url ?? "").replace(/^https?:\/\//, "")
         : column.type === "text"

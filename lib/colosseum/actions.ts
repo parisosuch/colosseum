@@ -49,13 +49,15 @@ import {
   uploadYouTubeColumn,
   uploadYouTubeChannelColumn,
   uploadSpotifyColumn,
+  uploadGitHubColumn,
   uploadURLColumn,
 } from "./column";
 import { ingestTweet } from "./tweet";
 import { fetchYouTubeChannelMeta } from "./youtube-channel";
+import { fetchGitHubMeta } from "./github";
 import { renderEmail, sendEmail } from "@/lib/email";
 import { logError } from "@/lib/log";
-import { isImageUrl, tweetIdFromUrl, youtubeChannelRef } from "@/lib/utils";
+import { githubRef, isImageUrl, tweetIdFromUrl, youtubeChannelRef } from "@/lib/utils";
 import {
   Comment,
   createComment,
@@ -451,6 +453,52 @@ export async function uploadYouTubeChannelColumnAction(input: {
     title: meta.title || ref.label,
     description: meta.description || undefined,
     image,
+  });
+}
+
+// Add a GitHub block for a repo or an account. Resolves the name, description,
+// avatar, and (for a repo) the primary language up front and stores them — the
+// card renders from our own data, which beats a screenshot of a page that is
+// mostly navigation chrome. The avatar is ingested into blob storage like a
+// YouTube channel's, so the card survives GitHub rotating the image URL and the
+// blob is GC'd with the block. If GitHub can't be reached, rate-limits us, or
+// doesn't know the repo, fall back to a plain URL block so the user still gets
+// a screenshot-backed link.
+export async function uploadGitHubColumnAction(input: {
+  channelId: number;
+  url: string;
+}): Promise<Column> {
+  const userId = await requireUserId();
+  const channel = await requireContributableChannel(input.channelId, userId);
+  const ref = githubRef(input.url);
+  const meta = ref ? await fetchGitHubMeta(ref) : null;
+  if (!ref || !meta) {
+    return uploadURLColumn({ created_by: userId, channel_id: input.channelId, text: input.url });
+  }
+
+  // Best-effort: an account with no avatar, or one we can't fetch, still makes
+  // a fine card — it falls back to the name's initial.
+  let image: string | undefined;
+  if (meta.avatarUrl) {
+    try {
+      image = await putImageBlobFromUrl(
+        meta.avatarUrl,
+        userId,
+        channel.private ? "private" : "public",
+      );
+    } catch (e) {
+      logError("github.avatar", `avatar fetch failed for ${meta.url}`, e);
+    }
+  }
+
+  return uploadGitHubColumn({
+    created_by: userId,
+    channel_id: input.channelId,
+    url: meta.url,
+    title: meta.title,
+    description: meta.description || undefined,
+    image,
+    language: meta.language || undefined,
   });
 }
 

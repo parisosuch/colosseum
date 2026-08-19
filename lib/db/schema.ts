@@ -234,6 +234,7 @@ export const column = pgTable(
         "youtube",
         "youtube_channel",
         "spotify",
+        "github",
       ],
     }).notNull(),
     title: text("title"),

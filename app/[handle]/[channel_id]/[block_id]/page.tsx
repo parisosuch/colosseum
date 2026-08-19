@@ -7,6 +7,7 @@ import { Markdown } from "@/components/markdown";
 import YouTubeBlock from "@/components/youtube-block";
 import SpotifyBlock from "@/components/spotify-block";
 import YouTubeChannelBlock from "@/components/youtube-channel-block";
+import GitHubBlock from "@/components/github-block";
 import PageHeader from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { blockLabel, blockPreviewMeta } from "@/lib/colosseum/block-meta";
@@ -106,6 +107,16 @@ export default async function BlockPage({ params }: BlockPageParams) {
                 title={column.title ?? "YouTube channel"}
                 description={column.description ?? undefined}
                 image={column.image}
+              />
+            </div>
+          ) : column.type === "github" ? (
+            <div className="w-full max-w-xl mx-auto">
+              <GitHubBlock
+                url={column.url ?? ""}
+                title={column.title ?? "GitHub"}
+                description={column.description ?? undefined}
+                image={column.image}
+                language={column.text ?? undefined}
               />
             </div>
           ) : column.type === "spotify" ? (

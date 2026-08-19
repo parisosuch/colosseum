@@ -1,5 +1,7 @@
 import { Github } from "lucide-react";
 
+import { cn } from "@/lib/utils";
+
 // Renders a GitHub repo or account. A screenshot of github.com is mostly nav
 // bars and sidebars, so this is a card built from what the API returned when
 // the block was added: the owner's avatar (stored in our own blob storage), the
@@ -29,17 +31,40 @@ export default function GitHubBlock({
   const owner = slash > 0 ? title.slice(0, slash) : null;
   const name = slash > 0 ? title.slice(slash + 1) : title;
 
-  // Fallback when the account published no avatar, or we couldn't fetch it: the
-  // GitHub mark, so the card still reads as GitHub at a glance.
-  const avatar = image ? (
-    <img
-      src={compact ? `${image}?thumb` : image}
-      alt=""
-      className="aspect-square w-full rounded-full object-cover"
-    />
-  ) : (
-    <div className="flex aspect-square w-full items-center justify-center rounded-full bg-foreground text-background">
-      <Github className={compact ? "size-6" : "size-10"} />
+  // An avatar alone says nothing about where the block came from — the mark is
+  // what makes a card in a mixed grid read as GitHub at a glance. It badges the
+  // avatar's corner, and stands in for the avatar entirely when the account
+  // published none (or we couldn't fetch it).
+  const mark = (
+    <span
+      className={cn(
+        "absolute bottom-0 right-0 flex items-center justify-center rounded-full",
+        // Ringed in the card's own background so the mark separates from a busy
+        // avatar instead of dissolving into it.
+        "bg-foreground text-background ring-2 ring-background",
+        compact ? "size-5" : "size-8",
+      )}
+    >
+      <Github className={compact ? "size-3" : "size-5"} />
+    </span>
+  );
+
+  const avatar = (
+    <div className="relative">
+      {image ? (
+        <img
+          src={compact ? `${image}?thumb` : image}
+          alt=""
+          className="aspect-square w-full rounded-full object-cover"
+        />
+      ) : (
+        <div className="flex aspect-square w-full items-center justify-center rounded-full bg-foreground text-background">
+          <Github className={compact ? "size-6" : "size-10"} />
+        </div>
+      )}
+      {/* Only badge a real avatar: over the fallback it would be the same mark
+          twice, one inside the other. */}
+      {image ? mark : null}
     </div>
   );
 
@@ -76,8 +101,9 @@ export default function GitHubBlock({
         href={url}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-sm underline underline-offset-4 hover:no-underline"
+        className="inline-flex items-center gap-1.5 text-sm underline underline-offset-4 hover:no-underline"
       >
+        <Github className="size-3.5" />
         View on GitHub
       </a>
     </div>

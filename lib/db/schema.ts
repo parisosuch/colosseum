@@ -454,3 +454,14 @@ export const inviteRedemption = pgTable(
   },
   (t) => [unique().on(t.user_id)],
 );
+
+// The ledger for one-shot data migrations (`scripts/data/`), the same idea as
+// drizzle's `__drizzle_migrations` but for data rather than schema. A row means
+// that migration has fully converged and will never be run again; a migration
+// that fails, or that reports it still has work left, leaves no row and is
+// retried on the next boot. See lib/colosseum/data-migration.ts.
+export const dataMigration = pgTable("data_migration", {
+  // The migration's filename stem, e.g. "0001-sync-blobs-to-object-store".
+  id: text("id").primaryKey(),
+  applied_at: timestamp("applied_at", { withTimezone: true }).notNull().defaultNow(),
+});

@@ -51,9 +51,31 @@ docker compose up -d --build
 ```
 
 That's the whole procedure — the image builds from source. The new build
-migrates the database on boot, before serving. File bytes never migrate —
-blobs are immutable and content-addressed, so the storage volume carries
-across any upgrade untouched.
+migrates on boot, before serving, in two passes:
+
+1. **Schema** — `drizzle-kit migrate`, tracked in `__drizzle_migrations`. A
+   failure exits non-zero and the container stops rather than serving against a
+   half-migrated database.
+2. **Data** — the one-shot fixes in `scripts/data/`, tracked in the
+   `data_migration` table. These are the backfills and byte-moves a schema
+   change leaves behind: warming image thumbnails, decoding video posters,
+   copying blobs into a newly configured bucket.
+
+Both are idempotent and both skip what they've already done, so a settled
+deployment costs a single query and boots straight through. **There is no
+upgrade checklist to follow** — that's the point of the ledger. Skipping
+releases is fine; anything you missed runs on the next boot, in order.
+
+A data migration that only affects performance (every one today) logs its
+failure and lets the boot continue, so a transient storage outage can't keep
+the app from serving. It leaves no ledger row, so the next boot retries it.
+One that reports it still has work — the video posters, when ffmpeg isn't
+installed yet — is likewise retried, so installing ffmpeg later is enough to
+get the posters without running anything by hand. To run the set outside a
+container boot: `bun run data:migrate`.
+
+File bytes never migrate — blobs are immutable and content-addressed, so the
+storage volume carries across any upgrade untouched.
 
 ### Backup and restore
 
@@ -89,10 +111,10 @@ URL minted only after the request is authorized — so private content is served
 straight from the store's edge without a public bucket.
 
 Switching an existing deployment is safe: on the next boot the container copies
-any disk-resident blobs into the bucket (see `scripts/migrate-blobs.ts`, run
-from the entrypoint) before serving, so nothing is orphaned. It's idempotent —
-a marker object makes every later boot a single check — so once it's done you
-can drop the local storage volume.
+any disk-resident blobs into the bucket before serving, so nothing is orphaned.
+That's one of the data migrations described under
+[Upgrading](#upgrading) — it runs itself, records that it finished, and every
+later boot skips it, so once it's done you can drop the local storage volume.
 
 To move **back** to local disk, run `bun run export-blobs` **while S3 is still
 configured** (it reads through the bucket and writes to `STORAGE_DIR`), then
@@ -247,15 +269,10 @@ sudo apt-get install -y ffmpeg
 It's optional. Without it, uploads and playback work exactly as before — the
 cards just show a placeholder with a play badge instead of a frame.
 
-Already have video blocks? Decode their posters once, after installing ffmpeg:
-
-```bash
-bun run backfill-video-posters
-```
-
-It only reads blobs that don't have a rendition yet, so re-running it after it
-has converged does nothing. Anything it skips is retried lazily the first time
-a card asks for that poster.
+Already have video blocks? Their posters are decoded by a data migration on the
+next boot after ffmpeg is available (see [Upgrading](#upgrading)) — nothing to
+run by hand. Anything it skips is retried lazily the first time a card asks for
+that poster.
 
 ## Contributing
 

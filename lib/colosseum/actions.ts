@@ -12,6 +12,7 @@ import {
   ChannelSearchResult,
   canContributeChannel,
   canReadChannel,
+  channelReaders,
   createChannel,
   deleteChannel,
   getChannel,
@@ -46,13 +47,17 @@ import {
   uploadTextColumn,
   uploadTweetColumn,
   uploadYouTubeColumn,
+  uploadYouTubeChannelColumn,
   uploadSpotifyColumn,
+  uploadGitHubColumn,
   uploadURLColumn,
 } from "./column";
 import { ingestTweet } from "./tweet";
+import { fetchYouTubeChannelMeta } from "./youtube-channel";
+import { fetchGitHubMeta } from "./github";
 import { renderEmail, sendEmail } from "@/lib/email";
 import { logError } from "@/lib/log";
-import { isImageUrl, tweetIdFromUrl } from "@/lib/utils";
+import { githubRef, isImageUrl, tweetIdFromUrl, youtubeChannelRef } from "@/lib/utils";
 import {
   Comment,
   createComment,
@@ -407,6 +412,96 @@ export async function uploadYouTubeColumnAction(input: {
   });
 }
 
+// Add a YouTube channel block. A channel has no embeddable player, so this
+// resolves the channel's name, blurb, and avatar up front and stores them — the
+// card renders from our own data instead of an iframe. The avatar is ingested
+// into blob storage like a tweet's media, so the card survives YouTube rotating
+// the image URL, and it's GC'd with the block. If YouTube can't be reached or
+// the page doesn't look like a channel, fall back to a plain URL block so the
+// user still gets a screenshot-backed link.
+export async function uploadYouTubeChannelColumnAction(input: {
+  channelId: number;
+  url: string;
+}): Promise<Column> {
+  const userId = await requireUserId();
+  const channel = await requireContributableChannel(input.channelId, userId);
+  const ref = youtubeChannelRef(input.url);
+  const meta = ref ? await fetchYouTubeChannelMeta(ref.url) : null;
+  if (!ref || !meta) {
+    return uploadURLColumn({ created_by: userId, channel_id: input.channelId, text: input.url });
+  }
+
+  // Best-effort: a channel with no avatar, or one we can't fetch, still makes a
+  // fine card — it falls back to the channel's initial.
+  let image: string | undefined;
+  if (meta.avatarUrl) {
+    try {
+      image = await putImageBlobFromUrl(
+        meta.avatarUrl,
+        userId,
+        channel.private ? "private" : "public",
+      );
+    } catch (e) {
+      logError("youtube.channel.avatar", `avatar fetch failed for ${meta.url}`, e);
+    }
+  }
+
+  return uploadYouTubeChannelColumn({
+    created_by: userId,
+    channel_id: input.channelId,
+    url: meta.url,
+    title: meta.title || ref.label,
+    description: meta.description || undefined,
+    image,
+  });
+}
+
+// Add a GitHub block for a repo or an account. Resolves the name, description,
+// avatar, and (for a repo) the primary language up front and stores them — the
+// card renders from our own data, which beats a screenshot of a page that is
+// mostly navigation chrome. The avatar is ingested into blob storage like a
+// YouTube channel's, so the card survives GitHub rotating the image URL and the
+// blob is GC'd with the block. If GitHub can't be reached, rate-limits us, or
+// doesn't know the repo, fall back to a plain URL block so the user still gets
+// a screenshot-backed link.
+export async function uploadGitHubColumnAction(input: {
+  channelId: number;
+  url: string;
+}): Promise<Column> {
+  const userId = await requireUserId();
+  const channel = await requireContributableChannel(input.channelId, userId);
+  const ref = githubRef(input.url);
+  const meta = ref ? await fetchGitHubMeta(ref) : null;
+  if (!ref || !meta) {
+    return uploadURLColumn({ created_by: userId, channel_id: input.channelId, text: input.url });
+  }
+
+  // Best-effort: an account with no avatar, or one we can't fetch, still makes
+  // a fine card — it falls back to the name's initial.
+  let image: string | undefined;
+  if (meta.avatarUrl) {
+    try {
+      image = await putImageBlobFromUrl(
+        meta.avatarUrl,
+        userId,
+        channel.private ? "private" : "public",
+      );
+    } catch (e) {
+      logError("github.avatar", `avatar fetch failed for ${meta.url}`, e);
+    }
+  }
+
+  return uploadGitHubColumn({
+    created_by: userId,
+    channel_id: input.channelId,
+    url: meta.url,
+    title: meta.title,
+    description: meta.description || undefined,
+    image,
+    language: meta.language || undefined,
+  });
+}
+
 // Title + cover-art URL via Spotify's public oEmbed endpoint (no API key,
 // metadata only). Best-effort: empty on failure so the block is still created.
 async function spotifyMeta(url: string): Promise<{ title?: string; image?: string }> {
@@ -534,10 +629,14 @@ export async function updateColumnDescriptionAction(
   await updateColumnDescription(columnId, description);
 }
 
-export async function updateColumnTextAction(columnId: number, text: string): Promise<void> {
+// Returns the saved markdown rendered to sanitized HTML, so the caller can swap
+// it into the block it already holds without re-rendering anything in the
+// browser. Empty string when the block vanished mid-edit.
+export async function updateColumnTextAction(columnId: number, text: string): Promise<string> {
   const userId = await requireUserId();
   await requireWritableBlock(columnId, userId);
-  await updateColumnText(columnId, text);
+  const updated = await updateColumnText(columnId, text);
+  return updated?.html ?? "";
 }
 
 export async function updateColumnTagsAction(columnId: number, tags: string[]): Promise<void> {
@@ -596,7 +695,7 @@ export async function addChannelColumnAction(
   hostChannelId: number,
 ): Promise<void> {
   const userId = await requireUserId();
-  await requireOwnedChannel(hostChannelId, userId);
+  const host = await requireOwnedChannel(hostChannelId, userId);
   await assertColumnQuota(userId);
   const linked = await getChannel(linkedChannelId);
   if (!linked || linked.private) {
@@ -605,18 +704,28 @@ export async function addChannelColumnAction(
   if (linkedChannelId === hostChannelId) {
     throw new Error("A channel can't be added to itself.");
   }
-  await addChannelColumn({
+  const added = await addChannelColumn({
     created_by: userId,
     channel_id: hostChannelId,
     linked_channel_id: linkedChannelId,
   });
-  // Tell the linked channel's owner someone nested their channel.
-  await createNotification({
-    recipient_id: linked.owner_id,
-    actor_id: userId,
-    type: "connect",
-    channel_id: linkedChannelId,
-  });
+  // Tell the linked channel's owner someone nested their channel. The
+  // notification records the *host* — that's where their channel now sits, so
+  // that's where the link should land — plus the column that was created, which
+  // is what names the linked channel in the message.
+  //
+  // Nothing is sent when the host is private: what someone collects into a
+  // private channel is their own business, and the recipient couldn't open it
+  // to see anyway. Privacy runs both ways here.
+  if (!host.private) {
+    await createNotification({
+      recipient_id: linked.owner_id,
+      actor_id: userId,
+      type: "connect",
+      channel_id: hostChannelId,
+      column_id: added.id,
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -630,7 +739,7 @@ export async function getColumnCommentsAction(columnId: number): Promise<Comment
 
 export async function createCommentAction(columnId: number, body: string): Promise<Comment> {
   const userId = await requireUserId();
-  const { column } = await requireReadableBlock(columnId);
+  const { column, channel } = await requireReadableBlock(columnId);
   const trimmed = body.trim();
   if (!trimmed) {
     throw new Error("Comment can't be empty.");
@@ -642,29 +751,46 @@ export async function createCommentAction(columnId: number, body: string): Promi
 
   // Notify the block's author, then anyone @mentioned (resolved to a real user,
   // deduped, and excluding the author who already gets the comment notification).
-  await createNotification({
-    recipient_id: column.created_by,
-    actor_id: userId,
-    type: "comment",
-    channel_id: column.channel_id,
-    column_id: columnId,
-  });
+  //
+  // Both are filtered to users who can read the channel. The notification names
+  // the block and its channel and quotes the comment, and a mention resolves any
+  // handle whether or not they're a member — so without this, mentioning a
+  // stranger from a private channel hands them its contents. A block's author
+  // can lose access too, when an open channel is later made private. Same rule
+  // connect applies to a private host: private runs in both directions.
   const handles = [
     ...new Set(parseMentions(trimmed).flatMap((s) => (s.type === "mention" ? [s.handle] : []))),
   ];
   const mentioned = (await Promise.all(handles.map((h) => getPublicUserProfile(h)))).filter(
     (p): p is NonNullable<typeof p> => p !== null && p.user_id !== column.created_by,
   );
+  const readers = new Set(
+    await channelReaders(channel, [column.created_by, ...mentioned.map((p) => p.user_id)]),
+  );
+
+  if (readers.has(column.created_by)) {
+    await createNotification({
+      recipient_id: column.created_by,
+      actor_id: userId,
+      type: "comment",
+      channel_id: column.channel_id,
+      column_id: columnId,
+      comment_id: created.id,
+    });
+  }
   await Promise.all(
-    mentioned.map((p) =>
-      createNotification({
-        recipient_id: p.user_id,
-        actor_id: userId,
-        type: "mention",
-        channel_id: column.channel_id,
-        column_id: columnId,
-      }),
-    ),
+    mentioned
+      .filter((p) => readers.has(p.user_id))
+      .map((p) =>
+        createNotification({
+          recipient_id: p.user_id,
+          actor_id: userId,
+          type: "mention",
+          channel_id: column.channel_id,
+          column_id: columnId,
+          comment_id: created.id,
+        }),
+      ),
   );
   return created;
 }

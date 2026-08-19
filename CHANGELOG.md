@@ -8,6 +8,78 @@ release.
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-08-19
+
+### Added
+
+- GitHub links become their own block. A repo or profile URL now renders a card
+  built from GitHub's API — avatar, name, description, and a repo's primary
+  language — instead of a screenshot of a page that is mostly navigation. Set
+  `GITHUB_TOKEN` (no scopes needed) to lift the API's 60 requests/hour limit;
+  without one, a rate-limited link falls back to a plain link block. (#434)
+- A YouTube channel URL creates a channel block, with the channel's avatar,
+  name, and blurb resolved when the block is added. The avatar is stored in
+  your own blob storage, so the card survives YouTube rotating its image
+  URLs. (#414)
+- Block permalinks open on the channel. A shared block link now lands on the
+  channel board with that block's modal already open, so closing it leaves you
+  somewhere. Back and forward move between the modal and the channel without
+  reloading. (#433)
+- Both channel pickers — "Connect to channel" and the add-block flow — end with
+  a **New channel…** entry, so wanting a fresh channel no longer means
+  abandoning what you were doing. (#431)
+- Sharing a block gets a card for that block. Pasting a block link into Slack,
+  iMessage, Discord, or X now unfurls with the block's own image and text
+  instead of the generic site card. (#393)
+- Notifications say what they are about, and a burst of activity on one block
+  collapses into a single notification instead of one per event. (#363)
+- A link block's modal has a copy button for its URL, next to the address
+  bar. (#415)
+- A `move_block` MCP tool reassigns a block to another channel in place, keeping
+  its id, timestamps, tags, and any cached screenshot. (#417)
+- One-shot data fixes now run themselves. Upgrades apply the backfills and
+  byte-moves a release needs, tracked in a `data_migration` ledger the same way
+  drizzle tracks schema migrations, so there is no upgrade checklist to follow
+  and skipping releases is safe. See **Upgrading** in the README. (#436)
+
+### Changed
+
+- Channels open and scroll faster on a large board. Thumbnails below the fold
+  load lazily (#396), cards far from the viewport drop their media and keep
+  their frame (#427), and video cards render a poster frame stored at upload
+  instead of pulling metadata out of every video file (#426).
+- Text blocks arrive with their markdown already rendered, which takes `marked`
+  and `sanitize-html` out of the browser, and `react-tweet` loads only when a
+  tweet block actually renders (#419). The render is memoized and skipped
+  entirely where the HTML would be discarded (#425).
+- Stepping through blocks with ← and → arrives on something already loaded:
+  neighbouring blocks warm their media and comments ahead of the press (#418),
+  and a block modal paints the grid's thumbnail behind the full-size image
+  while it loads (#422).
+- Repeat visits reuse more. The service worker caches public media (#424),
+  the public media redirect and tweet snapshots are cacheable (#401, #400), and
+  block prefetch now covers link screenshots with a preconnect for embeds (#421).
+- Search stops querying on every keystroke; the three search surfaces share one
+  debounce (#366).
+- The channel board's screenshot poll backs off instead of running every five
+  seconds, and stops entirely in a background tab (#416).
+- Three database indexes cover queries that scanned the whole `column` table,
+  and the nav, channel, and profile pages run their independent lookups
+  together rather than one after another (#395, #397).
+- Serving a thumbnail reads a `has_thumbnail` column instead of probing
+  storage (#402).
+- The GitHub and YouTube channel cards share one label, mark, and link
+  treatment, so a mixed grid reads as one system (#437).
+
+### Fixed
+
+- Block search ranks by which field matched — title, then tags, then
+  description, then body text, then URL — and returns a stable set. It had no
+  ordering at all, so a block titled "ceramics" could sit below one that
+  mentioned it in passing, and which ten results came back could vary between
+  identical searches. (#432)
+- Toasts no longer appear underneath the mobile bottom bar. (#367)
+
 ## [1.9.3] - 2026-08-19
 
 ### Fixed
@@ -57,6 +129,15 @@ release.
 
 ### Changed
 
+- Notifications now say what they are about. A comment or mention names the
+  block and its channel and quotes the first 140 characters of the comment,
+  with the block's thumbnail in the row; the email subject names the block
+  instead of repeating the body. Rows recorded before this shipped have no
+  comment to quote and keep their old one-line text.
+- A burst of activity on one block is emailed once. A notification is skipped
+  when the same recipient was already emailed about the same block within 15
+  minutes; in-app notifications, the unread badge, and the per-type email
+  toggles are unaffected.
 - Image blocks now start loading their full-size image while the pointer rests
   on the card, so opening one shows the whole image at once instead of painting
   it in top-to-bottom. Applies to the channel grid, the list view, and the
@@ -69,6 +150,40 @@ release.
   so each one still re-runs the channel-access check. A viewer who has lost
   access, or a different account on the same browser, revalidates into a 404
   rather than a cache hit. Public media is unchanged.
+- Search stops querying Postgres on every keystroke. The nav box, the mobile
+  drawer, and the command palette now share one 150ms debounce (they used
+  300ms, 50ms, and none), skip queries shorter than three characters, and
+  answer a repeated or backspaced-to query from results already fetched. A
+  nine-character search was 27 queries and is now three. Results stay on screen
+  while the next search runs, so the list no longer empties and refills.
+- A shared block link now previews as the block. Pasting one into Slack,
+  iMessage, Discord, or X shows the block's own image, its title, and its
+  description instead of the same generic Colosseum card every block used to
+  get. Image blocks share their picture, URL blocks their captured preview, and
+  YouTube blocks the video thumbnail; anything with no picture of its own keeps
+  the site card. Shared channels now carry a picture from inside the channel.
+  Nothing changes for a private channel — its blocks unfurl as they always did,
+  giving away neither title nor image.
+- Profile search reads from an index. `user_profile.handle` and `about` gained
+  trigram GIN indexes, matching what channel and column search already had;
+  before this every palette keystroke and every `@`-mention character scanned
+  the whole profile table.
+
+### Fixed
+
+- A "connected to your channel" notification now opens the channel your channel
+  was added to, rather than your own channel — where nothing had changed. The
+  message names both channels. Existing notifications are migrated; any whose
+  column has since been deleted keep their old wording and link. Adding a
+  channel to a **private** channel no longer notifies its owner at all — what
+  someone collects privately is their own business, and the recipient could not
+  open it to look anyway.
+- Toasts no longer land on top of the mobile bottom bar. They now clear it by
+  the same margin they keep from the bottom of the screen everywhere else,
+  including between 600px and 640px, where the toast library switches to its
+  desktop spacing while the bar is still on screen. Where the bar isn't there
+  at all — the landing and auth pages, and any signed-out or not-yet-onboarded
+  viewer — toasts sit at the usual distance instead of floating above nothing.
 
 ### Fixed
 

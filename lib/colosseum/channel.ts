@@ -47,6 +47,18 @@ export function canReadChannel(ch: Channel, userId: string | null, isMember: boo
   return userId === ch.owner_id || isMember;
 }
 
+// Which of these users may read the channel, order preserved and duplicates
+// kept. Only private channels cost a membership lookup. Callers that fan out to
+// a set of recipients (notifications) use this so the read rule stays defined
+// where the rest of the matrix is.
+export async function channelReaders(ch: Channel, userIds: string[]): Promise<string[]> {
+  if (ch.access !== "private") return userIds;
+  const members = await Promise.all(
+    userIds.map(async (id) => canReadChannel(ch, id, await isChannelMember(ch.id, id))),
+  );
+  return userIds.filter((_, i) => members[i]);
+}
+
 // Add blocks: open → any signed-in user; public and private → the owner or an
 // invited member. (A public channel with no members is therefore owner-only; add
 // members to make it a publicly-readable, members-only-writable channel.)
@@ -119,7 +131,15 @@ export async function getUserPublicChannels(user_id: string): Promise<Channel[]>
   });
 }
 
-export async function getUserChannels(user_id: string): Promise<Channel[]> {
+// Wrapped in React cache() so one render shares a single lookup. A channel page
+// asks for this three times over — the nav bar, the mobile bottom nav, and the
+// page's own Move/Connect pickers — all for the same viewer. The Redis layer
+// below spans requests when REDIS_URL is set, but it's off by default and a hit
+// is still a round trip; cache() keys on the user id and dedupes within the
+// request. Safe to memoize because every caller is a read on the render path:
+// the mutations that change this list invalidate through
+// invalidateUserChannelLists and re-read in a later request.
+export const getUserChannels = cache(async (user_id: string): Promise<Channel[]> => {
   return cached(cacheKeys.userChannels(user_id), cacheTtl.userChannels, async () => {
     const rows = await db
       .select()
@@ -128,7 +148,7 @@ export async function getUserChannels(user_id: string): Promise<Channel[]> {
       .orderBy(desc(lastBlockAddedAt));
     return rows.map(toChannel);
   });
-}
+});
 
 // Invalidate the per-user channel-list caches for one owner. Called whenever a
 // channel they own is created, updated, or deleted.

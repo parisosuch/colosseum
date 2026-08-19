@@ -19,6 +19,9 @@ import { Badge } from "@/components/ui/badge";
 // How many block previews each channel card shows.
 const PREVIEWS_PER_CHANNEL = 5;
 
+// Of those, how many load eagerly on the topmost card.
+const EAGER_STRIP_PREVIEWS = 3;
+
 // Grid-card border per access mode: private reads as "restricted" (red), open as
 // "collaborative" (emerald), public as neutral.
 const CHANNEL_CARD_CLASS = {
@@ -35,12 +38,16 @@ function ChannelColumnsView({
   columns,
   screenshots,
   memberOf,
+  priority = false,
 }: {
   channel: Channel;
   columnCount: number;
   columns: Column[];
   screenshots: Map<string, ColumnScreenshot>;
   memberOf?: boolean;
+  // Set for the topmost channel card, the only one on screen before the viewer
+  // scrolls. Its leading previews load eagerly; everything else is lazy.
+  priority?: boolean;
 }) {
   return (
     <div className="flex flex-col md:flex-row gap-8 p-2">
@@ -57,7 +64,7 @@ function ChannelColumnsView({
         ) : null}
       </div>
       <div className="hidden md:flex gap-8 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {columns.map((column) => (
+        {columns.map((column, i) => (
           <div
             key={column.id}
             className="border-2 rounded-md w-[200px] h-[200px] sm:w-[250px] sm:h-[250px] shrink-0"
@@ -65,6 +72,9 @@ function ChannelColumnsView({
             <ColumnPreview
               column={column}
               screenshot={column.url ? (screenshots.get(column.url) ?? null) : null}
+              // The strip scrolls horizontally at 250px a tile, so only the
+              // leading few are on screen before the viewer scrolls it.
+              priority={priority && i < EAGER_STRIP_PREVIEWS}
             />
           </div>
         ))}
@@ -76,10 +86,9 @@ function ChannelColumnsView({
 export default async function UserPage({ params }: { params: Promise<{ handle: string }> }) {
   const { handle } = await params;
 
-  // determine if user is authenticated
-  const user = await getSessionUser();
-
-  const userProfile = await getPublicUserProfile(handle);
+  // The profile is keyed by the route's handle, not by the viewer, so the
+  // session lookup and the profile lookup don't depend on each other.
+  const [user, userProfile] = await Promise.all([getSessionUser(), getPublicUserProfile(handle)]);
 
   if (!userProfile) {
     return (
@@ -92,16 +101,23 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
 
   const match = !!user && userProfile.user_id === user.id;
 
-  // On your own profile you see all your channels; on someone else's you see
-  // their public/open channels plus any private group you've been invited to.
-  const channels: Channel[] = match
-    ? await getUserChannels(user!.id)
-    : await getVisibleUserChannels(userProfile.user_id, user?.id ?? null);
-
-  // Only on your own profile: the channels you've been invited to (not owned).
-  // They render in the same grid as your own, carrying the owner's handle (for
-  // the link) and a "Member of" badge. Owned channels come first.
-  const memberChannels = match ? await getMemberChannels(user!.id) : [];
+  // Both lists key off ids already in hand, so they resolve together.
+  //
+  // channels: on your own profile you see all your channels; on someone else's
+  // you see their public/open channels plus any private group you've been
+  // invited to.
+  //
+  // memberChannels: only on your own profile, the channels you've been invited
+  // to (not owned). They render in the same grid as your own, carrying the
+  // owner's handle (for the link) and a "Member of" badge. Owned channels come
+  // first.
+  const [channels, memberChannels]: [Channel[], Awaited<ReturnType<typeof getMemberChannels>>] =
+    await Promise.all([
+      match
+        ? getUserChannels(user!.id)
+        : getVisibleUserChannels(userProfile.user_id, user?.id ?? null),
+      match ? getMemberChannels(user!.id) : Promise.resolve([]),
+    ]);
   const entries = [
     ...channels.map((channel) => ({ channel, handle, memberOf: false })),
     ...memberChannels.map((channel) => ({ channel, handle: channel.handle, memberOf: true })),
@@ -126,7 +142,7 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
 
   // One grid card per channel, keyed by id, so the (client) ChannelsView can
   // pick which to render when filtering while the previews stay server-fetched.
-  const gridCards = entries.map(({ channel, handle: ownerHandle, memberOf }) => ({
+  const gridCards = entries.map(({ channel, handle: ownerHandle, memberOf }, cardIndex) => ({
     id: channel.id,
     // A tweet preview renders its own <a> (avatar/header links), so the card
     // link can't be an ancestor <a> without nesting them (invalid HTML that
@@ -145,6 +161,7 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
           columns={previewsById.get(channel.id) ?? []}
           screenshots={screenshots}
           memberOf={memberOf}
+          priority={cardIndex === 0}
         />
         <Link
           href={`/${ownerHandle}/${channel.id}`}

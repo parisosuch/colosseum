@@ -5,10 +5,8 @@ import Link from "next/link";
 import { SearchIcon } from "lucide-react";
 
 import { Input } from "./ui/input";
-import type { ChannelSearchResult } from "@/lib/colosseum/channel";
-import type { Column, ColumnSearchResult } from "@/lib/colosseum/column";
-import type { ProfileSearchResult } from "@/lib/colosseum/user";
-import { searchAction } from "@/lib/colosseum/actions";
+import type { Column } from "@/lib/colosseum/column";
+import { useSearch } from "@/components/use-search";
 
 function blockLabel(column: Column): string {
   return column.title || column.url || column.text || "Untitled";
@@ -17,41 +15,15 @@ function blockLabel(column: Column): string {
 // Nav search box over everyone's public content plus the viewer's own: profiles,
 // channels, and blocks. Debounced, with results in a dropdown under the input;
 // each result carries its owner's handle for the link.
-export default function SearchBar({ userId }: { userId: string }) {
+export default function SearchBar() {
   const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [open, setOpen] = useState(false);
-  const [profiles, setProfiles] = useState<ProfileSearchResult[]>([]);
-  const [channels, setChannels] = useState<ChannelSearchResult[]>([]);
-  const [columns, setColumns] = useState<ColumnSearchResult[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedQuery(query), 300);
-    return () => clearTimeout(t);
-  }, [query]);
-
-  useEffect(() => {
-    if (!debouncedQuery.trim()) {
-      setProfiles([]);
-      setChannels([]);
-      setColumns([]);
-      return;
-    }
-
-    let cancelled = false;
-    (async () => {
-      const results = await searchAction(debouncedQuery);
-      if (cancelled) return;
-      setProfiles(results.profiles);
-      setChannels(results.channels);
-      setColumns(results.columns);
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [debouncedQuery, userId]);
+  const {
+    query: searchedQuery,
+    results: { profiles, channels, columns },
+    searching,
+  } = useSearch(query);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -80,10 +52,14 @@ export default function SearchBar({ userId }: { userId: string }) {
         aria-label="Search profiles, channels, and columns"
         className="pl-8"
       />
-      {open && debouncedQuery.trim() ? (
+      {open && searchedQuery ? (
         <div className="absolute z-50 mt-1 w-full max-h-96 overflow-y-auto rounded-md border bg-popover p-2 text-popover-foreground shadow-md">
           {!hasResults ? (
-            <p className="px-2 py-1.5 text-sm text-muted-foreground">No results.</p>
+            // Nothing rather than "No results." while a search is in flight —
+            // the answer isn't back yet, so saying there is none is wrong.
+            searching ? null : (
+              <p className="px-2 py-1.5 text-sm text-muted-foreground">No results.</p>
+            )
           ) : (
             <>
               {profiles.map((profile) => (

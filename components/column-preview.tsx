@@ -1,23 +1,30 @@
-import { FileText, Play } from "lucide-react";
+import { FileText } from "lucide-react";
 
 import type { Column } from "@/lib/colosseum/column";
 import { getScreenshot, type ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import { spotifyEmbedRef, tweetIdFromUrl, youtubeIdFromUrl } from "@/lib/utils";
 import { Markdown } from "./markdown";
 import ScreenShotPreview from "./screenshot-preview";
-import TweetBlock from "./tweet-block";
+import TweetBlock from "./tweet-block-lazy";
 import YouTubeBlock from "./youtube-block";
 import SpotifyBlock from "./spotify-block";
+import YouTubeChannelBlock from "./youtube-channel-block";
+import GitHubBlock from "./github-block";
+import VideoPoster from "./video-poster";
 
 export default async function ColumnPreview({
   column,
   screenshot,
+  priority = false,
 }: {
   column: Column;
   // Pre-fetched screenshot for a url block, so a list of previews can batch the
   // lookup instead of each preview querying on its own. `undefined` means "not
   // provided — fetch it yourself"; `null` means "already looked up, none found".
   screenshot?: ColumnScreenshot | null;
+  // Set by callers for the previews that can start above the fold, so their
+  // images load eagerly and the rest wait until scrolled near.
+  priority?: boolean;
 }) {
   // return the preview based on the column type
 
@@ -49,6 +56,8 @@ export default async function ColumnPreview({
       <img
         src={`${column.image}?thumb`}
         alt={column.title ?? "Image column"}
+        loading={priority ? "eager" : "lazy"}
+        decoding="async"
         className="w-full h-full object-cover rounded-md"
       />
     );
@@ -64,23 +73,17 @@ export default async function ColumnPreview({
   }
 
   if (column.type === "video") {
-    // preload="metadata" renders the first frame as a still; the play badge
-    // signals it's a video (the real controls live in the modal / block page).
+    // The poster frame stored beside the video, as a plain image; the play
+    // badge signals it's a video (the real controls live in the modal / block
+    // page, which is also the only place the file itself gets fetched).
     return (
-      <div className="relative h-full w-full">
-        <video
-          src={column.image}
-          preload="metadata"
-          muted
-          playsInline
-          className="h-full w-full rounded-md object-cover"
-        />
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <span className="rounded-full bg-black/50 p-2 text-white">
-            <Play className="size-5 fill-current" />
-          </span>
-        </div>
-      </div>
+      <VideoPoster
+        image={column.image}
+        alt={column.title ?? "Video column"}
+        priority={priority}
+        className="rounded-md"
+        iconClassName="size-5"
+      />
     );
   }
 
@@ -90,6 +93,28 @@ export default async function ColumnPreview({
 
   if (column.type === "youtube") {
     return <YouTubeBlock id={youtubeIdFromUrl(column.url ?? "") ?? ""} compact />;
+  }
+
+  if (column.type === "youtube_channel") {
+    return (
+      <YouTubeChannelBlock
+        url={column.url ?? ""}
+        title={column.title ?? "YouTube channel"}
+        image={column.image}
+        compact
+      />
+    );
+  }
+
+  if (column.type === "github") {
+    return (
+      <GitHubBlock
+        url={column.url ?? ""}
+        title={column.title ?? "GitHub"}
+        image={column.image}
+        compact
+      />
+    );
   }
 
   if (column.type === "spotify") {
@@ -121,6 +146,7 @@ export default async function ColumnPreview({
       image_url={data?.image_url ?? null}
       version={data?.captured_at ?? null}
       url={column.url}
+      priority={priority}
     />
   );
 }

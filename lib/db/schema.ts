@@ -156,6 +156,12 @@ export const userProfile = pgTable(
   (t) => [
     // Explore feed orders new members by join time.
     index("user_profile_created_at_idx").on(t.created_at),
+    // Profile search, and the comment @-mention autocomplete behind it. Both
+    // run ILIKE '%term%' over handle/about, which a btree can't serve because
+    // of the leading wildcard, so each searched column needs a trigram GIN
+    // (pg_trgm) the same way channel and column search do.
+    index("user_profile_handle_trgm_idx").using("gin", sql`${t.handle} gin_trgm_ops`),
+    index("user_profile_about_trgm_idx").using("gin", sql`${t.about} gin_trgm_ops`),
   ],
 );
 
@@ -217,7 +223,19 @@ export const column = pgTable(
     id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     type: text("type", {
-      enum: ["url", "text", "image", "channel", "pdf", "video", "tweet", "youtube", "spotify"],
+      enum: [
+        "url",
+        "text",
+        "image",
+        "channel",
+        "pdf",
+        "video",
+        "tweet",
+        "youtube",
+        "youtube_channel",
+        "spotify",
+        "github",
+      ],
     }).notNull(),
     title: text("title"),
     description: text("description"),
@@ -245,6 +263,15 @@ export const column = pgTable(
     index("column_created_at_idx").on(t.created_at),
     // getChannelColumns / getChannelColumnCount filtering and sorting on channel_id, created_at.
     index("column_channel_id_created_at_idx").on(t.channel_id, t.created_at.desc()),
+    // The channel board's title_az / title_za sorts, and the block quota's
+    // count of a user's blocks — all three otherwise scan the whole table.
+    // Both title orderings are `nulls last` (untitled blocks sort to the end
+    // either way), and a btree only serves an ordering it was built with: the
+    // ascending index cannot answer `desc nulls last`, so the sorts need one
+    // index each.
+    index("column_channel_id_title_idx").on(t.channel_id, t.title),
+    index("column_channel_id_title_desc_idx").on(t.channel_id, t.title.desc()),
+    index("column_created_by_idx").on(t.created_by),
     // Screenshot GC checks whether any column still references a url (exact
     // match — this btree stays for equality lookups; the trigram index below is
     // only for ILIKE search).
@@ -283,8 +310,8 @@ export const comment = pgTable(
 );
 
 // In-app notifications: someone (actor) did something to the recipient's
-// content. `type` says what; `column_id`/`channel_id` point at the subject when
-// relevant (both nullable, cascade so a notification vanishes with its subject).
+// content. `type` says what; `channel_id`/`column_id`/`comment_id` locate the
+// subject (all cascade, so a notification vanishes with what it points at).
 // `read_at` null = unread. Actor cascades too, so removing a user clears the
 // notifications they caused.
 export const notification = pgTable(
@@ -300,13 +327,30 @@ export const notification = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
     type: text("type", { enum: ["comment", "mention", "connect", "member"] }).notNull(),
     // Every notification is about a channel (or a block within one), so this is
-    // always set; column_id is set only for comment/mention.
+    // always set. For `connect` it is the *host* channel — the one the recipient's
+    // channel was added to — which is where the link should land.
     channel_id: bigint("channel_id", { mode: "number" })
       .notNull()
       .references(() => channel.id, { onDelete: "cascade" }),
+    // Set for comment/mention (the block) and for `connect` (the channel column
+    // created inside the host, whose linked_channel_id names the subject).
     column_id: bigint("column_id", { mode: "number" }).references(() => column.id, {
       onDelete: "cascade",
     }),
+    // Set for comment/mention: the comment that triggered it, so the row and its
+    // email can quote the body. Null on rows created before this column existed.
+    // Deleting the comment nulls it rather than cascading: the notification is
+    // history and stays in the feed and the unread count with its quote dropped,
+    // and — because `email_sent_at` below is the only quiet-period anchor —
+    // cascading would let delete-and-repost email the recipient without bound.
+    comment_id: bigint("comment_id", { mode: "number" }).references(() => comment.id, {
+      onDelete: "set null",
+    }),
+    // When this notification was emailed, or null if it never was (toggle off,
+    // or suppressed as part of a burst). Read back to decide whether a later
+    // notification about the same subject is still inside the quiet period, so
+    // sustained activity can't suppress every email after the first.
+    email_sent_at: timestamp("email_sent_at", { withTimezone: true }),
     read_at: timestamp("read_at", { withTimezone: true }),
   },
   // The bell feed and unread count both scan one recipient's rows, newest first.
@@ -346,6 +390,12 @@ export const blobs = pgTable("blobs", {
   sha256: text("sha256").primaryKey(),
   mime: text("mime").notNull(),
   size: bigint("size", { mode: "number" }).notNull(),
+  // Set once ensureThumbnail has stored the `.thumb` rendition, so the serving
+  // route can skip a storage probe it already knows the answer to. Only ever
+  // false→true, and false is always safe: it costs the probe, which is what
+  // every request paid before this existed. Never default it to true — a blob
+  // predating the thumbnail work has no rendition to find.
+  has_thumbnail: boolean("has_thumbnail").notNull().default(false),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   created_by: uuid("created_by")
     .notNull()
@@ -404,3 +454,14 @@ export const inviteRedemption = pgTable(
   },
   (t) => [unique().on(t.user_id)],
 );
+
+// The ledger for one-shot data migrations (`scripts/data/`), the same idea as
+// drizzle's `__drizzle_migrations` but for data rather than schema. A row means
+// that migration has fully converged and will never be run again; a migration
+// that fails, or that reports it still has work left, leaves no row and is
+// retried on the next boot. See lib/colosseum/data-migration.ts.
+export const dataMigration = pgTable("data_migration", {
+  // The migration's filename stem, e.g. "0001-sync-blobs-to-object-store".
+  id: text("id").primaryKey(),
+  applied_at: timestamp("applied_at", { withTimezone: true }).notNull().defaultNow(),
+});

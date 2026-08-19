@@ -4,9 +4,12 @@ import {
   imageSrcFromHtml,
   isImageUrl,
   isSpotifyUrl,
+  youtubeChannelRef,
   isTweetUrl,
   isYouTubeUrl,
+  screenshotSrc,
   spotifyEmbedRef,
+  thumbSrc,
   tweetIdFromUrl,
   youtubeIdFromUrl,
 } from "./utils";
@@ -48,6 +51,38 @@ test("youtubeIdFromUrl rejects non-YouTube and malformed URLs", () => {
   expect(youtubeIdFromUrl("not a url")).toBeNull();
   expect(isYouTubeUrl("https://youtu.be/dQw4w9WgXcQ")).toBe(true);
   expect(isYouTubeUrl("https://example.com")).toBe(false);
+});
+
+test("youtubeChannelRef normalizes every channel URL form to the channel root", () => {
+  expect(youtubeChannelRef("https://www.youtube.com/@syntaxfm")).toEqual({
+    label: "@syntaxfm",
+    url: "https://www.youtube.com/@syntaxfm",
+  });
+  // A tab is still the same channel.
+  expect(youtubeChannelRef("https://www.youtube.com/@syntaxfm/videos")?.url).toBe(
+    "https://www.youtube.com/@syntaxfm",
+  );
+  expect(youtubeChannelRef("https://m.youtube.com/@syntaxfm/streams")?.label).toBe("@syntaxfm");
+  expect(youtubeChannelRef("https://www.youtube.com/channel/UCyU5wkjgQYGRB0hIHMwm2Sg")?.url).toBe(
+    "https://www.youtube.com/channel/UCyU5wkjgQYGRB0hIHMwm2Sg",
+  );
+  expect(youtubeChannelRef("youtube.com/c/SomeName/playlists")?.url).toBe(
+    "https://www.youtube.com/c/SomeName",
+  );
+  expect(youtubeChannelRef("https://www.youtube.com/user/SomeName")?.label).toBe("SomeName");
+});
+
+test("youtubeChannelRef rejects videos and non-channel pages", () => {
+  // Video URLs belong to youtubeIdFromUrl, not here.
+  expect(youtubeChannelRef("https://www.youtube.com/watch?v=dQw4w9WgXcQ")).toBeNull();
+  expect(youtubeChannelRef("https://www.youtube.com/shorts/dQw4w9WgXcQ")).toBeNull();
+  expect(youtubeChannelRef("https://youtu.be/dQw4w9WgXcQ")).toBeNull();
+  // A channel tab we know, versus a deeper page that isn't the channel.
+  expect(youtubeChannelRef("https://www.youtube.com/@syntaxfm/video/abc")).toBeNull();
+  expect(youtubeChannelRef("https://www.youtube.com/feed/subscriptions")).toBeNull();
+  expect(youtubeChannelRef("https://www.youtube.com/")).toBeNull();
+  expect(youtubeChannelRef("https://notyoutube.com/@syntaxfm")).toBeNull();
+  expect(youtubeChannelRef("not a url")).toBeNull();
 });
 
 test("spotifyEmbedRef extracts the type and id from open.spotify.com URLs", () => {
@@ -113,4 +148,40 @@ test("imageSrcFromHtml returns null when there's no usable absolute image URL", 
   // Non-http(s) srcs (data:, blob:, relative) fall back to the clipboard file.
   expect(imageSrcFromHtml('<img src="data:image/png;base64,AAAA">')).toBeNull();
   expect(imageSrcFromHtml('<img src="/local/relative.gif">')).toBeNull();
+});
+
+test("screenshotSrc appends the cache-busting version token", () => {
+  expect(screenshotSrc("https://cdn.example.com/a.png", "2026-01-02T03:04:05.000Z")).toBe(
+    "https://cdn.example.com/a.png?v=2026-01-02T03%3A04%3A05.000Z",
+  );
+  // Numeric versions round-trip the same as string ones.
+  expect(screenshotSrc("https://cdn.example.com/a.png", 1735786800000)).toBe(
+    "https://cdn.example.com/a.png?v=1735786800000",
+  );
+});
+
+test("screenshotSrc falls back to the bare image URL when there's no version", () => {
+  const url = "https://cdn.example.com/a.png";
+  expect(screenshotSrc(url, null)).toBe(url);
+  expect(screenshotSrc(url, undefined)).toBe(url);
+  // An empty token would produce a `?v=` that no prefetch would ever match.
+  expect(screenshotSrc(url, "")).toBe(url);
+});
+
+test("screenshotSrc returns null when there's no screenshot", () => {
+  expect(screenshotSrc(null, "2026-01-02T03:04:05.000Z")).toBeNull();
+  expect(screenshotSrc(undefined, null)).toBeNull();
+  expect(screenshotSrc("", "2026-01-02T03:04:05.000Z")).toBeNull();
+});
+
+test("thumbSrc points at the same rendition the grid card renders", () => {
+  // Byte-for-byte identical to the card's URL, or the modal's placeholder is a
+  // second request instead of a cache hit.
+  expect(thumbSrc("/api/media/abc")).toBe("/api/media/abc?thumb");
+});
+
+test("thumbSrc returns null when the block has no image", () => {
+  expect(thumbSrc(null)).toBeNull();
+  expect(thumbSrc(undefined)).toBeNull();
+  expect(thumbSrc("")).toBeNull();
 });

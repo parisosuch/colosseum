@@ -1,6 +1,6 @@
 {
   "name": "colosseum",
-  "version": "1.9.3",
+  "version": "1.10.0",
   "private": true,
   "description": "A self-hostable, Are.na-style tool for collecting and organizing the web into channels of blocks.",
   "homepage": "https://github.com/parisosuch/colosseum#readme",
@@ -27,7 +27,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate:drizzle": "drizzle-kit migrate",
     "db:seed": "bun --conditions=react-server scripts/seed.ts",
-    "backfill-thumbnails": "bun --conditions=react-server scripts/backfill-thumbnails.ts",
+    "data:migrate": "bun --conditions=react-server scripts/run-data-migrations.ts",
     "export-blobs": "bun --conditions=react-server scripts/export-blobs.ts",
     "test": "bun test --conditions=react-server"
   },

@@ -29,12 +29,15 @@ Use `bun`, never `npm`. A `Makefile` wraps the common ones:
 ## Git
 
 - **Conventional Commits** (`feat:`, `fix:`, `docs:`, `chore:`, etc.).
-- **Branch off `main`** for every change; open a PR back into `main`.
-  - **Exception — active release branch.** When a versioned release branch
-    exists (e.g. `release-1.2.0`), branch off it and target it for that
-    milestone's issues instead of `main`. The release branch is cut from `main`,
-    collects the milestone's PRs, then merges into `main` and is tagged
-    `vX.Y.Z` at release time.
+- **Branch off `next` and open the PR back into `next`.** That is the default
+  for every change. `next` accumulates work and merges into `main` at release
+  time.
+  - **Hotfixes target `main`.** Branch off `main` and PR into it, so the fix
+    ships without waiting for whatever else `next` is holding.
+  - **Active release branch.** When a versioned release branch exists (e.g.
+    `release-1.2.0`), branch off it and target it for that milestone's issues.
+    The release branch collects the milestone's PRs, then merges into `main`
+    and is tagged `vX.Y.Z` at release time.
 - PRs are **squash-merged**, so don't put the issue number in the commit
   subject — reference the issue in the PR description instead (the squash
   commit links the PR automatically).
@@ -53,7 +56,6 @@ Use `bun`, never `npm`. A `Makefile` wraps the common ones:
   `package.json` for a release (the PR that ships to `main`), stamp a matching
   `## [X.Y.Z] - YYYY-MM-DD` section in `CHANGELOG.md` in the same commit,
   moving the accumulated `Unreleased` notes under it. The two never move apart.
-- PRs that are hotfixes should target `main` and others should target `next`.
 - GH releases need to attribute PRs. See previous release for example.
 
 ## Conventions

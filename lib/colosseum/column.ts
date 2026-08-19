@@ -15,6 +15,7 @@ import {
 
 import { db } from "@/lib/db";
 import { channel, channelMember, column, screenshot, userProfile } from "@/lib/db/schema";
+import { renderMarkdown } from "@/lib/markdown";
 import { sanitizeSearch } from "@/lib/utils";
 import { deleteMediaByUrl } from "./blob";
 import { deleteTweetIfUnreferenced } from "./tweet";
@@ -23,11 +24,32 @@ import { tweetIdFromUrl } from "@/lib/utils";
 export type Column = {
   id: number;
   created_at: string;
-  type: "url" | "text" | "image" | "channel" | "pdf" | "video" | "tweet" | "youtube" | "spotify";
+  type:
+    | "url"
+    | "text"
+    | "image"
+    | "channel"
+    | "pdf"
+    | "video"
+    | "tweet"
+    | "youtube"
+    | "youtube_channel"
+    | "spotify"
+    | "github";
   title?: string;
   description?: string;
   url?: string;
   text?: string;
+  // A `text` block's markdown rendered to sanitized HTML, filled by toColumn so
+  // every block carries it however it was fetched (first page, load-more,
+  // just-created). Clients render this instead of parsing the markdown
+  // themselves, which keeps `marked` and `sanitize-html` out of the browser and
+  // makes the server the only place HTML is ever produced.
+  //
+  // Absent on the fetch paths that pass `{ html: false }` — the export and the
+  // REST/MCP reads, which return the markdown source and never render it. Every
+  // path that puts a block in front of a viewer takes the default and gets it.
+  html?: string;
   // Media URL of the uploaded blob for `image` columns, and reused for `pdf`
   // columns (the stored file is a PDF, served by /api/media with its own mime).
   image?: string;
@@ -46,7 +68,22 @@ export type Column = {
 };
 
 type ColumnRow = typeof column.$inferSelect;
-export function toColumn(row: ColumnRow): Column {
+
+// Per-call rendering options for the row → Column conversion.
+export type ColumnRender = {
+  // Render a `text` block's markdown into `html`. Defaults to true, so a block
+  // carries its HTML however it was fetched. Pass false only where the result
+  // is known never to be rendered — the channel export and the REST/MCP reads,
+  // which hand back the markdown source — since the render is pure CPU there
+  // and doubles a text block's payload on the way out.
+  html?: boolean;
+};
+
+// The single row → Column conversion. Every fetch, insert and update path in the
+// data layer goes through it, which is why the rendered markdown is produced
+// here: a Column's `html` can never be stale, and can only be missing where a
+// caller explicitly opted out of rendering it.
+export function toColumn(row: ColumnRow, render: ColumnRender = {}): Column {
   return {
     id: row.id,
     created_at: row.created_at.toISOString(),
@@ -55,6 +92,10 @@ export function toColumn(row: ColumnRow): Column {
     description: row.description ?? undefined,
     url: row.url ?? undefined,
     text: row.text ?? undefined,
+    html:
+      render.html !== false && row.type === "text" && row.text
+        ? renderMarkdown(row.text)
+        : undefined,
     image: row.image ?? undefined,
     created_by: row.created_by,
     channel_id: row.channel_id,
@@ -137,7 +178,10 @@ export async function withCreators(cols: Column[]): Promise<Column[]> {
 
 // Fetch a single block by id. Returns null when it doesn't exist. Visibility is
 // NOT enforced here — callers authorize via the block's channel first.
-export async function getColumn(column_id: number): Promise<Column | null> {
+export async function getColumn(
+  column_id: number,
+  render: ColumnRender = {},
+): Promise<Column | null> {
   // A non-numeric route param (e.g. parseInt("foo") → NaN) is never a real id;
   // treat it as not-found instead of letting Postgres reject NaN for a bigint.
   if (!Number.isFinite(column_id)) {
@@ -145,7 +189,7 @@ export async function getColumn(column_id: number): Promise<Column | null> {
   }
   const [row] = await db.select().from(column).where(eq(column.id, column_id)).limit(1);
   if (!row) return null;
-  const [enriched] = await withCreators([toColumn(row)]);
+  const [enriched] = await withCreators([toColumn(row, render)]);
   return enriched;
 }
 
@@ -166,6 +210,11 @@ export type ColumnQuery = {
   limit?: number;
   // Row offset for paged load-more; used together with `limit`.
   offset?: number;
+  // Render text blocks' markdown into `html` (see ColumnRender). Defaults to
+  // true; the export and the REST/MCP list pass false. An unbounded read of a
+  // channel full of long text blocks is the most expensive shape this query
+  // has, and those callers hand back the markdown source instead.
+  html?: boolean;
 };
 
 // Callers must authorize the channel's visibility before calling this (see the
@@ -175,7 +224,7 @@ export async function getChannelColumns(
   query: ColumnQuery = {},
   viewerId: string | null = null,
 ): Promise<Column[]> {
-  const { search, type = "all", sort = "newest", limit, offset = 0 } = query;
+  const { search, type = "all", sort = "newest", limit, offset = 0, html } = query;
 
   const filters: SQL[] = [eq(column.channel_id, channel_id)];
 
@@ -219,7 +268,12 @@ export async function getChannelColumns(
     .limit(limit ?? Number.MAX_SAFE_INTEGER)
     .offset(offset);
 
-  return withCreators(await withLinkedChannels(rows.map(toColumn), viewerId));
+  return withCreators(
+    await withLinkedChannels(
+      rows.map((row) => toColumn(row, { html })),
+      viewerId,
+    ),
+  );
 }
 
 // The `perChannel` newest blocks for each of `channelIds`, as one windowed query
@@ -283,6 +337,19 @@ export async function searchColumns(
 
   const pattern = `%${term}%`;
   const tag = term.replace(/["\\]/g, "");
+  // Five fields match equally in the WHERE above, which is too flat to order
+  // by: a block titled "ceramics" would sit below one that mentions ceramics
+  // somewhere in its body. Rank by how deliberate the match is — a title, then
+  // a tag someone applied, then the description, then body text, and last a URL,
+  // where the term is usually an incidental substring of a long link. Newest
+  // first inside a rank, which also keeps the `limit` below deterministic.
+  const rank = sql<number>`case
+    when ${column.title} ilike ${pattern} then 0
+    when ${column.tags} @> ARRAY[${tag}]::text[] then 1
+    when ${column.description} ilike ${pattern} then 2
+    when ${column.text} ilike ${pattern} then 3
+    else 4
+  end`;
   const rows = await db
     .select({ col: column, handle: userProfile.handle })
     .from(column)
@@ -304,6 +371,7 @@ export async function searchColumns(
         ),
       ),
     )
+    .orderBy(rank, desc(column.created_at), desc(column.id))
     .limit(10);
   return rows.map(({ col, handle }) => ({ ...toColumn(col), handle }));
 }
@@ -361,6 +429,64 @@ export async function uploadYouTubeColumn(input: {
       type: "youtube",
       url: input.url,
       title: input.title,
+      channel_id: input.channel_id,
+      created_by: input.created_by,
+    })
+    .returning();
+  return toColumn(row);
+}
+
+// A YouTube channel block. There's no embeddable player for a channel, so this
+// stores what a card needs: the channel URL, its name as the block title, its
+// blurb as the description, and its avatar in `image` (ingested into our own
+// storage, so the card doesn't break when YouTube rotates the URL).
+export async function uploadYouTubeChannelColumn(input: {
+  created_by: string;
+  channel_id: number;
+  url: string;
+  title?: string;
+  description?: string;
+  image?: string;
+}): Promise<Column> {
+  const [row] = await db
+    .insert(column)
+    .values({
+      type: "youtube_channel",
+      url: input.url,
+      title: input.title,
+      description: input.description,
+      image: input.image,
+      channel_id: input.channel_id,
+      created_by: input.created_by,
+    })
+    .returning();
+  return toColumn(row);
+}
+
+// A GitHub block stores what the card draws: the canonical github.com URL, the
+// repo or account name as the title, its description/bio, and the owner avatar
+// ingested into blob storage (so the card survives GitHub rotating the image
+// URL, and the blob is GC'd with the block). `text` holds the primary language
+// for a repo, which is the one extra field the card shows and the only place
+// left to put it without a migration.
+export async function uploadGitHubColumn(input: {
+  created_by: string;
+  channel_id: number;
+  url: string;
+  title: string;
+  description?: string;
+  image?: string;
+  language?: string;
+}): Promise<Column> {
+  const [row] = await db
+    .insert(column)
+    .values({
+      type: "github",
+      url: input.url,
+      title: input.title,
+      description: input.description,
+      image: input.image,
+      text: input.language,
       channel_id: input.channel_id,
       created_by: input.created_by,
     })
@@ -500,10 +626,17 @@ export async function updateColumnTags(column_id: number, tags: string[]): Promi
 }
 
 // Move a block to another channel. Only the channel_id changes, so the block
-// keeps its title, description, tags, and content. Authorization (owning both
-// channels) is enforced by the action.
-export async function moveColumn(column_id: number, channel_id: number): Promise<void> {
-  await db.update(column).set({ channel_id }).where(eq(column.id, column_id));
+// keeps its id, created_at, title, description, tags, and content — and, for a
+// url block, the screenshot cached against its URL. Returns the updated row, or
+// null when the block no longer exists. Authorization (owning both channels) is
+// enforced by the caller.
+export async function moveColumn(column_id: number, channel_id: number): Promise<Column | null> {
+  const [row] = await db
+    .update(column)
+    .set({ channel_id })
+    .where(eq(column.id, column_id))
+    .returning();
+  return row ? toColumn(row) : null;
 }
 
 // Duplicate a block into another channel, leaving the source untouched. The new
@@ -629,6 +762,10 @@ export async function getChannelColumnCounts(channelIds: number[]): Promise<Map<
   return counts;
 }
 
-export async function updateColumnText(column_id: number, text: string): Promise<void> {
-  await db.update(column).set({ text }).where(eq(column.id, column_id));
+// Save a text block's markdown, returning the updated block so the caller gets
+// the freshly rendered `html` back with it (the grid card shows that, not the
+// source). Null when the block no longer exists.
+export async function updateColumnText(column_id: number, text: string): Promise<Column | null> {
+  const [row] = await db.update(column).set({ text }).where(eq(column.id, column_id)).returning();
+  return row ? toColumn(row) : null;
 }

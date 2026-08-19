@@ -15,8 +15,9 @@ import {
   canManageChannel,
   canReadChannel,
 } from "./channel";
+import { getChannel } from "./channel";
 import { isChannelMember } from "./member";
-import { Column } from "./column";
+import { Column, getColumn, moveColumn } from "./column";
 import { ApiToken } from "./api-token";
 import { getScreenshot, getScreenshotsForUrls } from "./screenshot-data";
 import { checkRateLimit } from "./rate-limit";
@@ -243,6 +244,37 @@ export async function authorizeBlockWrite(
   return null;
 }
 
+// Reassign a block to another channel, authorizing both ends: the caller must
+// own the channel the block lives in now and the one it is going to. Composed
+// here, next to the rest of the matrix, so the rule has one home rather than
+// being reassembled at each call site. Returns the updated block, or the denial
+// NextResponse to hand back (which the MCP tool turns into a tool error). A
+// missing block — or a channel the caller cannot even read — is a 404, so this
+// never confirms that someone else's private channel exists.
+export async function moveBlock(
+  blockId: number,
+  destinationChannelId: number,
+  userId: string,
+): Promise<Column | NextResponse> {
+  const block = await getColumn(blockId, { html: false });
+  if (!block) return apiError("Not found.", 404);
+
+  const sourceDenial = await authorizeChannelManage(await getChannel(block.channel_id), userId);
+  if (sourceDenial) return sourceDenial;
+
+  const destinationDenial = await authorizeChannelManage(
+    await getChannel(destinationChannelId),
+    userId,
+  );
+  if (destinationDenial) return destinationDenial;
+
+  // Already where it was asked to go — nothing to write.
+  if (block.channel_id === destinationChannelId) return block;
+
+  const moved = await moveColumn(blockId, destinationChannelId);
+  return moved ?? apiError("Not found.", 404);
+}
+
 // url blocks capture a preview asynchronously (see triggerScreenshotCapture in
 // ./screenshot); these attach whatever's currently cached so API clients can
 // poll a block until `preview` resolves instead of the API blocking on a
@@ -250,7 +282,7 @@ export async function authorizeBlockWrite(
 // - null            -> no row yet, still capturing (or never triggered) — keep polling.
 // - { failed: true } -> capture ran and failed permanently — stop polling.
 // - { image_url, title } -> captured successfully.
-export type BlockWithPreview = Column & {
+export type BlockWithPreview = ApiBlock & {
   preview: { image_url: string; title: string } | { failed: true } | null;
 };
 
@@ -260,16 +292,30 @@ function toPreview(row: { image_url: string | null; title: string | null } | und
   return { failed: true } as const;
 }
 
+// A block as the REST API and the MCP tools return it: the markdown source,
+// never the rendered HTML. An API client asked for the source, and shipping the
+// server's rendered copy alongside it roughly doubles a text block's payload for
+// something no API client renders. The single choke point means no handler can
+// leak it back in by spreading a Column into a response.
+export type ApiBlock = Omit<Column, "html">;
+
+export function toApiBlock(block: Column): ApiBlock {
+  if (block.html === undefined) return block;
+  const { html: _html, ...rest } = block;
+  return rest;
+}
+
 export async function attachPreview(block: Column): Promise<BlockWithPreview> {
-  if (block.type !== "url" || !block.url) return { ...block, preview: null };
-  return { ...block, preview: toPreview((await getScreenshot(block.url)) ?? undefined) };
+  const api = toApiBlock(block);
+  if (block.type !== "url" || !block.url) return { ...api, preview: null };
+  return { ...api, preview: toPreview((await getScreenshot(block.url)) ?? undefined) };
 }
 
 export async function attachPreviews(blocks: Column[]): Promise<BlockWithPreview[]> {
   const urls = blocks.filter((b) => b.type === "url" && b.url).map((b) => b.url!);
   const screenshots = await getScreenshotsForUrls(urls);
   return blocks.map((b) => ({
-    ...b,
+    ...toApiBlock(b),
     preview: b.type === "url" && b.url ? toPreview(screenshots.get(b.url)) : null,
   }));
 }

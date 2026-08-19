@@ -5,10 +5,8 @@ import Link from "next/link";
 import { SearchIcon } from "lucide-react";
 
 import { Input } from "./ui/input";
-import type { ChannelSearchResult } from "@/lib/colosseum/channel";
-import type { Column, ColumnSearchResult } from "@/lib/colosseum/column";
-import type { ProfileSearchResult } from "@/lib/colosseum/user";
-import { searchAction } from "@/lib/colosseum/actions";
+import type { Column } from "@/lib/colosseum/column";
+import { useSearch } from "@/components/use-search";
 
 function blockLabel(column: Column): string {
   return column.title || column.url || column.text || "Untitled";
@@ -20,42 +18,18 @@ function blockLabel(column: Column): string {
 // viewer's own; each result carries its owner's handle for the link.
 export function MobileSearch({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [profiles, setProfiles] = useState<ProfileSearchResult[]>([]);
-  const [channels, setChannels] = useState<ChannelSearchResult[]>([]);
-  const [columns, setColumns] = useState<ColumnSearchResult[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const {
+    query: searchedQuery,
+    results: { profiles, channels, columns },
+    searching,
+  } = useSearch(query);
 
   // Focus the input when the drawer opens (avoids the autoFocus attribute,
   // which the a11y lint disallows).
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
-
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedQuery(query), 50);
-    return () => clearTimeout(t);
-  }, [query]);
-
-  useEffect(() => {
-    if (!debouncedQuery.trim()) {
-      setProfiles([]);
-      setChannels([]);
-      setColumns([]);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      const results = await searchAction(debouncedQuery);
-      if (cancelled) return;
-      setProfiles(results.profiles);
-      setChannels(results.channels);
-      setColumns(results.columns);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [debouncedQuery]);
 
   const hasResults = profiles.length > 0 || channels.length > 0 || columns.length > 0;
 
@@ -76,7 +50,8 @@ export function MobileSearch({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="flex flex-1 flex-col overflow-y-auto">
-        {debouncedQuery.trim() && !hasResults ? (
+        {/* Not while a search is in flight — the answer isn't back yet. */}
+        {searchedQuery && !hasResults && !searching ? (
           <p className="px-1 py-2 text-sm text-muted-foreground">No results.</p>
         ) : null}
 

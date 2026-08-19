@@ -1,24 +1,35 @@
 "use client";
 
 import type { Dispatch, SetStateAction } from "react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
+  Check,
   ChevronLeft,
   ChevronRight,
   Copy,
   FolderInput,
   GlobeIcon,
-  LayersIcon,
   LinkIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import ColumnComments from "./column-comments";
-import { Markdown } from "./markdown";
-import TweetBlock from "./tweet-block";
+import { RenderedMarkdown } from "./rendered-markdown";
+import TweetBlock from "./tweet-block-lazy";
 import YouTubeBlock from "./youtube-block";
 import SpotifyBlock from "./spotify-block";
-import { spotifyEmbedRef, tweetIdFromUrl, youtubeIdFromUrl } from "@/lib/utils";
+import YouTubeChannelBlock from "./youtube-channel-block";
+import GitHubBlock from "./github-block";
+import {
+  cn,
+  screenshotSrc,
+  spotifyEmbedRef,
+  THUMB_MAX_WIDTH,
+  thumbSrc,
+  tweetIdFromUrl,
+  youtubeIdFromUrl,
+} from "@/lib/utils";
 import type { Column } from "@/lib/colosseum/column";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import {
@@ -34,26 +45,8 @@ import {
 import type { PickableChannel } from "@/components/add-block-drawer";
 import AdminDeleteButton from "@/components/admin-delete-button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import {
-  CommandDialog,
-  CommandEmpty,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import TagInput from "@/components/tag-input";
@@ -84,16 +77,146 @@ type BlockModalProps = {
   hasNext: boolean;
 };
 
+// Renders a live draft in the browser, the one case the server can't cover.
+// Loaded on demand so marked and sanitize-html stay out of the page bundle: an
+// unedited draft reuses the block's server-rendered HTML (below), so the chunk
+// is only fetched once an editor changes something.
+const MarkdownPreview = dynamic(() => import("./markdown-preview"), {
+  ssr: false,
+  loading: () => <p className="text-sm text-muted-foreground">Rendering preview…</p>,
+});
+
+// The Move/Copy picker (cmdk) and the delete confirmation (the alert dialog).
+// The channel board renders this modal on every channel page, so a static
+// import would put both in the bundle for anyone who opens a block — and
+// neither is on the way to reading one. Move is owner-only and behind a click,
+// Copy needs a signed-in viewer with a channel of their own, Delete is a click
+// plus a confirmation.
+//
+// No `loading` placeholder: nothing of either is meant to be on screen until
+// its own dialog opens. The button that opens one warms its chunk on hover
+// (see `warm`), so the click usually finds it already there.
+const loadChannelPicker = () => import("./block-channel-picker");
+const loadDeleteDialog = () => import("./delete-block-dialog");
+const BlockChannelPicker = dynamic(loadChannelPicker, { ssr: false });
+const DeleteBlockDialog = dynamic(loadDeleteDialog, { ssr: false });
+
+// A dialog whose contents are code-split: nothing renders (so no chunk is
+// fetched) until the trigger is used, and once it has been, the dialog stays
+// mounted so closing still plays its exit animation.
+function useDeferredDialog(load: () => Promise<unknown>) {
+  const [used, setUsed] = useState(false);
+  const [open, setOpen] = useState(false);
+  return {
+    mounted: used,
+    open,
+    setOpen,
+    show: () => {
+      setUsed(true);
+      setOpen(true);
+    },
+    // Hovering (or focusing) the trigger starts the chunk, the same bet the
+    // grid makes on a card's full-size image.
+    warm: () => void load(),
+  };
+}
+
+// The full-size image, with the grid's thumbnail painted behind it until it
+// arrives. The card the modal was opened from has already decoded that
+// thumbnail, so the placeholder costs no request and paints in the first frame —
+// which covers both a cold open of a large image and a run of arrow presses
+// fast enough to outpace the neighbour prefetch.
+//
+// The thumbnail is the element that sizes the box: the full-size image has no
+// intrinsic dimensions until it loads, whereas the thumbnail has the source's
+// aspect ratio from the start. The full-size image then fills that box, and
+// `object-scale-down` reproduces what plain `max-w`/`max-h` did before — natural
+// size when it fits, contained when it doesn't — so nothing moves when it lands.
+//
+// On md the box is the whole panel, so how far the thumbnail may be blown up to
+// fill it comes from the thumbnail's own width: the resize never enlarges, so
+// one narrower than THUMB_MAX_WIDTH is the source itself and is drawn at that
+// size, exactly where the full-size image will land. A downsized one is drawn
+// to fill, which is exact for a source larger than the panel — the case this is
+// for — and generous for one in between, blurred, for the moment it shows.
+function BlockImage({ src, alt }: { src: string | undefined; alt: string }) {
+  const thumb = thumbSrc(src);
+  const [loaded, setLoaded] = useState(false);
+  const [downsized, setDownsized] = useState(true);
+  const fullRef = useRef<HTMLImageElement>(null);
+  const thumbRef = useRef<HTMLImageElement>(null);
+
+  const measureThumb = () => {
+    const width = thumbRef.current?.naturalWidth ?? 0;
+    if (width > 0) setDownsized(width >= THUMB_MAX_WIDTH);
+  };
+
+  // An image served from cache can finish before React attaches its handlers,
+  // which would leave the blurred thumbnail up for good. `complete` catches it.
+  useEffect(() => {
+    if (fullRef.current?.complete) setLoaded(true);
+    if (thumbRef.current?.complete) measureThumb();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a mount-only read of the two <img> elements; measureThumb is stable enough for it.
+  }, []);
+
+  // Nothing to paint behind: fall back to the bare image.
+  if (!thumb) {
+    return (
+      <img
+        src={src}
+        alt={alt}
+        className="max-h-[70vh] md:max-h-full max-w-full object-contain rounded-md"
+      />
+    );
+  }
+
+  return (
+    <div className="relative flex max-h-[70vh] max-w-full items-center justify-center overflow-hidden rounded-md md:h-full md:w-full md:max-h-full">
+      <img
+        ref={thumbRef}
+        src={thumb}
+        alt=""
+        aria-hidden
+        onLoad={measureThumb}
+        className={cn(
+          "max-h-[70vh] max-w-full blur-[6px] md:absolute md:inset-0 md:h-full md:w-full md:max-h-none",
+          downsized ? "object-contain" : "object-scale-down",
+          // Kept in flow (not `hidden`) so the box it sizes on mobile survives.
+          loaded && "opacity-0",
+        )}
+      />
+      <img
+        ref={fullRef}
+        src={src}
+        alt={alt}
+        onLoad={() => setLoaded(true)}
+        className={cn(
+          "absolute inset-0 h-full w-full object-scale-down transition-opacity duration-200",
+          loaded ? "opacity-100" : "opacity-0",
+        )}
+      />
+    </div>
+  );
+}
+
 // A text block is markdown. Viewers see it rendered; editors get GitHub-style
 // Write/Preview tabs over a monospace textarea (raw syntax stays visible while
 // writing), Preview rendering the current draft.
+//
+// `savedHtml` is the block's markdown as the server rendered and sanitized it.
+// It covers every read-only path — viewers, and editors who haven't touched the
+// draft — so the browser only needs a renderer for genuinely unsaved text.
 function MarkdownEditor({
   text,
+  savedText,
+  savedHtml,
   setText,
   canEdit,
   textRef,
 }: {
   text: string;
+  savedText: string;
+  savedHtml: string;
   setText: (v: string) => void;
   canEdit: boolean;
   textRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -104,7 +227,7 @@ function MarkdownEditor({
   if (!canEdit) {
     return (
       <div className="w-full max-h-full overflow-y-auto">
-        <Markdown text={text} />
+        <RenderedMarkdown html={savedHtml} />
       </div>
     );
   }
@@ -140,10 +263,12 @@ function MarkdownEditor({
         />
       ) : (
         <div className="min-h-40 w-full flex-1 overflow-y-auto rounded-md border p-3">
-          {text.trim() ? (
-            <Markdown text={text} />
-          ) : (
+          {!text.trim() ? (
             <p className="text-sm text-muted-foreground">Nothing to preview.</p>
+          ) : text === savedText ? (
+            <RenderedMarkdown html={savedHtml} />
+          ) : (
+            <MarkdownPreview text={text} />
           )}
         </div>
       )}
@@ -257,10 +382,12 @@ function BlockModalBody({
   // A stored screenshot can 404; fall back to the placeholder. The body is keyed
   // by block id in the parent, so this resets when navigating between blocks.
   const [imageErrored, setImageErrored] = useState(false);
+  // Swaps the copy button for a tick for a moment after a successful copy —
+  // the clipboard gives no other feedback that it worked.
+  const [urlCopied, setUrlCopied] = useState(false);
 
-  const imageURL = screenshot?.image_url ?? null;
   const urlTitle = screenshot?.title ?? "";
-  const screenshotVersion = screenshot?.captured_at ?? null;
+  const imageSrc = screenshotSrc(screenshot?.image_url, screenshot?.captured_at);
 
   const isDirty =
     title !== (column.title ?? "") ||
@@ -274,6 +401,19 @@ function BlockModalBody({
   // Horizontal-swipe navigation (mobile). Fire only when the gesture is clearly
   // horizontal and past a threshold, so vertical scrolling still works.
   const touchStart = useRef<{ x: number; y: number } | null>(null);
+  // Copy the block's own URL (the site it points at, not its permalink).
+  const handleCopyUrl = async () => {
+    if (!column.url) return;
+    try {
+      await navigator.clipboard.writeText(column.url);
+      setUrlCopied(true);
+      setTimeout(() => setUrlCopied(false), 1500);
+    } catch (e) {
+      console.error(e);
+      toast.error("Couldn't copy that link.");
+    }
+  };
+
   const handleTouchStart = (e: React.TouchEvent) => {
     const t = e.touches[0];
     touchStart.current = { x: t.clientX, y: t.clientY };
@@ -313,9 +453,12 @@ function BlockModalBody({
   };
 
   const handleTextChange = async () => {
-    await updateColumnTextAction(column.id, text);
+    // The action hands back the saved markdown already rendered and sanitized,
+    // so the card and the Preview tab pick up the edit without the browser
+    // re-parsing it.
+    const html = await updateColumnTextAction(column.id, text);
     textInputRef.current?.blur();
-    setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, text } : c)));
+    setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, text, html } : c)));
   };
 
   // Tags persist eagerly on each add/remove, so they stay out of the Save flow.
@@ -328,6 +471,8 @@ function BlockModalBody({
       toast.error("Couldn't save tags. Please try again.");
     }
   };
+
+  const confirmDelete = useDeferredDialog(loadDeleteDialog);
 
   const handleDelete = async () => {
     try {
@@ -343,7 +488,7 @@ function BlockModalBody({
   // already in. (On someone else's channel, none is excluded — it isn't yours.)
   const moveTargets = channels.filter((c) => c.id !== column.channel_id);
   const copyTargets = moveTargets;
-  const [moveOpen, setMoveOpen] = useState(false);
+  const move = useDeferredDialog(loadChannelPicker);
   const [moving, setMoving] = useState(false);
 
   const handleMove = async (targetChannelId: number) => {
@@ -351,7 +496,7 @@ function BlockModalBody({
     setMoving(true);
     try {
       await moveColumnAction(column.id, targetChannelId);
-      setMoveOpen(false);
+      move.setOpen(false);
       // The block no longer belongs to this channel: drop it, which clears the
       // open id in the parent and closes the modal (same path as delete).
       setColumns((cols) => cols.filter((c) => c.id !== column.id));
@@ -363,7 +508,7 @@ function BlockModalBody({
     }
   };
 
-  const [copyOpen, setCopyOpen] = useState(false);
+  const copy = useDeferredDialog(loadChannelPicker);
   const [copying, setCopying] = useState(false);
 
   // Copy leaves the source in place, so — unlike move — the current board is
@@ -373,7 +518,7 @@ function BlockModalBody({
     setCopying(true);
     try {
       await copyColumnAction(column.id, targetChannelId);
-      setCopyOpen(false);
+      copy.setOpen(false);
       toast.success("Copied.");
     } catch (e) {
       console.error(e);
@@ -405,13 +550,16 @@ function BlockModalBody({
     >
       <div className="flex w-full min-h-0 items-center justify-center p-2 md:w-3/4 md:p-6">
         {column.type === "text" ? (
-          <MarkdownEditor text={text} setText={setText} canEdit={canEdit} textRef={textInputRef} />
-        ) : column.type === "image" ? (
-          <img
-            src={column.image}
-            alt={column.title ?? "Image column"}
-            className="max-h-[70vh] md:max-h-full max-w-full object-contain rounded-md"
+          <MarkdownEditor
+            text={text}
+            savedText={column.text ?? ""}
+            savedHtml={column.html ?? ""}
+            setText={setText}
+            canEdit={canEdit}
+            textRef={textInputRef}
           />
+        ) : column.type === "image" ? (
+          <BlockImage src={column.image} alt={column.title ?? "Image column"} />
         ) : column.type === "pdf" ? (
           <object
             data={column.image}
@@ -441,6 +589,25 @@ function BlockModalBody({
           <div className="w-full max-w-3xl">
             <YouTubeBlock id={youtubeIdFromUrl(column.url ?? "") ?? ""} />
           </div>
+        ) : column.type === "youtube_channel" ? (
+          <div className="w-full max-w-xl">
+            <YouTubeChannelBlock
+              url={column.url ?? ""}
+              title={column.title ?? "YouTube channel"}
+              description={column.description ?? undefined}
+              image={column.image}
+            />
+          </div>
+        ) : column.type === "github" ? (
+          <div className="w-full max-w-xl">
+            <GitHubBlock
+              url={column.url ?? ""}
+              title={column.title ?? "GitHub"}
+              description={column.description ?? undefined}
+              image={column.image}
+              language={column.text ?? undefined}
+            />
+          </div>
         ) : column.type === "spotify" ? (
           <div className="w-full max-w-2xl">
             <SpotifyBlock
@@ -467,19 +634,34 @@ function BlockModalBody({
             </span>
           </Link>
         ) : (
-          <a href={column.url} target="_blank" className="block w-full max-w-3xl">
+          <div className="block w-full max-w-3xl">
+            {/* The address bar: the URL opens the site, the button copies it.
+                Two separate controls, so neither is nested inside the other's
+                hit area. */}
             <div className="flex flex-row items-center gap-2 border rounded-md px-2 py-1">
               <GlobeIcon className="size-4 shrink-0" />
-              <span className="font-mono text-sm break-all">{column.url!}</span>
+              <a
+                href={column.url}
+                target="_blank"
+                rel="noreferrer"
+                className="min-w-0 flex-1 font-mono text-sm break-all hover:underline"
+              >
+                {column.url!}
+              </a>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={urlCopied ? "Link copied" : "Copy link"}
+                onClick={handleCopyUrl}
+                className="size-7 shrink-0"
+              >
+                {urlCopied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+              </Button>
             </div>
-            <div className="mt-2 w-full">
-              {imageURL && !imageErrored ? (
+            <a href={column.url} target="_blank" rel="noreferrer" className="mt-2 block w-full">
+              {imageSrc && !imageErrored ? (
                 <img
-                  src={
-                    screenshotVersion
-                      ? `${imageURL}?v=${encodeURIComponent(screenshotVersion)}`
-                      : imageURL
-                  }
+                  src={imageSrc}
                   alt={urlTitle || "Website screenshot"}
                   onError={() => setImageErrored(true)}
                   className="w-full rounded-md"
@@ -489,8 +671,8 @@ function BlockModalBody({
                   No screenshot available
                 </div>
               )}
-            </div>
-          </a>
+            </a>
+          </div>
         )}
       </div>
       <div className="w-full md:w-1/4 space-y-2 md:flex md:flex-col md:min-h-0">
@@ -569,7 +751,10 @@ function BlockModalBody({
           ) : null}
           <div className="p-3 w-full flex justify-end items-center gap-2">
             <Button asChild variant="link" size="sm">
-              <Link href={`/${handle}/${column.channel_id}/${column.id}`}>
+              {/* Deep link, not the standalone block page: sharing this drops
+                  the recipient on the channel with the block already open, so
+                  closing it leaves them somewhere instead of nowhere. */}
+              <Link href={`/${handle}/${column.channel_id}?block=${column.id}`}>
                 <LinkIcon className="size-3" />
                 Permalink
               </Link>
@@ -589,7 +774,9 @@ function BlockModalBody({
                       size="icon"
                       aria-label="Move to another channel"
                       disabled={moving}
-                      onClick={() => setMoveOpen(true)}
+                      onPointerEnter={move.warm}
+                      onFocus={move.warm}
+                      onClick={move.show}
                     >
                       <FolderInput />
                     </Button>
@@ -597,34 +784,17 @@ function BlockModalBody({
                   <TooltipContent>Move to another channel</TooltipContent>
                 </Tooltip>
                 {/* Searchable picker so it scales past a handful of channels. */}
-                <CommandDialog
-                  open={moveOpen}
-                  onOpenChange={setMoveOpen}
-                  title="Move to channel"
-                  description="Search your channels and move this column to one of them."
-                >
-                  <CommandInput placeholder="Search channels…" />
-                  <CommandList>
-                    <CommandEmpty>No channels found.</CommandEmpty>
-                    {moveTargets.map((c) => (
-                      <CommandItem
-                        key={c.id}
-                        value={`channel-${c.id}`}
-                        keywords={[c.title]}
-                        disabled={moving}
-                        onSelect={() => handleMove(c.id)}
-                      >
-                        <LayersIcon />
-                        <span className="truncate">{c.title}</span>
-                        {c.private ? (
-                          <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-                            private
-                          </span>
-                        ) : null}
-                      </CommandItem>
-                    ))}
-                  </CommandList>
-                </CommandDialog>
+                {move.mounted ? (
+                  <BlockChannelPicker
+                    open={move.open}
+                    onOpenChange={move.setOpen}
+                    title="Move to channel"
+                    description="Search your channels and move this column to one of them."
+                    channels={moveTargets}
+                    busy={moving}
+                    onPick={handleMove}
+                  />
+                ) : null}
               </>
             ) : null}
             {/* Copy needs only read access to this block, so any signed-in viewer
@@ -639,72 +809,48 @@ function BlockModalBody({
                       size="icon"
                       aria-label="Copy to another channel"
                       disabled={copying}
-                      onClick={() => setCopyOpen(true)}
+                      onPointerEnter={copy.warm}
+                      onFocus={copy.warm}
+                      onClick={copy.show}
                     >
                       <Copy />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>Copy to one of your channels</TooltipContent>
                 </Tooltip>
-                <CommandDialog
-                  open={copyOpen}
-                  onOpenChange={setCopyOpen}
-                  title="Copy to channel"
-                  description="Search your channels and copy this column into one of them."
-                >
-                  <CommandInput placeholder="Search channels…" />
-                  <CommandList>
-                    <CommandEmpty>No channels found.</CommandEmpty>
-                    {copyTargets.map((c) => (
-                      <CommandItem
-                        key={c.id}
-                        value={`channel-${c.id}`}
-                        keywords={[c.title]}
-                        disabled={copying}
-                        onSelect={() => handleCopy(c.id)}
-                      >
-                        <LayersIcon />
-                        <span className="truncate">{c.title}</span>
-                        {c.private ? (
-                          <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-                            private
-                          </span>
-                        ) : null}
-                      </CommandItem>
-                    ))}
-                  </CommandList>
-                </CommandDialog>
+                {copy.mounted ? (
+                  <BlockChannelPicker
+                    open={copy.open}
+                    onOpenChange={copy.setOpen}
+                    title="Copy to channel"
+                    description="Search your channels and copy this column into one of them."
+                    channels={copyTargets}
+                    busy={copying}
+                    onPick={handleCopy}
+                  />
+                ) : null}
               </>
             ) : null}
             {canEdit ? (
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive hover:text-destructive"
-                  >
-                    Delete
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Delete this block?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This permanently removes the block from the channel. This can’t be undone.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction
-                      className="bg-destructive text-white hover:bg-destructive/90"
-                      onClick={handleDelete}
-                    >
-                      Delete
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onPointerEnter={confirmDelete.warm}
+                  onFocus={confirmDelete.warm}
+                  onClick={confirmDelete.show}
+                >
+                  Delete
+                </Button>
+                {confirmDelete.mounted ? (
+                  <DeleteBlockDialog
+                    open={confirmDelete.open}
+                    onOpenChange={confirmDelete.setOpen}
+                    onConfirm={handleDelete}
+                  />
+                ) : null}
+              </>
             ) : isAdmin ? (
               <AdminDeleteButton
                 label="Delete block"

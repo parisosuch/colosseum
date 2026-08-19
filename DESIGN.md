@@ -52,8 +52,14 @@ layout widths (`w-[350px]`) should not — use the scale or a responsive width.
 - **Buttons:** always `components/ui/button.tsx`. Never a bespoke
   `<button className="text-sm underline">`. Variants: `default` (primary
   action), `secondary` (create), `outline` (copy / neutral), `ghost` +
-  `text-destructive` (delete / revoke), `link` (inline navigation). Use
-  `asChild` to wrap a `next/link`.
+  `text-destructive` (delete / revoke), `link` (navigation). Use `asChild` to
+  wrap a `next/link`.
+  - The `link` variant is for a **standalone** navigation affordance — one that
+    sits on its own line, like a card's "View on GitHub". A link inside a
+    sentence ("Don't have an account? Create account") stays a plain
+    `<Link className="underline underline-offset-4">`: every button size carries
+    a fixed height and horizontal padding, which mid-paragraph puts a button's
+    box in the middle of the text.
 - **Page header:** `components/page-header.tsx` renders the
   `Colosseum / handle / channel` breadcrumb. Pass `crumbs`; omit `href` on the
   current (last) crumb.

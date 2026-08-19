@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test";
 
-import { etagMatches, mediaCacheControl, mediaEtag } from "./media-cache";
+import {
+  etagMatches,
+  MEDIA_REDIRECT_CACHE_CONTROL,
+  mediaCacheControl,
+  mediaEtag,
+} from "./media-cache";
 
 const SHA = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
@@ -15,6 +20,18 @@ test("private media is storable but never reused without revalidating", () => {
 
 test("public media caches forever — an id's bytes never change", () => {
   expect(mediaCacheControl("public")).toBe("public, max-age=31536000, immutable");
+});
+
+test("the public media redirect is cached per-browser, never in a shared cache", () => {
+  // `public` would let a proxy answer for the route after a channel flipped to
+  // private, routing a viewer who never had access past the check. The object
+  // stays readable at its CDN URL, so nothing invalidates such a copy.
+  expect(MEDIA_REDIRECT_CACHE_CONTROL).toContain("private");
+  expect(MEDIA_REDIRECT_CACHE_CONTROL).not.toContain("public");
+  // It still has to be reusable without asking us, or the 50-tile grid keeps
+  // paying a round trip per tile — that is the whole point of caching it.
+  expect(MEDIA_REDIRECT_CACHE_CONTROL).toContain("max-age=31536000");
+  expect(MEDIA_REDIRECT_CACHE_CONTROL).not.toContain("no-store");
 });
 
 test("mediaEtag is a strong tag, and the thumbnail gets its own", () => {

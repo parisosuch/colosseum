@@ -5,6 +5,7 @@ import { createMedia, mediaIdFromUrl, putBlob } from "./blob";
 import {
   canContributeChannel,
   canReadMedia,
+  channelReaders,
   createChannel,
   deleteChannel,
   getUserChannels,
@@ -102,6 +103,26 @@ test("a private group member can read and contribute; the membership row backs i
   expect(canContributeChannel(group, USERS.alice.id, aliceIsMember)).toBe(true);
   // A non-member (no session / not invited) can neither read nor contribute.
   expect(canContributeChannel(group, USERS.bob.id, false)).toBe(true); // owner
+});
+
+test("channelReaders keeps a private channel's owner and members, drops outsiders", async () => {
+  const [group] = await getVisibleUserChannels(USERS.bob.id, USERS.alice.id).then((cs) =>
+    cs.filter((c) => c.title === CHANNELS.bobGroup.title),
+  );
+  const outsider = "99999999-9999-4999-8999-999999999999";
+  // A comment notification names the block and its channel and quotes the body,
+  // and a mention resolves any handle — so the recipient list is filtered here
+  // before anything is written.
+  expect(await channelReaders(group, [USERS.bob.id, USERS.alice.id, outsider])).toEqual([
+    USERS.bob.id,
+    USERS.alice.id,
+  ]);
+
+  // A public channel is readable by anyone, so nobody is dropped.
+  const [design] = await getUserChannels(USERS.alice.id).then((cs) =>
+    cs.filter((c) => c.title === CHANNELS.aliceDesign.title),
+  );
+  expect(await channelReaders(design, [USERS.bob.id, outsider])).toEqual([USERS.bob.id, outsider]);
 });
 
 test("canReadMedia lets a private channel's members view its images, not outsiders", async () => {

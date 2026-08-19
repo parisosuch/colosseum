@@ -6,64 +6,37 @@ import ColumnComments from "@/components/column-comments";
 import { Markdown } from "@/components/markdown";
 import YouTubeBlock from "@/components/youtube-block";
 import SpotifyBlock from "@/components/spotify-block";
+import YouTubeChannelBlock from "@/components/youtube-channel-block";
+import GitHubBlock from "@/components/github-block";
 import PageHeader from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
-import { Channel, canReadChannel, getChannel } from "@/lib/colosseum/channel";
-import { isChannelMember } from "@/lib/colosseum/member";
-import { Column, getColumn } from "@/lib/colosseum/column";
+import { blockLabel, blockPreviewMeta } from "@/lib/colosseum/block-meta";
+import { loadVisibleBlock } from "@/lib/colosseum/block-access";
 import { getScreenshot } from "@/lib/colosseum/screenshot-data";
 import { getSessionUser } from "@/lib/auth";
-import { spotifyEmbedRef, youtubeIdFromUrl } from "@/lib/utils";
+import { screenshotSrc, spotifyEmbedRef, youtubeIdFromUrl } from "@/lib/utils";
 
 type BlockPageParams = {
   params: Promise<{ handle: string; channel_id: string; block_id: string }>;
 };
 
-function blockLabel(column: Column): string {
-  if (column.title) return column.title;
-  if (column.type === "url") return column.url ?? "Link";
-  if (column.type === "text") return "Text column";
-  if (column.type === "pdf") return "PDF column";
-  if (column.type === "video") return "Video column";
-  if (column.type === "youtube") return "YouTube video";
-  if (column.type === "spotify") return "Spotify";
-  return "Column";
-}
-
-// Resolve the block and its channel, enforcing visibility in app code (this
-// connection bypasses RLS): a block is visible only when it belongs to the
-// channel in the URL and that channel is public or owned by the viewer. Returns
-// null for any not-found/hidden case so a private block is never leaked (not
-// even its title, via metadata). A private channel is visible to its owner or an
-// invited member; public/open channels to anyone.
-async function loadVisibleBlock(
-  channelId: number,
-  blockId: number,
-): Promise<{ column: Column; channel: Channel } | null> {
-  const column = await getColumn(blockId);
-  if (!column || column.channel_id !== channelId) {
-    return null;
-  }
-  const channel = await getChannel(channelId);
-  if (!channel) {
-    return null;
-  }
-  const user = channel.access === "private" ? await getSessionUser() : null;
-  const isMember =
-    channel.access === "private" && user ? await isChannelMember(channel.id, user.id) : false;
-  if (!canReadChannel(channel, user?.id ?? null, isMember)) {
-    return null;
-  }
-  return { column, channel };
-}
-
 export async function generateMetadata({ params }: BlockPageParams): Promise<Metadata> {
-  const { channel_id, block_id } = await params;
+  const { handle, channel_id, block_id } = await params;
   const found = await loadVisibleBlock(parseInt(channel_id, 10), parseInt(block_id, 10));
   if (!found) {
     return { title: "Column not found · Colosseum" };
   }
-  return { title: `${blockLabel(found.column)} · Colosseum` };
+  // A URL block's card reuses the preview the block itself renders, along with
+  // the page description captured beside it.
+  const preview =
+    found.column.type === "url" && found.column.url ? await getScreenshot(found.column.url) : null;
+  return blockPreviewMeta({
+    column: found.column,
+    channel: found.channel,
+    handle,
+    previewUrl: preview?.image_url ?? null,
+    previewDescription: preview?.description ?? null,
+  });
 }
 
 export default async function BlockPage({ params }: BlockPageParams) {
@@ -87,10 +60,7 @@ export default async function BlockPage({ params }: BlockPageParams) {
   // URL blocks render their cached screenshot full-size when one exists.
   const screenshot = column.type === "url" && column.url ? await getScreenshot(column.url) : null;
 
-  const screenshotSrc =
-    screenshot?.image_url && screenshot.captured_at
-      ? `${screenshot.image_url}?v=${encodeURIComponent(screenshot.captured_at)}`
-      : (screenshot?.image_url ?? null);
+  const imageSrc = screenshotSrc(screenshot?.image_url, screenshot?.captured_at);
 
   return (
     <div className="w-full p-6 sm:p-12 flex flex-col gap-8 lg:flex-1 lg:min-h-0 lg:overflow-hidden">
@@ -130,6 +100,25 @@ export default async function BlockPage({ params }: BlockPageParams) {
             </video>
           ) : column.type === "youtube" ? (
             <YouTubeBlock id={youtubeIdFromUrl(column.url ?? "") ?? ""} />
+          ) : column.type === "youtube_channel" ? (
+            <div className="w-full max-w-xl mx-auto">
+              <YouTubeChannelBlock
+                url={column.url ?? ""}
+                title={column.title ?? "YouTube channel"}
+                description={column.description ?? undefined}
+                image={column.image}
+              />
+            </div>
+          ) : column.type === "github" ? (
+            <div className="w-full max-w-xl mx-auto">
+              <GitHubBlock
+                url={column.url ?? ""}
+                title={column.title ?? "GitHub"}
+                description={column.description ?? undefined}
+                image={column.image}
+                language={column.text ?? undefined}
+              />
+            </div>
           ) : column.type === "spotify" ? (
             <div className="w-full max-w-2xl mx-auto">
               <SpotifyBlock
@@ -150,9 +139,9 @@ export default async function BlockPage({ params }: BlockPageParams) {
                 <span className="font-mono text-sm break-all">{column.url}</span>
               </div>
               <div className="mt-2 w-full">
-                {screenshotSrc ? (
+                {imageSrc ? (
                   <img
-                    src={screenshotSrc}
+                    src={imageSrc}
                     alt={column.title ?? "Website screenshot"}
                     className="w-full rounded-md"
                   />

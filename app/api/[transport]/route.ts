@@ -14,8 +14,10 @@ import {
   authorizeChannelContribute,
   authorizeChannelManage,
   authorizeChannelRead,
+  moveBlock,
   parseAccess,
   resolveApiToken,
+  toApiBlock,
 } from "@/lib/colosseum/api-auth";
 import {
   Channel,
@@ -70,7 +72,9 @@ async function requireBlock(
   blockId: number,
   access: "read" | "write",
 ): Promise<Column> {
-  const block = await getColumn(blockId);
+  // The block is used for authorization and then returned as an API payload,
+  // neither of which renders the markdown.
+  const block = await getColumn(blockId, { html: false });
   if (!block) throw new Error("Not found.");
   const channel = await getChannel(block.channel_id);
   const denial =
@@ -231,7 +235,8 @@ const handler = createMcpHandler(
       },
       asTool(async ({ channelId, limit }: { channelId: number; limit?: number }, { userId }) => {
         await requireChannel(userId, channelId, "read");
-        return { blocks: await getChannelColumns(channelId, { limit }, userId) };
+        const blocks = await getChannelColumns(channelId, { limit, html: false }, userId);
+        return { blocks: blocks.map(toApiBlock) };
       }),
     );
 
@@ -267,11 +272,11 @@ const handler = createMcpHandler(
 
           if (args.type === "text") {
             if (!args.text?.trim()) throw new Error("`text` is required for a text block.");
-            return { block: await uploadTextColumn({ ...base, text: args.text }) };
+            return { block: toApiBlock(await uploadTextColumn({ ...base, text: args.text })) };
           }
           if (args.type === "url") {
             if (!args.url?.trim()) throw new Error("`url` is required for a url block.");
-            return { block: await uploadURLColumn({ ...base, text: args.url.trim() }) };
+            return { block: toApiBlock(await uploadURLColumn({ ...base, text: args.url.trim() })) };
           }
           if (!args.image?.trim())
             throw new Error("`image` (a public image URL) is required for an image block.");
@@ -282,7 +287,7 @@ const handler = createMcpHandler(
             userId,
             channel.private ? "private" : "public",
           );
-          return { block: await uploadImageColumn({ ...base, image }) };
+          return { block: toApiBlock(await uploadImageColumn({ ...base, image })) };
         },
       ),
     );
@@ -294,7 +299,7 @@ const handler = createMcpHandler(
         inputSchema: { id: z.number().int() },
       },
       asTool(async ({ id }: { id: number }, { userId }) => ({
-        block: await requireBlock(userId, id, "read"),
+        block: toApiBlock(await requireBlock(userId, id, "read")),
       })),
     );
 
@@ -334,9 +339,25 @@ const handler = createMcpHandler(
             throw new Error(`No editable fields provided. Allowed: ${allowed.join(", ")}.`);
           }
 
-          return { block: await updateColumn(args.id, updates) };
+          return { block: toApiBlock(await updateColumn(args.id, updates)) };
         },
       ),
+    );
+
+    server.registerTool(
+      "move_block",
+      {
+        description:
+          "Move a block to another channel. You must own both the channel it is " +
+          "in and the one it is going to. The block keeps its id, creation time, " +
+          "title, description, tags, and any screenshot — unlike recreating it.",
+        inputSchema: { id: z.number().int(), channelId: z.number().int() },
+      },
+      asTool(async ({ id, channelId }: { id: number; channelId: number }, { userId }) => {
+        const moved = await moveBlock(id, channelId, userId);
+        if (moved instanceof NextResponse) throw await denialToError(moved);
+        return { block: toApiBlock(moved) };
+      }),
     );
 
     server.registerTool(

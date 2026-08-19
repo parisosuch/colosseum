@@ -1,15 +1,19 @@
 "use client";
 
 import { memo } from "react";
-import { FileText, Play } from "lucide-react";
-import { Markdown } from "./markdown";
+import { FileText } from "lucide-react";
+import { RenderedMarkdown } from "./rendered-markdown";
 import type { Column } from "@/lib/colosseum/column";
 import { useBlockMediaPrefetch } from "@/components/block-prefetch";
-import { spotifyEmbedRef, timeAgo, tweetIdFromUrl, youtubeIdFromUrl } from "@/lib/utils";
+import { useNearViewport } from "@/components/near-viewport";
+import { spotifyEmbedRef, thumbSrc, timeAgo, tweetIdFromUrl, youtubeIdFromUrl } from "@/lib/utils";
 import ScreenShotPreview from "./screenshot-preview";
-import TweetBlock from "./tweet-block";
+import TweetBlock from "./tweet-block-lazy";
 import YouTubeBlock from "./youtube-block";
 import SpotifyBlock from "./spotify-block";
+import YouTubeChannelBlock from "./youtube-channel-block";
+import GitHubBlock from "./github-block";
+import VideoPoster from "./video-poster";
 import { GradientSpin } from "./gradient-spin";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 
@@ -36,6 +40,9 @@ type ColumnComponentProps = {
   // pass one stable handler (keeps the memo'd cards from re-rendering when the
   // open block — and only the open block — changes).
   onOpen: (id: number) => void;
+  // Set by the board for the cards that can start above the fold, so their
+  // thumbnails load eagerly and the rest wait until scrolled near.
+  priority?: boolean;
 };
 
 // The clickable block card in the channel grid. The modal itself is a single
@@ -47,10 +54,25 @@ const ColumnComponent = memo(function ColumnComponent({
   view = "grid",
   author,
   onOpen,
+  priority = false,
 }: ColumnComponentProps) {
   // Hovering the card starts fetching what the modal will show, so the click
-  // opens onto a decoded image instead of one painting in as it arrives.
-  const prefetch = useBlockMediaPrefetch(column);
+  // opens onto a decoded image instead of one painting in as it arrives. An
+  // embed block opens its connections here instead — the iframe can't be
+  // fetched ahead.
+  const prefetch = useBlockMediaPrefetch(column, screenshot);
+  // A channel read ten pages deep keeps every card it ever loaded mounted, and
+  // the expensive part of a card is its media: a decoded thumbnail, or for a
+  // tweet a whole react-tweet embed. Cards far from the viewport keep their
+  // frame and caption and drop the media, so what a channel holds stays
+  // proportional to what is on screen instead of to how far someone has read.
+  //
+  // The board's `columns` array is untouched, so the modal's index — and the
+  // neighbours warmed off that index — mean exactly what they did before. The
+  // warmth survives a card being parked too: the prefetch's requested and
+  // preconnected sets, the comment cache, and react-tweet's SWR cache are all
+  // module-level, so nothing fetched for a card is thrown away with its media.
+  const { ref: cardRef, near } = useNearViewport();
   const imageURL = screenshot?.image_url ?? null;
   const urlTitle = screenshot?.title ?? "";
   // cache-busting token for the shared storage object (bumped on refresh)
@@ -72,12 +94,14 @@ const ColumnComponent = memo(function ColumnComponent({
       </div>
     ) : column.type === "text" ? (
       <div className="h-full w-full overflow-hidden p-2">
-        <Markdown text={column.text ?? ""} className="text-xs" />
+        <RenderedMarkdown html={column.html ?? ""} className="text-xs" />
       </div>
     ) : column.type === "image" ? (
       <img
-        src={`${column.image}?thumb`}
+        src={thumbSrc(column.image) ?? undefined}
         alt={column.title ?? "Image column"}
+        loading={priority ? "eager" : "lazy"}
+        decoding="async"
         className="w-full h-full object-cover rounded-lg"
       />
     ) : column.type === "pdf" ? (
@@ -86,24 +110,31 @@ const ColumnComponent = memo(function ColumnComponent({
         <span className="line-clamp-2 max-w-full break-words text-xs">{column.title || "PDF"}</span>
       </div>
     ) : column.type === "video" ? (
-      <div className="relative h-full w-full">
-        <video
-          src={column.image}
-          preload="metadata"
-          muted
-          playsInline
-          className="h-full w-full rounded-lg object-cover"
-        />
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <span className="rounded-full bg-black/50 p-2 text-white">
-            <Play className="size-4 fill-current" />
-          </span>
-        </div>
-      </div>
+      <VideoPoster
+        image={column.image}
+        alt={column.title ?? "Video column"}
+        priority={priority}
+        className="rounded-lg"
+        iconClassName="size-4"
+      />
     ) : column.type === "tweet" ? (
       <TweetBlock id={tweetIdFromUrl(column.url ?? "") ?? ""} compact />
     ) : column.type === "youtube" ? (
       <YouTubeBlock id={youtubeIdFromUrl(column.url ?? "") ?? ""} compact />
+    ) : column.type === "youtube_channel" ? (
+      <YouTubeChannelBlock
+        url={column.url ?? ""}
+        title={column.title ?? "YouTube channel"}
+        image={column.image}
+        compact
+      />
+    ) : column.type === "github" ? (
+      <GitHubBlock
+        url={column.url ?? ""}
+        title={column.title ?? "GitHub"}
+        image={column.image}
+        compact
+      />
     ) : column.type === "spotify" ? (
       (() => {
         const ref = spotifyEmbedRef(column.url ?? "");
@@ -116,8 +147,20 @@ const ColumnComponent = memo(function ColumnComponent({
         <GradientSpin cellSize={4} />
       </div>
     ) : (
-      <ScreenShotPreview image_url={imageURL} version={screenshotVersion} url={column.url} />
+      <ScreenShotPreview
+        image_url={imageURL}
+        version={screenshotVersion}
+        url={column.url}
+        priority={priority}
+      />
     );
+
+  // What the card actually renders in its frame. Parking costs no layout: the
+  // frame is sized in CSS either way (a square card in the grid, a 40px thumb in
+  // the list). Scrolling back re-mounts it — public media is served `immutable`,
+  // so the bytes come from the browser cache rather than the network, and a
+  // tweet repaints from the SWR entry its first mount filled.
+  const media = near ? thumbnail : null;
 
   if (view === "list") {
     // Content column: the domain/path for a link, the text itself for a text
@@ -126,6 +169,8 @@ const ColumnComponent = memo(function ColumnComponent({
       column.type === "url" ||
       column.type === "tweet" ||
       column.type === "youtube" ||
+      column.type === "youtube_channel" ||
+      column.type === "github" ||
       column.type === "spotify"
         ? (column.url ?? "").replace(/^https?:\/\//, "")
         : column.type === "text"
@@ -146,7 +191,7 @@ const ColumnComponent = memo(function ColumnComponent({
                 {(column.linked_channel?.title ?? "Ch").slice(0, 2).toUpperCase()}
               </div>
             ) : (
-              thumbnail
+              media
             )}
           </div>
           <span className="truncate text-sm">{content}</span>
@@ -161,6 +206,7 @@ const ColumnComponent = memo(function ColumnComponent({
 
     return (
       <button
+        ref={cardRef}
         type="button"
         aria-label="Open column"
         onClick={() => onOpen(column.id)}
@@ -182,7 +228,7 @@ const ColumnComponent = memo(function ColumnComponent({
 
   const gridInner = (
     <div className="group relative w-full">
-      <div className="w-full aspect-square border rounded-lg text-left">{thumbnail}</div>
+      <div className="w-full aspect-square border rounded-lg text-left">{media}</div>
       <p className="group-hover:hidden truncate pt-1 text-caption">{gridTitle}</p>
       <p className="hidden group-hover:block truncate pt-1 text-caption">
         {timeAgo(new Date(column.created_at))}
@@ -199,6 +245,7 @@ const ColumnComponent = memo(function ColumnComponent({
   if (column.type === "tweet") {
     return (
       <div
+        ref={cardRef}
         role="button"
         tabIndex={0}
         onClick={() => onOpen(column.id)}
@@ -218,6 +265,7 @@ const ColumnComponent = memo(function ColumnComponent({
 
   return (
     <button
+      ref={cardRef}
       type="button"
       onClick={() => onOpen(column.id)}
       {...prefetch}

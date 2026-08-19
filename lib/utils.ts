@@ -207,6 +207,34 @@ export function isGitHubUrl(url: string): boolean {
   return githubRef(url) !== null;
 }
 
+// What kind of block a URL should become. One ordered decision, shared by the
+// channel input (which dispatches straight to the matching action, so it can
+// name the block in its toast) and by uploadURLColumnAction, which every other
+// path goes through. Keeping it in one place is what stops a link pasted into
+// the quick-add drawer becoming a different kind of block from the same link
+// pasted into the channel input.
+//
+// Order matters where a URL could match twice: a YouTube channel URL is checked
+// before a video, since /@handle/videos is a channel page and not a video.
+export type UrlBlockKind =
+  | "tweet"
+  | "youtube_channel"
+  | "youtube"
+  | "spotify"
+  | "github"
+  | "image"
+  | "url";
+
+export function urlBlockKind(url: string): UrlBlockKind {
+  if (isTweetUrl(url)) return "tweet";
+  if (isYouTubeChannelUrl(url)) return "youtube_channel";
+  if (isYouTubeUrl(url)) return "youtube";
+  if (isSpotifyUrl(url)) return "spotify";
+  if (isGitHubUrl(url)) return "github";
+  if (isImageUrl(url)) return "image";
+  return "url";
+}
+
 // The path extensions that map onto ALLOWED_IMAGE_TYPES (lib/colosseum/blob.ts).
 // SVG is deliberately absent: it isn't an allowed upload type either.
 const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "avif"];

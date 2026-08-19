@@ -4,6 +4,7 @@ import {
   imageSrcFromHtml,
   isImageUrl,
   isSpotifyUrl,
+  urlBlockKind,
   youtubeChannelRef,
   isTweetUrl,
   isYouTubeUrl,
@@ -184,4 +185,25 @@ test("thumbSrc returns null when the block has no image", () => {
   expect(thumbSrc(null)).toBeNull();
   expect(thumbSrc(undefined)).toBeNull();
   expect(thumbSrc("")).toBeNull();
+});
+
+test("urlBlockKind classifies a pasted URL, with or without a scheme", () => {
+  // The scheme-less form is what someone actually types, and it has to reach
+  // the same block type as the full URL.
+  expect(urlBlockKind("github.com/parisosuch")).toBe("github");
+  expect(urlBlockKind("https://github.com/parisosuch")).toBe("github");
+  expect(urlBlockKind("github.com/anthropics/claude-code")).toBe("github");
+
+  expect(urlBlockKind("https://x.com/user/status/1234567890")).toBe("tweet");
+  expect(urlBlockKind("https://www.youtube.com/@veritasium")).toBe("youtube_channel");
+  expect(urlBlockKind("https://www.youtube.com/watch?v=dQw4w9WgXcQ")).toBe("youtube");
+  expect(urlBlockKind("https://open.spotify.com/track/6rqhFgbbKwnb9MLmUQDhG6")).toBe("spotify");
+  expect(urlBlockKind("https://example.com/cat.gif")).toBe("image");
+  expect(urlBlockKind("https://example.com/article")).toBe("url");
+});
+
+test("urlBlockKind puts a YouTube channel ahead of a video", () => {
+  // /@handle/videos is a channel page; the video matcher must not claim it
+  // first, which is the one place the ordering carries meaning.
+  expect(urlBlockKind("https://www.youtube.com/@veritasium/videos")).toBe("youtube_channel");
 });

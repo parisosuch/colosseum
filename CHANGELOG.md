@@ -8,6 +8,14 @@ release.
 
 ## [Unreleased]
 
+## [1.10.3] - 2026-08-20
+
+### Fixed
+
+- Spotify blocks no longer show white corners around the player. Spotify rounds
+  its own player and paints white behind the corners, which showed through as
+  four white wedges against a dark background.
+
 ## [1.10.2] - 2026-08-19
 
 ### Fixed

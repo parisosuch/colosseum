@@ -47,7 +47,12 @@ export default function SpotifyBlock({
       title="Spotify player"
       allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
       loading="lazy"
-      className={`w-full rounded-md border-0 ${listType ? "h-[560px]" : "h-[352px]"}`}
+      // rounded-xl, not the rounded-md the other embeds use: Spotify draws its
+      // own 12px corners inside the frame and paints white outside them, so a
+      // smaller clip leaves a white wedge in each corner — invisible on a light
+      // page, obvious on a dark one. Matching their radius cuts exactly where
+      // their curve is. If they ever change it, this has to follow.
+      className={`w-full rounded-xl border-0 ${listType ? "h-[560px]" : "h-[352px]"}`}
     />
   );
 }

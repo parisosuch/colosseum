@@ -11,9 +11,34 @@ import { ServiceWorkerRegister } from "@/components/service-worker-register";
 import { NoZoomGuard } from "@/components/no-zoom-guard";
 import MobileBottomNav from "@/components/mobile-bottom-nav";
 
-const defaultUrl = process.env.VERCEL_URL
-  ? `https://${process.env.VERCEL_URL}`
-  : "http://localhost:3000";
+// The public origin every absolute URL in metadata is resolved against — most
+// visibly og:image and og:url on a share card, which a crawler has to be able
+// to fetch from the outside.
+//
+// VERCEL_URL alone was a leftover from the starter template. It is never set on
+// a self-hosted deployment, which is how colosseum is meant to run, so every
+// card told Slack and friends that its image lived at http://localhost:3000 and
+// no unfurl could ever load one. BETTER_AUTH_URL is the public URL a deployment
+// behind a domain already has to set (auth rejects mismatched origins without
+// it), so it is the value that is actually correct here.
+//
+// Read at server start, so changing it needs a container restart — the same as
+// it already is for auth.
+function publicOrigin(): string {
+  const configured =
+    process.env.BETTER_AUTH_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null);
+  if (!configured) return "http://localhost:3000";
+  try {
+    return new URL(configured).origin;
+  } catch {
+    // A malformed value shouldn't take every page down with it; cards degrade
+    // to relative-to-localhost, which is no worse than not setting it at all.
+    return "http://localhost:3000";
+  }
+}
+
+const defaultUrl = publicOrigin();
 
 export const metadata: Metadata = {
   metadataBase: new URL(defaultUrl),

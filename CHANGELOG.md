@@ -8,6 +8,23 @@ release.
 
 ## [Unreleased]
 
+## [1.10.4] - 2026-08-20
+
+### Fixed
+
+- Shared links show their preview card again. Cards pointed their image at
+  localhost instead of the site's own address, so Slack, Discord, iMessage, and
+  X had nothing they could load. Set BETTER_AUTH_URL to your public address —
+  the same value you already need for sign-in to work behind a domain.
+
+## [1.10.3] - 2026-08-20
+
+### Fixed
+
+- Spotify blocks no longer show white corners around the player. Spotify rounds
+  its own player and paints white behind the corners, which showed through as
+  four white wedges against a dark background.
+
 ## [1.10.2] - 2026-08-19
 
 ### Fixed

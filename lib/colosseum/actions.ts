@@ -6,6 +6,7 @@
 // bypasses row-level security).
 
 import { getSessionUser } from "@/lib/auth";
+import { renderMarkdown } from "@/lib/markdown";
 import {
   Channel,
   ChannelAccess,
@@ -1084,4 +1085,14 @@ export async function setUserLimitsAction(
 ): Promise<void> {
   await requireAdmin();
   await setUserLimits(userId, limits);
+}
+
+// Render an unsaved markdown draft for the block modal's Preview tab. The
+// parser is a bun global and the sanitizer is a server dependency, so neither
+// can run in the browser any more — the draft makes a round trip instead. Pure
+// text in, sanitized HTML out: no database, no session, nothing to authorize.
+// renderMarkdown's memo means a draft the editor keeps flipping back to costs
+// one render, not one per preview.
+export async function renderMarkdownDraftAction(text: string): Promise<string> {
+  return renderMarkdown(text);
 }

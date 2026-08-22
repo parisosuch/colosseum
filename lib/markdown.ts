@@ -1,4 +1,3 @@
-import { marked } from "marked";
 import sanitizeHtml from "sanitize-html";
 
 // Bound on the memo below. Entries are capped two ways because block sizes vary
@@ -77,13 +76,19 @@ export function renderMarkdown(md: string): string {
   return html;
 }
 
-// The render itself. marked builds the HTML; sanitize-html then strips anything
-// unsafe (scripts, event handlers, javascript: URLs) — this is user input,
-// unlike the trusted checked-in docs the developers page renders unsanitized.
-// sanitize-html is pure JS (no DOM / jsdom), so it bundles for `next build`
-// where isomorphic-dompurify did not.
+// The render itself. Bun.markdown builds the HTML; sanitize-html then strips
+// anything unsafe (scripts, event handlers, javascript: URLs) — this is user
+// input, unlike the trusted checked-in docs the developers page renders
+// unsanitized.
+//
+// `autolinks` is not on by default and marked had it on, so it stays on here:
+// a bare URL pasted into a note has always rendered as a link.
+//
+// Bun.markdown is a bun global, so this module only runs under the bun runtime.
+// That is every path that reaches it — server render, server action, tests —
+// because the client no longer imports it (see components/markdown-preview).
 function render(md: string): string {
-  const html = marked.parse(md, { async: false }) as string;
+  const html = Bun.markdown.html(md, { autolinks: true });
   return sanitizeHtml(html, {
     allowedTags: [
       "h1",

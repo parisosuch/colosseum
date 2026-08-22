@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 
-import { ACTIVITY_PAGE, type ActivityItem } from "@/lib/colosseum/activity";
+import { ACTIVITY_PAGE, groupActivity, type ActivityItem } from "@/lib/colosseum/activity";
 import { timeAgo } from "@/lib/utils";
 import PageHeader from "@/components/page-header";
 import ColumnPreview from "@/components/column-preview";
@@ -55,20 +55,72 @@ const Muted = ({ children }: { children: ReactNode }) => (
   <span className="font-normal text-muted-foreground">{children}</span>
 );
 
+// A burst of adds to one channel, as a 2×2 collage instead of one row per
+// block. Each tile opens its own block; past four, the last cell becomes a
+// "+N" link into the channel.
+function ActivityCollage({
+  group,
+  viewerId,
+  priority,
+}: {
+  group: ActivityItem[];
+  viewerId: string | null;
+  priority: boolean;
+}) {
+  const overflow = group.length > 4 ? group.length - 3 : 0;
+  const shown = overflow ? group.slice(0, 3) : group;
+  const first = group[0];
+  const hostHref = `/${first.channelHandle ?? first.handle}/${first.channelId}`;
+
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      {shown.map((item) => (
+        <FeedBlockModal
+          key={item.column!.id}
+          column={item.column!}
+          handle={item.channelHandle ?? item.handle}
+          screenshot={item.screenshot}
+          aria={`${item.label} in ${item.channelTitle}`}
+          viewerId={viewerId}
+        >
+          <div className={FOCAL_CARD}>
+            <ColumnPreview column={item.column!} priority={priority} />
+          </div>
+        </FeedBlockModal>
+      ))}
+      {overflow ? (
+        <Link
+          href={hostHref}
+          aria-label={`${overflow} more in ${first.channelTitle}`}
+          className="group block w-full"
+        >
+          <div className={`${FOCAL_CARD} flex items-center justify-center`}>
+            <span className="text-heading text-muted-foreground">+{overflow}</span>
+          </div>
+        </Link>
+      ) : null}
+    </div>
+  );
+}
+
 // Sync on purpose: an async component here renders through an async boundary,
 // and flex `gap` won't apply between such siblings. The async work (the URL
 // screenshot fetch) lives in the nested ColumnPreview, which is fine.
 export function ActivityRow({
-  item,
+  group,
   viewerId,
   priority = false,
 }: {
-  item: ActivityItem;
+  // One feed row: a single item, or a run of adds by the same person to the
+  // same channel (see groupActivity), rendered as a collage.
+  group: ActivityItem[];
   viewerId: string | null;
   // Set for the first rows of the initial feed; pages appended by load-more are
   // below the fold by definition and leave it off.
   priority?: boolean;
 }) {
+  const item = group[0];
+  const grouped = group.length > 1;
   const isChannelColumn = item.kind === "block" && item.column?.type === "channel";
   const linked = item.column?.linked_channel;
 
@@ -101,7 +153,7 @@ export function ActivityRow({
   }
 
   // Only a plain block opens the modal; everything else navigates.
-  const opensModal = item.kind === "block" && !isChannelColumn;
+  const opensModal = !grouped && item.kind === "block" && !isChannelColumn;
 
   // Attribution, with every named channel/user resolving as its own link. The
   // actor's avatar sits inline right before their handle.
@@ -136,7 +188,8 @@ export function ActivityRow({
   } else if (item.kind === "block") {
     attribution = (
       <>
-        {handleLink} <Muted>added to</Muted> <A href={hostHref}>{item.channelTitle}</A>
+        {handleLink} <Muted>added {grouped ? `${group.length} items ` : ""}to</Muted>{" "}
+        <A href={hostHref}>{item.channelTitle}</A>
       </>
     );
   } else {
@@ -158,7 +211,9 @@ export function ActivityRow({
       </div>
       {/* The focal point: a plain block opens the shared modal (like the channel
           view); a channel-column, created channel, or member navigates. */}
-      {opensModal ? (
+      {grouped ? (
+        <ActivityCollage group={group} viewerId={viewerId} priority={priority} />
+      ) : opensModal ? (
         <FeedBlockModal
           column={item.column!}
           handle={item.channelHandle ?? item.handle}
@@ -174,7 +229,7 @@ export function ActivityRow({
         </Link>
       )}
       {/* A block's own title, shown under its card when it has one. */}
-      {item.kind === "block" && item.column?.title ? (
+      {!grouped && item.kind === "block" && item.column?.title ? (
         <p className="-mt-2 text-center text-sm font-medium">{item.column.title}</p>
       ) : null}
     </div>
@@ -204,10 +259,10 @@ export default function ExploreView({
         // children don't in a centered column). Load-more appends its pages as
         // further siblings so they share the same spacing.
         <div className="flex flex-col items-center gap-16">
-          {activity.map((item, i) => (
+          {groupActivity(activity).map((group, i) => (
             <ActivityRow
-              key={activityKey(item)}
-              item={item}
+              key={activityKey(group[0])}
+              group={group}
               viewerId={viewerId}
               // Feed cards are full-width and stacked, so only the top couple
               // are ever on screen at load.

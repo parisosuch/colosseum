@@ -188,3 +188,28 @@ export async function getActivityFeed(
 
   return items.sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, limit);
 }
+
+// Consecutive adds by the same person to the same channel collapse into one
+// feed entry, so a burst of uploads doesn't flood Explore. A channel-column
+// ("connected X to Y") reads as its own sentence, so it never groups; neither
+// do joins or new channels. Each returned array is one feed row — most hold a
+// single item. Pure so it's unit-testable.
+export function groupActivity(items: ActivityItem[]): ActivityItem[][] {
+  const groupable = (i: ActivityItem) => i.kind === "block" && i.column?.type !== "channel";
+  const groups: ActivityItem[][] = [];
+  for (const item of items) {
+    const prev = groups[groups.length - 1];
+    if (
+      prev &&
+      groupable(item) &&
+      groupable(prev[0]) &&
+      prev[0].handle === item.handle &&
+      prev[0].channelId === item.channelId
+    ) {
+      prev.push(item);
+    } else {
+      groups.push([item]);
+    }
+  }
+  return groups;
+}

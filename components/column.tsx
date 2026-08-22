@@ -144,7 +144,7 @@ const ColumnComponent = memo(function ColumnComponent({
       })()
     ) : loading ? (
       <div className="w-full h-full flex items-center justify-center">
-        <GradientSpin cellSize={4} />
+        <GradientSpin />
       </div>
     ) : (
       <ScreenShotPreview

@@ -8,6 +8,14 @@ release.
 
 ## [Unreleased]
 
+## [1.10.5] - 2026-08-22
+
+### Fixed
+
+- The loading animation shown while an image uploads is the same size as the
+  one a link shows while its preview is captured. The upload one was drawn at
+  twice the scale.
+
 ## [1.10.4] - 2026-08-20
 
 ### Fixed

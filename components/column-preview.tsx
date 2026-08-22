@@ -10,6 +10,7 @@ import YouTubeBlock from "./youtube-block";
 import SpotifyBlock from "./spotify-block";
 import YouTubeChannelBlock from "./youtube-channel-block";
 import GitHubBlock from "./github-block";
+import InstagramBlock from "./instagram-block";
 import VideoPoster from "./video-poster";
 
 export default async function ColumnPreview({
@@ -111,6 +112,17 @@ export default async function ColumnPreview({
       <GitHubBlock
         url={column.url ?? ""}
         title={column.title ?? "GitHub"}
+        image={column.image}
+        compact
+      />
+    );
+  }
+
+  if (column.type === "instagram") {
+    return (
+      <InstagramBlock
+        url={column.url ?? ""}
+        title={column.title ?? "Instagram"}
         image={column.image}
         compact
       />

@@ -35,7 +35,8 @@ export type Column = {
     | "youtube"
     | "youtube_channel"
     | "spotify"
-    | "github";
+    | "github"
+    | "instagram";
   title?: string;
   description?: string;
   url?: string;
@@ -487,6 +488,35 @@ export async function uploadGitHubColumn(input: {
       description: input.description,
       image: input.image,
       text: input.language,
+      channel_id: input.channel_id,
+      created_by: input.created_by,
+    })
+    .returning();
+  return toColumn(row);
+}
+
+// An Instagram block stores what the card draws: the canonical instagram.com
+// URL, the picture (a post's image, a reel's cover, an account's avatar)
+// ingested into blob storage — Instagram's CDN URLs are signed and expire, so
+// nothing else would still render a week later — plus the caption or bio as the
+// description, and "@handle" (post) or the account name as the title. Whether
+// it's a post or an account is read back off the URL, so no field records it.
+export async function uploadInstagramColumn(input: {
+  created_by: string;
+  channel_id: number;
+  url: string;
+  title: string;
+  description?: string;
+  image: string;
+}): Promise<Column> {
+  const [row] = await db
+    .insert(column)
+    .values({
+      type: "instagram",
+      url: input.url,
+      title: input.title,
+      description: input.description,
+      image: input.image,
       channel_id: input.channel_id,
       created_by: input.created_by,
     })

@@ -198,6 +198,8 @@ test("urlBlockKind classifies a pasted URL, with or without a scheme", () => {
   expect(urlBlockKind("https://www.youtube.com/@veritasium")).toBe("youtube_channel");
   expect(urlBlockKind("https://www.youtube.com/watch?v=dQw4w9WgXcQ")).toBe("youtube");
   expect(urlBlockKind("https://open.spotify.com/track/6rqhFgbbKwnb9MLmUQDhG6")).toBe("spotify");
+  expect(urlBlockKind("https://www.instagram.com/p/DbbY9pdm6Q2/")).toBe("instagram");
+  expect(urlBlockKind("instagram.com/instagram")).toBe("instagram");
   expect(urlBlockKind("https://example.com/cat.gif")).toBe("image");
   expect(urlBlockKind("https://example.com/article")).toBe("url");
 });

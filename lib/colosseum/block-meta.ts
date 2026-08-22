@@ -21,6 +21,7 @@ export function blockLabel(column: Column): string {
   if (column.type === "youtube_channel") return "YouTube channel";
   if (column.type === "spotify") return "Spotify";
   if (column.type === "github") return "GitHub";
+  if (column.type === "instagram") return "Instagram";
   return "Column";
 }
 
@@ -49,9 +50,14 @@ export function blockShareImage(
     // card out before it has fetched the bytes.
     return { url: previewUrl, width: 1200, height: 1200 };
   }
-  // A channel block's avatar is stored media, public for a public channel —
-  // same as an image block's.
-  if ((column.type === "youtube_channel" || column.type === "github") && column.image) {
+  // A channel block's avatar — and an Instagram block's picture — is stored
+  // media, public for a public channel, same as an image block's.
+  if (
+    (column.type === "youtube_channel" ||
+      column.type === "github" ||
+      column.type === "instagram") &&
+    column.image
+  ) {
     return { url: column.image };
   }
   if (column.type === "youtube" && column.url) {

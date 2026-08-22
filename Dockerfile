@@ -2,7 +2,7 @@
 # full install already contains it, so a multi-stage prune buys little here.
 # ponytail: single stage, ~larger image; split build/runtime stages if pull
 # size ever matters.
-FROM oven/bun:1.3
+FROM oven/bun:1.4
 
 # Debian's Chromium for the screenshot capture (puppeteer drives it via
 # PUPPETEER_EXECUTABLE_PATH and skips downloading its own copy below), plus

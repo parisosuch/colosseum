@@ -1,18 +1,42 @@
 "use client";
 
-import { renderMarkdown } from "@/lib/markdown";
+import { useEffect, useState } from "react";
+
+import { renderMarkdownDraftAction } from "@/lib/colosseum/actions";
 import { RenderedMarkdown } from "./rendered-markdown";
 
-// Renders an unsaved markdown draft in the browser — the block modal's Preview
-// tab, where there is no saved block to render yet. This is the one place the
-// parser and sanitizer still ship to a client, so it's never imported
-// statically: block-modal pulls it through next/dynamic when an editor actually
-// types, keeping it out of the grid's bundle.
+// How long the draft has to sit still before it's worth a round trip.
+const DEBOUNCE_MS = 250;
+
+// Renders an unsaved markdown draft in the block modal's Preview tab, where
+// there is no saved block to render yet.
 //
-// It runs the same renderMarkdown as the server, so a draft is sanitized by the
-// identical allowlist before it reaches dangerouslySetInnerHTML. Nothing it
-// produces is persisted or shown to another viewer; the saved copy is rendered
-// server-side on the way back out.
+// The render happens on the server. The parser is Bun.markdown (a bun global,
+// absent in a browser) and the sanitizer is sanitize-html, so keeping this
+// client-side would mean a second renderer with different output — the one
+// thing this must not do, since the draft has to be sanitized by the identical
+// allowlist the saved copy goes through.
+//
+// Typing is debounced so a burst of keystrokes costs one call, and out-of-order
+// responses are dropped: only the reply for the text currently on screen wins.
 export default function MarkdownPreview({ text, className }: { text: string; className?: string }) {
-  return <RenderedMarkdown html={renderMarkdown(text)} className={className} />;
+  const [html, setHtml] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    const id = setTimeout(() => {
+      renderMarkdownDraftAction(text)
+        .then((h) => live && setHtml(h))
+        .catch(() => live && setHtml(null));
+    }, DEBOUNCE_MS);
+    return () => {
+      live = false;
+      clearTimeout(id);
+    };
+  }, [text]);
+
+  if (html === null) {
+    return <p className="text-sm text-muted-foreground">Rendering preview…</p>;
+  }
+  return <RenderedMarkdown html={html} className={className} />;
 }

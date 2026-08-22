@@ -37,3 +37,10 @@ test("returns null image when there's no preview and doesn't invent one", () => 
   expect(meta.title).toBe("Just a title");
   expect(meta.description).toBe("");
 });
+
+test("decodes numeric entities, which is how some sites spell every emoji", () => {
+  // Instagram writes @ as &#064; and emoji as hex entities; a literal
+  // "&#39;" in the source is written &amp;#39; and has to stay as it was.
+  const html = `<meta property="og:title" content="&#064;jane &#x1f525; caf&#233; &amp;#39;">`;
+  expect(parseOgMeta(html, "https://example.com").title).toBe("@jane 🔥 café &#39;");
+});

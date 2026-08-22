@@ -8,6 +8,21 @@ release.
 
 ## [Unreleased]
 
+### Added
+
+- Instagram posts, reels, and accounts get their own block. Paste a link to one
+  and it becomes a card built from what Instagram publishes for link previews:
+  a post's picture (a reel's cover frame) with its caption, or an account's
+  avatar, name, and bio. The picture is stored on your own instance, so the
+  card outlives Instagram's expiring image links. A link Instagram won't show a
+  logged-out visitor — a private account, a deleted post — falls back to a
+  plain link block, as it did before.
+
+### Fixed
+
+- Titles and descriptions scraped from a page no longer show raw `&#39;` and
+  `&#x1f525;` escapes where an apostrophe or an emoji belongs.
+
 ## [1.10.5] - 2026-08-22
 
 ### Fixed

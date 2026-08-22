@@ -51,14 +51,22 @@ import {
   uploadYouTubeChannelColumn,
   uploadSpotifyColumn,
   uploadGitHubColumn,
+  uploadInstagramColumn,
   uploadURLColumn,
 } from "./column";
 import { ingestTweet } from "./tweet";
 import { fetchYouTubeChannelMeta } from "./youtube-channel";
 import { fetchGitHubMeta } from "./github";
+import { fetchInstagramMeta } from "./instagram";
 import { renderEmail, sendEmail } from "@/lib/email";
 import { logError } from "@/lib/log";
-import { githubRef, tweetIdFromUrl, urlBlockKind, youtubeChannelRef } from "@/lib/utils";
+import {
+  githubRef,
+  instagramRef,
+  tweetIdFromUrl,
+  urlBlockKind,
+  youtubeChannelRef,
+} from "@/lib/utils";
 import {
   Comment,
   createComment,
@@ -360,6 +368,8 @@ export async function uploadURLColumnAction(input: {
       return uploadSpotifyColumnAction({ channelId: input.channelId, url });
     case "github":
       return uploadGitHubColumnAction({ channelId: input.channelId, url });
+    case "instagram":
+      return uploadInstagramColumnAction({ channelId: input.channelId, url });
     case "image":
       try {
         const image = await putImageBlobFromUrl(
@@ -524,6 +534,52 @@ export async function uploadGitHubColumnAction(input: {
     description: meta.description || undefined,
     image,
     language: meta.language || undefined,
+  });
+}
+
+// Add an Instagram block for a post, a reel, or an account. Resolves the
+// picture, the caption or bio, and the canonical URL up front, then ingests the
+// picture into blob storage — Instagram's CDN URLs are signed and expire, so a
+// card pointing at one would be broken within days, and a screenshot of the
+// page is a login wall. The video behind a reel is not persisted (same reason a
+// YouTube block doesn't: too costly), so a reel is its cover frame and a link
+// out. If Instagram can't be reached, hides the post behind a login, or the
+// picture can't be ingested, fall back to a plain URL block so the link still
+// lands as something.
+export async function uploadInstagramColumnAction(input: {
+  channelId: number;
+  url: string;
+}): Promise<Column> {
+  const userId = await requireUserId();
+  const channel = await requireContributableChannel(input.channelId, userId);
+  const ref = instagramRef(input.url);
+  const meta = ref ? await fetchInstagramMeta(ref.url) : null;
+
+  let image: string | undefined;
+  if (meta) {
+    try {
+      image = await putImageBlobFromUrl(
+        meta.imageUrl,
+        userId,
+        channel.private ? "private" : "public",
+      );
+    } catch (e) {
+      logError("instagram.image", `image fetch failed for ${meta.url}`, e);
+    }
+  }
+  // Unlike a GitHub or YouTube card, there's no name-and-initial fallback worth
+  // drawing here: an Instagram block with no picture is an empty square.
+  if (!meta || !image) {
+    return uploadURLColumn({ created_by: userId, channel_id: input.channelId, text: input.url });
+  }
+
+  return uploadInstagramColumn({
+    created_by: userId,
+    channel_id: input.channelId,
+    url: meta.url,
+    title: meta.title,
+    description: meta.description || undefined,
+    image,
   });
 }
 

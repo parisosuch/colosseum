@@ -21,6 +21,7 @@ import YouTubeBlock from "./youtube-block";
 import SpotifyBlock from "./spotify-block";
 import YouTubeChannelBlock from "./youtube-channel-block";
 import GitHubBlock from "./github-block";
+import InstagramBlock from "./instagram-block";
 import {
   cn,
   screenshotSrc,
@@ -606,6 +607,15 @@ function BlockModalBody({
               description={column.description ?? undefined}
               image={column.image}
               language={column.text ?? undefined}
+            />
+          </div>
+        ) : column.type === "instagram" ? (
+          <div className="w-full max-w-xl">
+            <InstagramBlock
+              url={column.url ?? ""}
+              title={column.title ?? "Instagram"}
+              description={column.description ?? undefined}
+              image={column.image}
             />
           </div>
         ) : column.type === "spotify" ? (

@@ -326,9 +326,14 @@ export default function ColumnInput({
                     column.title?.includes("/")
                     ? "Repo added."
                     : "Profile added."
-                  : column.type === "image"
-                    ? "Image added."
-                    : "Column added.",
+                  : column.type === "instagram"
+                    ? // A post's title is its "@handle"; an account's is a name.
+                      column.title?.startsWith("@")
+                      ? "Post added."
+                      : "Profile added."
+                    : column.type === "image"
+                      ? "Image added."
+                      : "Column added.",
       );
       return;
     }

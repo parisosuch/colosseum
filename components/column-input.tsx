@@ -427,7 +427,7 @@ export default function ColumnInput({
 
       {loading && (
         <div className="absolute inset-0 flex flex-col gap-2 items-center justify-center bg-gray-100/60 dark:bg-black/50 z-10">
-          <GradientSpin cellSize={8} />
+          <GradientSpin />
           {uploading > 1 ? (
             <p className="text-xs text-muted-foreground">{uploading} left…</p>
           ) : null}

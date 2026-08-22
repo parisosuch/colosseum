@@ -11,6 +11,10 @@ const nextConfig: NextConfig = {
   // dynamic require(). They run server-side only, so leave them as node requires.
   serverExternalPackages: ["puppeteer-extra", "puppeteer-extra-plugin-stealth"],
   experimental: {
+    // React Compiler auto-memoizes components, so the board and grid stop
+    // re-rendering on state they don't read. It replaces reaching for memo() by
+    // hand — components/column.tsx is wrapped that way today.
+    reactCompiler: true,
     // Media uploads (image/PDF/video) go through server actions, which default
     // to a 1MB body cap. Keep this above the largest client-side cap — the 100MB
     // video limit (MAX_VIDEO_BYTES; images 10MB, PDFs 25MB) — with headroom for

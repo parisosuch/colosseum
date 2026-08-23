@@ -8,9 +8,9 @@ All notable changes to Colosseum are recorded here. The format follows
 
 ### Fixed
 
-- When a pasted Instagram link comes back as a plain link block instead of a
-  card, the reason is now in the logs — Instagram rate-limiting the server,
-  a timeout, or a page with no preview picture — rather than failing silently.
+- An Instagram link that can't be read — Instagram rate-limits the server it's
+  fetched from — falls back to a link block carrying the handle instead of a
+  blank card, and the reason it fell back is now recorded in the logs.
 
 ## [1.11.0] - 2026-08-23
 

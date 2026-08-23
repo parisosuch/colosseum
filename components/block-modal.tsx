@@ -22,6 +22,7 @@ import SpotifyBlock from "./spotify-block";
 import YouTubeChannelBlock from "./youtube-channel-block";
 import GitHubBlock from "./github-block";
 import InstagramBlock from "./instagram-block";
+import LinkPreviewEmpty from "./link-preview-empty";
 import {
   cn,
   screenshotSrc,
@@ -677,9 +678,7 @@ function BlockModalBody({
                   className="w-full rounded-md"
                 />
               ) : (
-                <div className="w-full rounded-md border p-4 text-center text-sm text-muted-foreground">
-                  No screenshot available
-                </div>
+                <LinkPreviewEmpty url={column.url} />
               )}
             </a>
           </div>

@@ -381,17 +381,12 @@ export async function uploadURLColumn(input: {
   created_by: string;
   channel_id: number;
   text: string;
-  // Set only by the callers that already know what the link is when their own
-  // lookup fails, so the fallback block isn't blank. Left undefined otherwise:
-  // a URL block's title normally arrives with its screenshot capture.
-  title?: string;
 }): Promise<Column> {
   const [row] = await db
     .insert(column)
     .values({
       type: "url",
       url: input.text,
-      title: input.title,
       channel_id: input.channel_id,
       created_by: input.created_by,
     })
@@ -512,7 +507,8 @@ export async function uploadInstagramColumn(input: {
   url: string;
   title: string;
   description?: string;
-  image: string;
+  // Absent when Instagram refused the lookup; the card draws its mark instead.
+  image?: string;
 }): Promise<Column> {
   const [row] = await db
     .insert(column)

@@ -553,7 +553,10 @@ export async function uploadInstagramColumnAction(input: {
   const userId = await requireUserId();
   const channel = await requireContributableChannel(input.channelId, userId);
   const ref = instagramRef(input.url);
-  const meta = ref ? await fetchInstagramMeta(ref.url) : null;
+  if (!ref) {
+    return uploadURLColumn({ created_by: userId, channel_id: input.channelId, text: input.url });
+  }
+  const meta = await fetchInstagramMeta(ref.url);
 
   let image: string | undefined;
   if (meta) {
@@ -567,27 +570,19 @@ export async function uploadInstagramColumnAction(input: {
       logError("instagram.image", `image fetch failed for ${meta.url}`, e);
     }
   }
-  // Unlike a GitHub or YouTube card, there's no name-and-initial fallback worth
-  // drawing here: an Instagram block with no picture is an empty square.
-  if (!meta || !image) {
-    // Instagram range-blocks a server's IP often enough that this fallback is
-    // routine rather than exceptional, and the screenshot capture is blocked
-    // the same way — so without a title the block renders completely blank.
-    // The handle is already parsed out of the URL, so say whose page it is.
-    return uploadURLColumn({
-      created_by: userId,
-      channel_id: input.channelId,
-      text: input.url,
-      title: ref?.username ? `@${ref.username}` : undefined,
-    });
-  }
 
+  // A failed lookup still makes an Instagram block, not a link block. Instagram
+  // range-blocks whole hosts, and it blocks the screenshot capture the same way,
+  // so a link block for an Instagram URL is a permanently blank card that reads
+  // as a broken scrape. Everything the card needs to stand on its own is already
+  // in the URL — the handle, and whether it points at a post or a profile. The
+  // picture is the only thing missing, and the card draws its mark without one.
   return uploadInstagramColumn({
     created_by: userId,
     channel_id: input.channelId,
-    url: meta.url,
-    title: meta.title,
-    description: meta.description || undefined,
+    url: meta?.url ?? ref.url,
+    title: meta?.title || (ref.username ? `@${ref.username}` : "Instagram"),
+    description: meta?.description || undefined,
     image,
   });
 }

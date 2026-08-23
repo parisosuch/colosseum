@@ -12,7 +12,7 @@ import {
 } from "@/lib/colosseum/actions";
 import type { Column } from "@/lib/colosseum/column";
 import { columnLimitMessage } from "@/lib/quota";
-import { imageSrcFromHtml, isURL } from "@/lib/utils";
+import { imageSrcFromHtml, instagramRef, isURL } from "@/lib/utils";
 import { resumeVideoUploads, startVideoUpload, type UploadHandlers } from "@/lib/resumable-upload";
 import type { SessionUser } from "@/components/channel-board";
 import type { Channel } from "@/lib/colosseum/channel";
@@ -327,10 +327,12 @@ export default function ColumnInput({
                     ? "Repo added."
                     : "Profile added."
                   : column.type === "instagram"
-                    ? // A post's title is its "@handle"; an account's is a name.
-                      column.title?.startsWith("@")
-                      ? "Post added."
-                      : "Profile added."
+                    ? // Read post-or-profile off the URL. The title can't tell
+                      // them apart: a profile Instagram refused to serve is
+                      // titled "@handle" too, from the URL alone.
+                      instagramRef(column.url ?? "")?.kind === "account"
+                      ? "Profile added."
+                      : "Post added."
                     : column.type === "image"
                       ? "Image added."
                       : "Column added.",

@@ -570,7 +570,16 @@ export async function uploadInstagramColumnAction(input: {
   // Unlike a GitHub or YouTube card, there's no name-and-initial fallback worth
   // drawing here: an Instagram block with no picture is an empty square.
   if (!meta || !image) {
-    return uploadURLColumn({ created_by: userId, channel_id: input.channelId, text: input.url });
+    // Instagram range-blocks a server's IP often enough that this fallback is
+    // routine rather than exceptional, and the screenshot capture is blocked
+    // the same way — so without a title the block renders completely blank.
+    // The handle is already parsed out of the URL, so say whose page it is.
+    return uploadURLColumn({
+      created_by: userId,
+      channel_id: input.channelId,
+      text: input.url,
+      title: ref?.username ? `@${ref.username}` : undefined,
+    });
   }
 
   return uploadInstagramColumn({

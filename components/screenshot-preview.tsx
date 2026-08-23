@@ -1,5 +1,6 @@
 "use client";
 
+import { GlobeIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { screenshotSrc } from "@/lib/utils";
@@ -41,9 +42,15 @@ export default function ScreenShotPreview({
           className="w-full h-full object-top object-cover rounded-lg"
         />
       ) : url ? (
-        <p className="px-4 text-center font-mono text-sm text-muted-foreground line-clamp-4 break-all">
-          {url.replace(/^https?:\/\//, "")}
-        </p>
+        // Same treatment as the modal's empty state, scaled down: the mark
+        // above the address makes the cell read as a link rather than as a
+        // block whose picture failed to load.
+        <div className="flex flex-col items-center gap-2 px-4 text-center">
+          <GlobeIcon className="size-6 text-muted-foreground" />
+          <p className="font-mono text-sm text-muted-foreground line-clamp-3 break-all">
+            {url.replace(/^https?:\/\//, "")}
+          </p>
+        </div>
       ) : (
         <p className="px-4 text-center text-sm text-muted-foreground">Website does not exist.</p>
       )}

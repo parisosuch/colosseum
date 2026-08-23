@@ -9,6 +9,7 @@ import SpotifyBlock from "@/components/spotify-block";
 import YouTubeChannelBlock from "@/components/youtube-channel-block";
 import GitHubBlock from "@/components/github-block";
 import InstagramBlock from "@/components/instagram-block";
+import LinkPreviewEmpty from "@/components/link-preview-empty";
 import PageHeader from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { blockLabel, blockPreviewMeta } from "@/lib/colosseum/block-meta";
@@ -156,9 +157,7 @@ export default async function BlockPage({ params }: BlockPageParams) {
                     className="w-full rounded-md"
                   />
                 ) : (
-                  <div className="w-full rounded-md border p-4 text-center text-sm text-muted-foreground">
-                    No screenshot available
-                  </div>
+                  <LinkPreviewEmpty url={column.url} />
                 )}
               </div>
             </a>

@@ -4,6 +4,18 @@ All notable changes to Colosseum are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.3] - 2026-08-23
+
+### Fixed
+
+- An Instagram link Instagram refuses to serve now becomes an Instagram block
+  carrying its handle and a link through to the post or profile, instead of a
+  link block with a permanently empty preview. Adding one no longer warns that
+  a screenshot couldn't be captured — there was never one to capture.
+- A link block with no screenshot — a site that blocks capture, a dead link —
+  shows the site's address under a globe rather than an empty bordered strip,
+  in the grid and on the block itself.
+
 ## [1.11.2] - 2026-08-23
 
 ### Fixed

@@ -30,7 +30,10 @@ export default function InstagramBlock({
   // stored to tell them apart.
   const account = instagramRef(url)?.kind === "account";
 
-  if (!account) {
+  // No picture means the lookup was blocked (Instagram rate-limits whole IP
+  // ranges) — fall through to the card below, which draws the Instagram mark in
+  // place of an avatar. A post with no picture has nothing to be full-bleed.
+  if (!account && image) {
     if (compact) {
       return (
         <img
@@ -74,7 +77,8 @@ export default function InstagramBlock({
     );
   }
 
-  // Fallback when we couldn't store the avatar: the Instagram mark filling the
+  // Fallback when there's no picture to show — the avatar couldn't be stored, or
+  // Instagram refused the lookup entirely: the Instagram mark filling the
   // circle, so the card still has a subject.
   const avatar = image ? (
     <img

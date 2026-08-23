@@ -7,6 +7,7 @@ All notable changes to Colosseum are recorded here. The format follows
 ## [1.11.0] - 2026-08-23
 
 ### Added
+
 - Instagram blocks!
 - Consecutive blocks to the same channel now group in explore feed.
 - Performance improvements.

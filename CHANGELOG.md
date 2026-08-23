@@ -4,6 +4,14 @@ All notable changes to Colosseum are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.1] - 2026-08-23
+
+### Fixed
+
+- When a pasted Instagram link comes back as a plain link block instead of a
+  card, the reason is now in the logs — Instagram rate-limiting the server,
+  a timeout, or a page with no preview picture — rather than failing silently.
+
 ## [1.11.0] - 2026-08-23
 
 ### Added

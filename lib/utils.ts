@@ -207,6 +207,95 @@ export function isGitHubUrl(url: string): boolean {
   return githubRef(url) !== null;
 }
 
+// Instagram paths that look like a username but aren't an account, so /explore
+// or the login screen stays a plain URL block instead of becoming a card for a
+// profile that doesn't exist.
+const INSTAGRAM_RESERVED = new Set([
+  "about",
+  "accounts",
+  "ajax",
+  "api",
+  "challenge",
+  "developer",
+  "direct",
+  "explore",
+  "graphql",
+  "help",
+  "legal",
+  "locations",
+  "oauth",
+  "press",
+  "privacy",
+  "session",
+  "sitemap",
+  "stories",
+  "terms",
+  "web",
+]);
+
+// The path segments that introduce a post's shortcode. `reels` is both a post
+// form (/reels/<code>) and a profile tab (/<user>/reels), which its position
+// tells apart.
+const INSTAGRAM_POST_SEGMENTS = new Set(["p", "reel", "reels", "tv"]);
+
+// An instagram.com URL → the post or account it points at, or null for anything
+// else (a story, an explore page, the login screen). `/p/<code>`, `/reel/<code>`
+// and `/tv/<code>` are posts, with or without the owner's username in front of
+// them; `/<username>` is an account, whichever profile tab was copied. Pure
+// string parsing (no server-only deps) so client components can classify a
+// pasted URL — and so the renderer can read a stored block's kind back off its
+// canonical URL instead of the block having to record it.
+export function instagramRef(
+  url: string,
+):
+  | { kind: "post"; shortcode: string; username: string | null; url: string }
+  | { kind: "account"; username: string; url: string }
+  | null {
+  let u: URL;
+  try {
+    u = new URL(url.startsWith("http") ? url : `https://${url}`);
+  } catch {
+    return null;
+  }
+  if (u.hostname.replace(/^(www\.|m\.)/, "") !== "instagram.com") return null;
+
+  const parts = u.pathname.split("/").filter(Boolean);
+  // The app's share sheet hands out /share/… links that redirect to the real
+  // post; dropping the prefix leaves a form we recognize (and the fetch follows
+  // the redirect either way, so the canonical URL is what gets stored).
+  if (parts[0] === "share") parts.shift();
+
+  const [first, second, third] = parts;
+  if (!first) return null;
+
+  // Instagram's own rules: usernames are alphanumeric with dots and
+  // underscores, shortcodes are base64url.
+  const isUsername = (s: string) =>
+    /^[A-Za-z0-9._]{1,30}$/.test(s) && !INSTAGRAM_RESERVED.has(s.toLowerCase());
+  const isShortcode = (s: string) => /^[A-Za-z0-9_-]{5,}$/.test(s);
+  const post = (username: string | null, segment: string, shortcode: string) => ({
+    kind: "post" as const,
+    shortcode,
+    username,
+    url: username
+      ? `https://www.instagram.com/${username}/${segment}/${shortcode}/`
+      : `https://www.instagram.com/${segment}/${shortcode}/`,
+  });
+
+  if (INSTAGRAM_POST_SEGMENTS.has(first)) {
+    return second && isShortcode(second) ? post(null, first, second) : null;
+  }
+  if (!isUsername(first)) return null;
+  if (second && INSTAGRAM_POST_SEGMENTS.has(second) && third && isShortcode(third)) {
+    return post(first, second, third);
+  }
+  return { kind: "account", username: first, url: `https://www.instagram.com/${first}/` };
+}
+
+export function isInstagramUrl(url: string): boolean {
+  return instagramRef(url) !== null;
+}
+
 // What kind of block a URL should become. One ordered decision, shared by the
 // channel input (which dispatches straight to the matching action, so it can
 // name the block in its toast) and by uploadURLColumnAction, which every other
@@ -222,6 +311,7 @@ export type UrlBlockKind =
   | "youtube"
   | "spotify"
   | "github"
+  | "instagram"
   | "image"
   | "url";
 
@@ -231,6 +321,7 @@ export function urlBlockKind(url: string): UrlBlockKind {
   if (isYouTubeUrl(url)) return "youtube";
   if (isSpotifyUrl(url)) return "spotify";
   if (isGitHubUrl(url)) return "github";
+  if (isInstagramUrl(url)) return "instagram";
   if (isImageUrl(url)) return "image";
   return "url";
 }

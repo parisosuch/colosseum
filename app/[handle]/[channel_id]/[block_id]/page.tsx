@@ -8,6 +8,7 @@ import YouTubeBlock from "@/components/youtube-block";
 import SpotifyBlock from "@/components/spotify-block";
 import YouTubeChannelBlock from "@/components/youtube-channel-block";
 import GitHubBlock from "@/components/github-block";
+import InstagramBlock from "@/components/instagram-block";
 import PageHeader from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { blockLabel, blockPreviewMeta } from "@/lib/colosseum/block-meta";
@@ -117,6 +118,15 @@ export default async function BlockPage({ params }: BlockPageParams) {
                 description={column.description ?? undefined}
                 image={column.image}
                 language={column.text ?? undefined}
+              />
+            </div>
+          ) : column.type === "instagram" ? (
+            <div className="w-full max-w-xl mx-auto">
+              <InstagramBlock
+                url={column.url ?? ""}
+                title={column.title ?? "Instagram"}
+                description={column.description ?? undefined}
+                image={column.image}
               />
             </div>
           ) : column.type === "spotify" ? (

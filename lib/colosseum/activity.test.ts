@@ -1,7 +1,7 @@
 import { beforeAll, expect, test } from "bun:test";
 
 import { seed, USERS } from "@/scripts/seed";
-import { blockLabel, getActivityFeed, type ActivityItem } from "./activity";
+import { blockLabel, getActivityFeed, groupActivity, type ActivityItem } from "./activity";
 import { createChannel } from "./channel";
 import { uploadURLColumn } from "./column";
 import { addChannelMemberByHandle } from "./member";
@@ -102,4 +102,39 @@ test("getActivityFeed: private-channel blocks reach the owner and members, not o
   // Signed-out outsiders never see private blocks.
   expect(hasBlock(anonFeed, sharedBlock.id)).toBe(false);
   expect(hasBlock(anonFeed, secretBlock.id)).toBe(false);
+});
+
+const add = (handle: string, channelId: number, id: number, type = "image"): ActivityItem => ({
+  kind: "block",
+  at: new Date(id * 1000).toISOString(),
+  handle,
+  channelId,
+  channelTitle: `c${channelId}`,
+  column: { id, type } as ActivityItem["column"],
+});
+
+test("groupActivity: consecutive adds by one person to one channel collapse", () => {
+  const groups = groupActivity([
+    add("alice", 1, 1),
+    add("alice", 1, 2),
+    add("alice", 1, 3),
+    // A different channel, then a different actor, then back to the first pair.
+    add("alice", 2, 4),
+    add("bob", 2, 5),
+    { kind: "user", at: "2020-01-01T00:00:00.000Z", handle: "carol" },
+    add("alice", 1, 6),
+  ]);
+
+  expect(groups.map((g) => g.length)).toEqual([3, 1, 1, 1, 1]);
+  expect(groups[0].map((i) => i.column!.id)).toEqual([1, 2, 3]);
+  expect(groups[4][0].column!.id).toBe(6);
+});
+
+test("groupActivity: a channel-column never joins a group", () => {
+  const groups = groupActivity([
+    add("alice", 1, 1),
+    add("alice", 1, 2, "channel"),
+    add("alice", 1, 3),
+  ]);
+  expect(groups.map((g) => g.length)).toEqual([1, 1, 1]);
 });

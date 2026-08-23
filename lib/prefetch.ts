@@ -6,9 +6,9 @@
 //
 // Three kinds of block are worth warming:
 //
-// - `image`, whose grid card shows a downsized `?thumb`, so the modal's
-//   full-size fetch always starts cold — that's the visible top-to-bottom
-//   render.
+// - `image` and `instagram`, whose grid card shows a downsized `?thumb`, so the
+//   modal's full-size fetch always starts cold — that's the visible
+//   top-to-bottom render.
 // - `url`, whose modal shows the same cached screenshot as the card. Usually
 //   already warm, but not when the card is scrolled out of the grid or its
 //   capture landed after the card painted.
@@ -69,7 +69,7 @@ const preconnected = new Set<string>();
 // whatever the board's batched map holds for it; the `?v=` token comes from the
 // shared helper, so the warmed entry is the one the renderer asks for.
 export function blockMediaUrl(column: Column, screenshot?: ColumnScreenshot | null): string | null {
-  if (column.type === "image") return column.image ?? null;
+  if (column.type === "image" || column.type === "instagram") return column.image ?? null;
   if (column.type === "url") return screenshotSrc(screenshot?.image_url, screenshot?.captured_at);
   return null;
 }

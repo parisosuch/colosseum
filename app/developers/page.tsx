@@ -1,7 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { Metadata } from "next";
-import { marked } from "marked";
 
 import PageHeader from "@/components/page-header";
 
@@ -21,22 +20,31 @@ function slugify(s: string): string {
 }
 
 // The developer docs are the repo's own `docs/*.md` — one source of truth,
-// rendered here and viewable on GitHub. marked's output is trusted (our own
+// rendered here and viewable on GitHub. The output is trusted (our own
 // checked-in files, not user input), so it's safe to inject directly. `prefix`
 // namespaces heading ids per doc so a section shared across docs (e.g.
 // "Authentication") gets a unique anchor.
 async function loadDoc(file: string, prefix: string): Promise<{ html: string; toc: TocEntry[] }> {
   const md = await readFile(path.join(process.cwd(), "docs", file), "utf8");
 
+  // Top-level headings, straight off the source. Bun.markdown renders but
+  // exposes no token stream, so this scans lines instead — tracking fences,
+  // because the API doc's shell samples are full of `# comment` lines that a
+  // naive scan reads as headings.
   const toc: TocEntry[] = [];
-  for (const t of marked.lexer(md)) {
-    if (t.type === "heading" && t.depth <= 2) {
-      toc.push({ depth: t.depth, text: t.text, id: `${prefix}-${slugify(t.text)}` });
+  let fenced = false;
+  for (const line of md.split("\n")) {
+    if (/^\s*(```|~~~)/.test(line)) {
+      fenced = !fenced;
+      continue;
     }
+    if (fenced) continue;
+    const m = /^(#{1,2})\s+(.+?)\s*#*\s*$/.exec(line);
+    if (m) toc.push({ depth: m[1].length, text: m[2], id: `${prefix}-${slugify(m[2])}` });
   }
 
-  const html = marked
-    .parse(md, { async: false })
+  const html = Bun.markdown
+    .html(md, { autolinks: true })
     .replace(
       /<(h[12])>(.*?)<\/\1>/g,
       (_m, tag, inner) => `<${tag} id="${prefix}-${slugify(inner)}">${inner}</${tag}>`,

@@ -12,19 +12,41 @@ export const DESKTOP_UA =
 
 export type OgMeta = { imageUrl: string | null; title: string; description: string };
 
+// A numeric entity's code point, or the entity as written when it's out of
+// range (so a malformed one is left alone rather than throwing).
+function codePoint(match: string, value: number): string {
+  return value >= 1 && value <= 0x10ffff ? String.fromCodePoint(value) : match;
+}
+
 function decodeEntities(s: string): string {
-  return s
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&#x2F;/gi, "/");
+  return (
+    s
+      // Numeric entities first: sites write "&amp;#39;" when they mean a literal
+      // "&#39;", so decoding the named &amp; ahead of this pass would turn that
+      // into an apostrophe. Instagram spells @ and every emoji this way, and
+      // titles elsewhere carry the odd &#x27; — left encoded they show up raw in
+      // a block's title.
+      .replace(/&#x([0-9a-f]{1,6});/gi, (m, hex) => codePoint(m, parseInt(hex, 16)))
+      .replace(/&#(\d{1,7});/g, (m, dec) => codePoint(m, Number(dec)))
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&nbsp;/g, " ")
+  );
 }
 
 // Find a <meta> tag's content by its property/name key, robust to attribute
-// order (content can come before or after the key) and quote style.
-function metaContent(html: string, keyAttr: "property" | "name", keyVal: string): string | null {
+// order (content can come before or after the key) and quote style. Exported
+// for the parsers that need a specific tag rather than parseOgMeta's pick —
+// Instagram publishes an account's bio in the plain description and reserves
+// og:description for a follower count.
+export function metaContent(
+  html: string,
+  keyAttr: "property" | "name",
+  keyVal: string,
+): string | null {
   const tags = html.match(/<meta\b[^>]*>/gi);
   if (!tags) return null;
   const keyRe = new RegExp(

@@ -17,6 +17,7 @@
 // unit-testable, like og-meta.ts.
 
 import { instagramRef } from "@/lib/utils";
+import { logError } from "@/lib/log";
 import { metaContent, parseOgMeta } from "./og-meta";
 
 export type InstagramMeta = {
@@ -106,10 +107,29 @@ export async function fetchInstagramMeta(
     redirect: "follow",
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   }).catch(() => null);
-  if (!res || !res.ok) return null;
+  // Logged, not swallowed: every failure here lands the user a plain link block
+  // instead of the card they asked for, and Instagram rate-limits a server's IP
+  // often enough that "which of these was it" is the first question worth
+  // answering from prod logs.
+  if (!res || !res.ok) {
+    logError(
+      "instagram.meta",
+      `fetch failed for ${url}`,
+      new Error(res ? `HTTP ${res.status}` : "network error"),
+    );
+    return null;
+  }
 
   const meta = parseInstagramMeta(await res.text(), res.url || url);
   // The picture is the whole block for a post and the subject of an account
   // card, so a page without one is worse than the link block we'd fall back to.
-  return meta?.imageUrl ? { ...meta, imageUrl: meta.imageUrl } : null;
+  if (!meta?.imageUrl) {
+    logError(
+      "instagram.meta",
+      `no usable metadata for ${url}`,
+      new Error(meta ? "no og:image" : "no og:type (login wall)"),
+    );
+    return null;
+  }
+  return { ...meta, imageUrl: meta.imageUrl };
 }

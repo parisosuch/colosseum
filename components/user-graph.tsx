@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import type { InviteGraph, InviteGraphNode } from "@/lib/colosseum/invite";
 
 // Layout space. The SVG scales to its container via viewBox, so these are
@@ -124,12 +125,26 @@ function radiusFor(node: InviteGraphNode): number {
   return 5 + Math.min(node.invited_count, 12) * 1.5;
 }
 
+// The invisible circle that actually catches the pointer. A 5-unit dot is about
+// 4.7 CSS px across on a 375px screen, so the dot is drawn for looks and this is
+// what you aim at. A true 44px target would need ~47 units, which in a dense
+// graph would mean every node overlapping its neighbours — the handle search
+// below the canvas is the path that doesn't depend on aim.
+function hitRadiusFor(node: InviteGraphNode): number {
+  return Math.max(radiusFor(node) + 8, 16);
+}
+
+// How many handles the search box offers at once.
+const SEARCH_RESULTS = 8;
+
 export default function UserGraph({ graph }: { graph: InviteGraph }) {
   const placed = useMemo(() => layout(graph), [graph]);
-  const [hovered, setHovered] = useState<string | null>(null);
+  // The named node: set by hover, by keyboard focus, and by the first tap on a
+  // touch screen (where there is no hover to name it with).
+  const [active, setActive] = useState<string | null>(null);
 
   const byId = useMemo(() => new Map(placed.map((p) => [p.user_id, p])), [placed]);
-  const hoveredNode = hovered ? byId.get(hovered) : null;
+  const activeNode = active ? byId.get(active) : null;
 
   // Pan/zoom, Obsidian-style: a translate+scale transform on the whole graph,
   // driven by drag-to-pan and wheel-to-zoom. Starts at identity so the server
@@ -138,6 +153,23 @@ export default function UserGraph({ graph }: { graph: InviteGraph }) {
   const [view, setView] = useState({ x: 0, y: 0, k: 1 });
   const pan = useRef<{ px: number; py: number } | null>(null);
   const moved = useRef(false);
+  // Which input started the gesture that ends in a click, so a tap can name a
+  // node before it navigates while a mouse click still goes straight through.
+  const pointerType = useRef<string>("mouse");
+
+  const [query, setQuery] = useState("");
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    return placed.filter((p) => p.handle.toLowerCase().includes(q)).slice(0, SEARCH_RESULTS);
+  }, [placed, query]);
+
+  // Centre a node in the viewBox at the current zoom and name it. The transform
+  // maps a graph point p to `view.x + p * view.k`, so solve that for the centre.
+  const focusNode = (node: Placed) => {
+    setActive(node.user_id);
+    setView((v) => ({ ...v, x: WIDTH / 2 - node.x * v.k, y: HEIGHT / 2 - node.y * v.k }));
+  };
 
   // Map a client point into viewBox units, undoing the letterboxing that
   // preserveAspectRatio="meet" adds. `s` is client-px-per-viewBox-unit.
@@ -174,6 +206,10 @@ export default function UserGraph({ graph }: { graph: InviteGraph }) {
   const onPointerDown = (e: React.PointerEvent) => {
     pan.current = { px: e.clientX, py: e.clientY };
     moved.current = false;
+    pointerType.current = e.pointerType;
+    // A touch on bare canvas (target is the <svg> itself, not a node's hit
+    // circle) drops the current label, the way moving the mouse away does.
+    if (e.pointerType !== "mouse" && e.target === e.currentTarget) setActive(null);
   };
   const onPointerMove = (e: React.PointerEvent) => {
     if (!pan.current) return;
@@ -192,115 +228,171 @@ export default function UserGraph({ graph }: { graph: InviteGraph }) {
     return <p className="text-sm text-muted-foreground">No members yet.</p>;
   }
 
-  // Which nodes/edges to emphasise on hover: the hovered node and its direct
-  // neighbours stay solid; everything else dims.
-  const isActive = (id: string) => {
-    if (!hovered) return true;
-    if (id === hovered) return true;
+  // Which nodes/edges to emphasise: the named node and its direct neighbours
+  // stay solid; everything else dims.
+  const isLit = (id: string) => {
+    if (!active) return true;
+    if (id === active) return true;
     return graph.edges.some(
-      (e) => (e.from === hovered && e.to === id) || (e.to === hovered && e.from === id),
+      (e) => (e.from === active && e.to === id) || (e.to === active && e.from === id),
     );
   };
 
+  // A click on a node. A pan that ended on one shouldn't navigate; nor should
+  // the first tap on a touch screen, which has no hover to name the node with —
+  // it labels it instead, and the next tap opens the profile.
+  const onNodeClick = (e: React.MouseEvent, nodeId: string) => {
+    if (moved.current) {
+      e.preventDefault();
+      return;
+    }
+    // detail 0 is keyboard activation: focus already showed the label.
+    if (e.detail === 0 || pointerType.current === "mouse") return;
+    if (active !== nodeId) {
+      e.preventDefault();
+      setActive(nodeId);
+    }
+  };
+
   return (
-    <div className="min-h-0 w-full flex-1 overflow-hidden rounded-lg border bg-card">
-      <svg
-        ref={svgRef}
-        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-        className="h-full w-full cursor-grab touch-none active:cursor-grabbing"
-        role="img"
-        aria-label="Network of members and the invites that connect them"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-        onPointerLeave={onPointerUp}
-      >
-        <g transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
-          {/* Thin, undirected links run straight between node centres — the
-            Obsidian graph look, where the arrow of causality is dropped in
-            favour of a clean web. */}
-          {graph.edges.map((edge, i) => {
-            const from = byId.get(edge.from);
-            const to = byId.get(edge.to);
-            if (!from || !to) return null;
-            const active = !hovered || edge.from === hovered || edge.to === hovered;
-            return (
-              <line
-                key={i}
-                x1={from.x}
-                y1={from.y}
-                x2={to.x}
-                y2={to.y}
-                className="stroke-muted-foreground transition-opacity"
-                strokeWidth={1}
-                opacity={active ? 0.35 : 0.08}
-              />
-            );
-          })}
-
-          {placed.map((node) => {
-            const r = radiusFor(node);
-            const active = isActive(node.user_id);
-            return (
-              <Link
-                key={node.user_id}
-                href={`/${node.handle}`}
-                onClick={(e) => {
-                  // A pan that happens to end on a node shouldn't navigate.
-                  if (moved.current) e.preventDefault();
-                }}
-              >
-                <g
-                  className="cursor-pointer transition-opacity"
-                  opacity={active ? 1 : 0.2}
-                  onMouseEnter={() => setHovered(node.user_id)}
-                  onMouseLeave={() => setHovered((h) => (h === node.user_id ? null : h))}
+    <div className="flex min-h-0 w-full flex-1 flex-col gap-3">
+      {/* Finding one person in a dot cloud can't depend on aim, so the handles
+          are searchable; picking one centres and names its node. */}
+      <div className="relative w-full sm:w-72">
+        <Input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Find a member by handle"
+          aria-label="Find a member by handle"
+        />
+        {matches.length > 0 ? (
+          <ul className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-md border bg-popover p-1 shadow-md">
+            {matches.map((node) => (
+              <li key={node.user_id}>
+                <button
+                  type="button"
+                  className="flex min-h-11 w-full items-center rounded-sm px-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                  onClick={() => focusNode(node)}
                 >
-                  {/* Solid dot, brightening to the accent when its neighbourhood
-                    is lit — no outline, the way Obsidian renders nodes. */}
-                  <circle
-                    cx={node.x}
-                    cy={node.y}
-                    r={r}
-                    className={
-                      hovered && isActive(node.user_id)
-                        ? "fill-primary transition-colors"
-                        : "fill-muted-foreground transition-colors"
-                    }
-                  />
-                </g>
-              </Link>
-            );
-          })}
+                  @{node.handle}
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {query.trim() && matches.length === 0 ? (
+          <p className="mt-1 text-caption">No member matches “{query.trim()}”.</p>
+        ) : null}
+      </div>
 
-          {/* Label for the hovered node only, drawn last so its pill sits above
-              every other dot. Labelling neighbours too piles names on top of
-              each other in a dense hub — hover one to read its name. A wide,
-              centred foreignObject lets the shadcn Badge size to its text. */}
-          {hoveredNode && (
-            // Anchor at the node in graph space, then scale(1/k) so the badge
-            // stays a constant screen size while the graph zooms. The gap below
-            // the dot uses r*k because the dot itself scales with zoom.
-            <g
-              transform={`translate(${hoveredNode.x} ${hoveredNode.y}) scale(${1 / view.k})`}
-              className="pointer-events-none"
-            >
-              <foreignObject
-                x={-100}
-                y={radiusFor(hoveredNode) * view.k + 6}
-                width={200}
-                height={28}
-                className="overflow-visible"
+      <div className="min-h-0 w-full flex-1 overflow-hidden rounded-lg border bg-card">
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+          className="h-full w-full cursor-grab touch-none active:cursor-grabbing"
+          role="img"
+          aria-label="Network of members and the invites that connect them"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+          onPointerLeave={onPointerUp}
+        >
+          <g transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
+            {/* Thin, undirected links run straight between node centres — the
+              Obsidian graph look, where the arrow of causality is dropped in
+              favour of a clean web. */}
+            {graph.edges.map((edge, i) => {
+              const lit = !active || edge.from === active || edge.to === active;
+              const from = byId.get(edge.from);
+              const to = byId.get(edge.to);
+              if (!from || !to) return null;
+              return (
+                <line
+                  key={i}
+                  x1={from.x}
+                  y1={from.y}
+                  x2={to.x}
+                  y2={to.y}
+                  className="stroke-muted-foreground transition-opacity"
+                  strokeWidth={1}
+                  opacity={lit ? 0.35 : 0.08}
+                />
+              );
+            })}
+
+            {placed.map((node) => {
+              const lit = isLit(node.user_id);
+              return (
+                <Link
+                  key={node.user_id}
+                  href={`/${node.handle}`}
+                  onClick={(e) => onNodeClick(e, node.user_id)}
+                  // On the <Link> rather than the <g> inside it: the anchor is
+                  // what takes focus, and focus doesn't reach its own children.
+                  onMouseEnter={() => setActive(node.user_id)}
+                  onMouseLeave={() => setActive((a) => (a === node.user_id ? null : a))}
+                  onFocus={() => setActive(node.user_id)}
+                  onBlur={() => setActive((a) => (a === node.user_id ? null : a))}
+                >
+                  <g className="cursor-pointer transition-opacity" opacity={lit ? 1 : 0.2}>
+                    {/* Invisible, and larger than the dot: what the pointer
+                      actually has to hit. fill="none" + pointerEvents="all"
+                      catches events over an unpainted area. */}
+                    <circle
+                      cx={node.x}
+                      cy={node.y}
+                      r={hitRadiusFor(node)}
+                      fill="none"
+                      pointerEvents="all"
+                    />
+                    {/* Solid dot, brightening to the accent when its neighbourhood
+                      is lit — no outline, the way Obsidian renders nodes. */}
+                    <circle
+                      cx={node.x}
+                      cy={node.y}
+                      r={radiusFor(node)}
+                      pointerEvents="none"
+                      className={
+                        active && lit
+                          ? "fill-primary transition-colors"
+                          : "fill-muted-foreground transition-colors"
+                      }
+                    />
+                  </g>
+                </Link>
+              );
+            })}
+
+            {/* Label for the named node only, drawn last so its pill sits above
+                every other dot. Labelling neighbours too piles names on top of
+                each other in a dense hub — name one at a time. A wide, centred
+                foreignObject lets the shadcn Badge size to its text. */}
+            {activeNode && (
+              // Anchor at the node in graph space, then scale(1/k) so the badge
+              // stays a constant screen size while the graph zooms. The gap below
+              // the dot uses r*k because the dot itself scales with zoom.
+              <g
+                transform={`translate(${activeNode.x} ${activeNode.y}) scale(${1 / view.k})`}
+                className="pointer-events-none"
               >
-                <div className="flex justify-center">
-                  <Badge variant="secondary">@{hoveredNode.handle}</Badge>
-                </div>
-              </foreignObject>
-            </g>
-          )}
-        </g>
-      </svg>
+                <foreignObject
+                  x={-100}
+                  y={radiusFor(activeNode) * view.k + 6}
+                  width={200}
+                  height={28}
+                  className="overflow-visible"
+                >
+                  <div className="flex justify-center">
+                    <Badge variant="secondary">@{activeNode.handle}</Badge>
+                  </div>
+                </foreignObject>
+              </g>
+            )}
+          </g>
+        </svg>
+      </div>
     </div>
   );
 }

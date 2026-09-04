@@ -197,6 +197,35 @@ export async function getVisibleUserChannels(
   return rows.map(toChannel);
 }
 
+// One card in a profile's channel grid: the channel, the handle its
+// `/{handle}/{id}` link needs (its owner's, which for a member-of entry is not
+// the profile being viewed), and whether it's there by membership.
+export type ProfileChannelEntry = { channel: Channel; handle: string; memberOf: boolean };
+
+// The channel list behind a profile grid, in the order it renders: the owner's
+// channels as this viewer may see them, then — only on your own profile — the
+// ones you've been invited to.
+//
+// The profile page and the load-more action both go through this, so the
+// visibility rules are resolved from the session in one place. The action
+// treats the ids it's handed as a hint and intersects them with this, so a
+// crafted request can't render a channel the viewer couldn't already see.
+export async function getProfileChannels(
+  owner_id: string,
+  owner_handle: string,
+  viewer_id: string | null,
+): Promise<ProfileChannelEntry[]> {
+  const own = !!viewer_id && owner_id === viewer_id;
+  const [channels, memberChannels] = await Promise.all([
+    own ? getUserChannels(viewer_id) : getVisibleUserChannels(owner_id, viewer_id),
+    own ? getMemberChannels(viewer_id) : Promise.resolve([]),
+  ]);
+  return [
+    ...channels.map((ch) => ({ channel: ch, handle: owner_handle, memberOf: false })),
+    ...memberChannels.map((ch) => ({ channel: ch, handle: ch.handle, memberOf: true })),
+  ];
+}
+
 // A channel search hit, carrying the owner's handle so callers can build the
 // `/{handle}/{id}` link without a second lookup.
 export type ChannelSearchResult = Channel & { handle: string };

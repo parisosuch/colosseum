@@ -97,7 +97,7 @@ import {
   NotificationType,
 } from "./notification";
 import { parseMentions } from "./mentions";
-import type { EmailNotificationPrefs } from "@/lib/db/schema";
+import type { EmailNotificationPrefs, EmailSettings } from "@/lib/db/schema";
 import {
   AdminUser,
   AppSettings,
@@ -1155,7 +1155,12 @@ export async function getAppSettingsAction(): Promise<AppSettings> {
   return getAppSettings();
 }
 
-export async function updateAppSettingsAction(settings: AppSettings): Promise<void> {
+// `email` is optional, and omitting it keeps whatever is stored — the admin
+// page's Global limits section saves on its own without having to round-trip
+// (and so risk overwriting) the email config it doesn't own.
+export async function updateAppSettingsAction(
+  settings: Omit<AppSettings, "email"> & { email?: EmailSettings },
+): Promise<void> {
   await requireAdmin();
   await updateAppSettings(settings);
 }

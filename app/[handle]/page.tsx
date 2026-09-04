@@ -1,87 +1,13 @@
 import PageHeader from "@/components/page-header";
-import ColumnPreview from "@/components/column-preview";
 import CreateChannelButton from "@/components/create-channel-button";
+import { buildChannelCards } from "@/components/channel-card";
+import { CHANNELS_PAGE } from "@/components/channel-filter";
 import { ChannelsView } from "@/components/channels-view";
-import {
-  Channel,
-  getMemberChannels,
-  getUserChannels,
-  getVisibleUserChannels,
-} from "@/lib/colosseum/channel";
-import { Column, getChannelColumnCounts, getTopColumnsByChannel } from "@/lib/colosseum/column";
-import { getScreenshotsForUrls, type ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
+import { getProfileChannels } from "@/lib/colosseum/channel";
+import { getChannelColumnCounts } from "@/lib/colosseum/column";
 import { getPublicUserProfile } from "@/lib/colosseum/user";
 import { getSessionUser } from "@/lib/auth";
-import Link from "next/link";
 import { UserProfilePicture } from "@/components/user-profile-picture";
-import { Badge } from "@/components/ui/badge";
-
-// How many block previews each channel card shows.
-const PREVIEWS_PER_CHANNEL = 5;
-
-// Of those, how many load eagerly on the topmost card.
-const EAGER_STRIP_PREVIEWS = 3;
-
-// Grid-card border per access mode: private reads as "restricted" (red), open as
-// "collaborative" (emerald), public as neutral.
-const CHANNEL_CARD_CLASS = {
-  private: "bg-red-500/5 border-red-500/50 hover:border-red-500",
-  open: "bg-emerald-500/5 border-emerald-500/50 hover:border-emerald-500",
-  public: "border-gray-500/50 hover:border-gray-500",
-} as const;
-
-// Previews are fetched once for the whole page (batched) and passed in, so this
-// is a plain sync component — no per-card query.
-function ChannelColumnsView({
-  channel,
-  columnCount,
-  columns,
-  screenshots,
-  memberOf,
-  priority = false,
-}: {
-  channel: Channel;
-  columnCount: number;
-  columns: Column[];
-  screenshots: Map<string, ColumnScreenshot>;
-  memberOf?: boolean;
-  // Set for the topmost channel card, the only one on screen before the viewer
-  // scrolls. Its leading previews load eagerly; everything else is lazy.
-  priority?: boolean;
-}) {
-  return (
-    <div className="flex flex-col md:flex-row gap-8 p-2">
-      <div className="flex flex-col justify-center items-center space-y-1 w-full md:w-[250px] md:h-[250px] shrink-0">
-        <h2 className="text-heading text-center">{channel.title}</h2>
-        {channel.description ? (
-          <p className="text-center line-clamp-3 break-words max-w-full">{channel.description}</p>
-        ) : null}
-        <p className="text-caption">{columnCount} column(s)</p>
-        {memberOf ? (
-          <Badge variant="secondary" className="font-normal">
-            member of
-          </Badge>
-        ) : null}
-      </div>
-      <div className="hidden md:flex gap-8 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {columns.map((column, i) => (
-          <div
-            key={column.id}
-            className="border-2 rounded-md w-[200px] h-[200px] sm:w-[250px] sm:h-[250px] shrink-0"
-          >
-            <ColumnPreview
-              column={column}
-              screenshot={column.url ? (screenshots.get(column.url) ?? null) : null}
-              // The strip scrolls horizontally at 250px a tile, so only the
-              // leading few are on screen before the viewer scrolls it.
-              priority={priority && i < EAGER_STRIP_PREVIEWS}
-            />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 export default async function UserPage({ params }: { params: Promise<{ handle: string }> }) {
   const { handle } = await params;
@@ -101,76 +27,26 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
 
   const match = !!user && userProfile.user_id === user.id;
 
-  // Both lists key off ids already in hand, so they resolve together.
-  //
-  // channels: on your own profile you see all your channels; on someone else's
-  // you see their public/open channels plus any private group you've been
-  // invited to.
-  //
-  // memberChannels: only on your own profile, the channels you've been invited
-  // to (not owned). They render in the same grid as your own, carrying the
-  // owner's handle (for the link) and a "Member of" badge. Owned channels come
-  // first.
-  const [channels, memberChannels]: [Channel[], Awaited<ReturnType<typeof getMemberChannels>>] =
-    await Promise.all([
-      match
-        ? getUserChannels(user!.id)
-        : getVisibleUserChannels(userProfile.user_id, user?.id ?? null),
-      match ? getMemberChannels(user!.id) : Promise.resolve([]),
-    ]);
-  const entries = [
-    ...channels.map((channel) => ({ channel, handle, memberOf: false })),
-    ...memberChannels.map((channel) => ({ channel, handle: channel.handle, memberOf: true })),
-  ];
+  // Owned channels (as this viewer may see them) followed by the ones you've
+  // been invited to. Metadata only — a row per channel, which is what the
+  // search box, the filters, the sorts and the list view all read.
+  const entries = await getProfileChannels(userProfile.user_id, handle, user?.id ?? null);
 
-  // Counts and previews for every channel in one query each (not one per
-  // channel): a grouped count(*) and a single windowed top-N fetch. Counts are
-  // shared by the grid cards and the list rows so the two views don't re-query.
-  const channelIds = entries.map((e) => e.channel.id);
-  const [countById, previewsById] = await Promise.all([
-    getChannelColumnCounts(channelIds),
-    getTopColumnsByChannel(channelIds, PREVIEWS_PER_CHANNEL, user?.id ?? null),
-  ]);
+  // Column counts for every channel: one grouped count(*), shared by the grid
+  // cards and the list rows so the two views don't re-query, and needed in full
+  // because "Column count" is one of the sorts.
+  const countById = await getChannelColumnCounts(entries.map((e) => e.channel.id));
 
-  // One batched screenshot lookup for every url block across all the previews,
-  // rather than each ColumnPreview querying on its own.
-  const previewUrls = [...previewsById.values()]
-    .flat()
-    .filter((c) => c.type === "url" && c.url)
-    .map((c) => c.url!);
-  const screenshots = await getScreenshotsForUrls(previewUrls);
-
-  // One grid card per channel, keyed by id, so the (client) ChannelsView can
-  // pick which to render when filtering while the previews stay server-fetched.
-  const gridCards = entries.map(({ channel, handle: ownerHandle, memberOf }, cardIndex) => ({
-    id: channel.id,
-    // A tweet preview renders its own <a> (avatar/header links), so the card
-    // link can't be an ancestor <a> without nesting them (invalid HTML that
-    // breaks hydration). Use the "stretched link" pattern: an absolutely
-    // positioned <Link> overlay that's a sibling of the previews, not their
-    // parent. The previews are non-interactive (pointer-events-none), so the
-    // overlay still catches every click while real link semantics are kept.
-    node: (
-      <div
-        key={channel.id}
-        className={`relative flex aspect-square items-center justify-center p-4 md:block md:aspect-auto md:p-8 border-2 rounded-lg transition-colors ${CHANNEL_CARD_CLASS[channel.access]}`}
-      >
-        <ChannelColumnsView
-          channel={channel}
-          columnCount={countById.get(channel.id) ?? 0}
-          columns={previewsById.get(channel.id) ?? []}
-          screenshots={screenshots}
-          memberOf={memberOf}
-          priority={cardIndex === 0}
-        />
-        <Link
-          href={`/${ownerHandle}/${channel.id}`}
-          aria-label={channel.title}
-          className="absolute inset-0 rounded-lg"
-        />
-      </div>
-    ),
-  }));
+  // Only the first page gets cards. Previews are five blocks per channel plus a
+  // batched screenshot lookup across every url block in them, so building them
+  // for a whole collection is what makes a well-used profile slow to paint. The
+  // client asks loadChannelCards for the rest as the reader scrolls.
+  const gridCards = await buildChannelCards(
+    entries.slice(0, CHANNELS_PAGE),
+    user?.id ?? null,
+    countById,
+    true,
+  );
 
   const channelRows = entries.map(({ channel: c, handle: ownerHandle, memberOf }) => ({
     id: c.id,

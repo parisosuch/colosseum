@@ -142,7 +142,7 @@ export default function ChannelMembers({
           </div>
         ) : null}
       </div>
-      {error && <p className="text-sm text-red-500">{error}</p>}
+      {error && <p className="text-sm text-destructive-text">{error}</p>}
       {members.length === 0 ? (
         <p className="text-sm text-muted-foreground">No members yet.</p>
       ) : (

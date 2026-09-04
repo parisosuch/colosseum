@@ -89,55 +89,58 @@ export function EditProfileForm({ profile }: { profile: UserProfile }) {
     avatarFile !== null;
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-6 max-w-md">
-      <div className="flex items-center gap-4">
-        <Avatar className="size-16">
-          <AvatarImage src={avatarPreview ?? undefined} />
-          <AvatarFallback>{handle.charAt(0).toUpperCase()}</AvatarFallback>
-        </Avatar>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => fileInputRef.current?.click()}
-        >
-          Change
+    <section className="space-y-3">
+      <h2 className="text-heading">Profile</h2>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-6 max-w-md">
+        <div className="flex items-center gap-4">
+          <Avatar className="size-16">
+            <AvatarImage src={avatarPreview ?? undefined} />
+            <AvatarFallback>{handle.charAt(0).toUpperCase()}</AvatarFallback>
+          </Avatar>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            Change
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleAvatarChange}
+          />
+        </div>
+
+        <div className="grid gap-2">
+          <Label htmlFor="handle">Handle</Label>
+          <Input
+            id="handle"
+            type="text"
+            value={handle}
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            onChange={(e) => setHandle(e.target.value)}
+          />
+        </div>
+
+        <div className="grid gap-2">
+          <Label htmlFor="about">About</Label>
+          <Textarea
+            id="about"
+            value={about}
+            placeholder="Tell people a bit about yourself"
+            onChange={(e) => setAbout(e.target.value)}
+          />
+        </div>
+
+        <Button type="submit" disabled={isLoading || !dirty}>
+          {isLoading ? "Saving..." : "Save changes"}
         </Button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={handleAvatarChange}
-        />
-      </div>
-
-      <div className="grid gap-2">
-        <Label htmlFor="handle">Handle</Label>
-        <Input
-          id="handle"
-          type="text"
-          value={handle}
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          onChange={(e) => setHandle(e.target.value)}
-        />
-      </div>
-
-      <div className="grid gap-2">
-        <Label htmlFor="about">About</Label>
-        <Textarea
-          id="about"
-          value={about}
-          placeholder="Tell people a bit about yourself"
-          onChange={(e) => setAbout(e.target.value)}
-        />
-      </div>
-
-      <Button type="submit" disabled={isLoading || !dirty}>
-        {isLoading ? "Saving..." : "Save changes"}
-      </Button>
-    </form>
+      </form>
+    </section>
   );
 }

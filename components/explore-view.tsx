@@ -1,10 +1,13 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { Compass } from "lucide-react";
 
 import { ACTIVITY_PAGE, groupActivity, type ActivityItem } from "@/lib/colosseum/activity";
 import { timeAgo } from "@/lib/utils";
 import PageHeader from "@/components/page-header";
 import ColumnPreview from "@/components/column-preview";
+import CreateChannelButton from "@/components/create-channel-button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { UserProfilePicture } from "@/components/user-profile-picture";
 import { ExploreLoadMore } from "@/components/explore-load-more";
 import { FeedBlockModal } from "@/components/feed-block-modal";
@@ -253,7 +256,16 @@ export default function ExploreView({
       </div>
 
       {activity.length === 0 ? (
-        <p className="text-muted-foreground">No activity yet.</p>
+        // An empty feed means the whole instance is empty, so the way out is to
+        // put something in it. Signed-out visitors get the explanation without
+        // the button, which would only bounce them through login.
+        <EmptyState
+          icon={Compass}
+          title="Nothing here yet"
+          description="Blocks and channels show up here as people across the network add them."
+        >
+          {viewerId ? <CreateChannelButton /> : null}
+        </EmptyState>
       ) : (
         // gap on the flex container spaces the items reliably (margins on the
         // children don't in a centered column). Load-more appends its pages as

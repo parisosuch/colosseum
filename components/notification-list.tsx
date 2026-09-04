@@ -15,6 +15,7 @@ import type { NotificationItem, NotificationType } from "@/lib/colosseum/notific
 import { cn, timeAgo } from "@/lib/utils";
 import { GradientSpin } from "@/components/gradient-spin";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { UserProfilePicture } from "@/components/user-profile-picture";
 
 const ICON: Record<NotificationType, typeof MessageSquare> = {
@@ -98,21 +99,19 @@ function Row({ n, onOpen }: { n: NotificationItem; onOpen: () => void }) {
   );
 }
 
-function EmptyState({ filter }: { filter: Filter }) {
-  return (
-    <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed py-20 text-center">
-      <Bell className="size-8 text-muted-foreground" />
-      <div className="space-y-1">
-        <p className="font-medium">
-          {filter === "unread" ? "You're all caught up" : "No notifications yet"}
-        </p>
-        <p className="text-caption">
-          {filter === "unread"
-            ? "New unread notifications will appear here."
-            : "Comments, mentions, and channel activity will show up here."}
-        </p>
-      </div>
-    </div>
+function NoNotifications({ filter }: { filter: Filter }) {
+  return filter === "unread" ? (
+    <EmptyState
+      icon={Bell}
+      title="You're all caught up"
+      description="New unread notifications will appear here."
+    />
+  ) : (
+    <EmptyState
+      icon={Bell}
+      title="No notifications yet"
+      description="Comments, mentions, and channel activity will show up here."
+    />
   );
 }
 
@@ -230,7 +229,7 @@ export default function NotificationList({
           over a page that hasn't loaded yet would be the same lie as counting
           unread from the loaded rows. */}
       {shown.length === 0 && !feed.hasMore ? (
-        <EmptyState filter={filter} />
+        <NoNotifications filter={filter} />
       ) : (
         <div className="space-y-8">
           {groups.map(([label, group]) => (
@@ -238,7 +237,7 @@ export default function NotificationList({
               <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 {label}
               </h3>
-              <ul className="divide-y overflow-hidden rounded-xl border">
+              <ul className="divide-y overflow-hidden rounded-lg border">
                 {group.map((n) => (
                   <Row key={n.id} n={n} onOpen={() => markRead(n)} />
                 ))}

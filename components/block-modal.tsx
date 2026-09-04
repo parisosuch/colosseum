@@ -646,7 +646,7 @@ function BlockModalBody({
             href={`/${column.linked_channel?.handle}/${column.linked_channel_id}`}
             className="flex aspect-square w-full max-w-md flex-col items-center justify-center gap-2 rounded-md border p-6 text-center transition-colors hover:bg-accent"
           >
-            <span className="max-w-full font-serif text-2xl font-medium">
+            <span className="max-w-full text-title">
               {column.linked_channel?.title ?? "Channel"}
             </span>
             {column.linked_channel?.description ? (

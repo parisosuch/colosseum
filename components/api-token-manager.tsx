@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { PlusIcon, CheckIcon, CopyIcon, Trash2Icon } from "lucide-react";
+import { PlusIcon, CheckIcon, CopyIcon, KeyIcon, Trash2Icon } from "lucide-react";
 
 import { revokeApiTokenAction } from "@/lib/colosseum/actions";
 import type { ApiToken } from "@/lib/colosseum/api-token";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import {
   AlertDialog,
@@ -77,7 +78,7 @@ function RevokeTokenButton({
             and update whatever uses it.
           </AlertDialogDescription>
         </AlertDialogHeader>
-        {error ? <p className="text-sm text-red-500">{error}</p> : null}
+        {error ? <p className="text-sm text-destructive-text">{error}</p> : null}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
           <AlertDialogAction
@@ -87,7 +88,7 @@ function RevokeTokenButton({
               e.preventDefault();
               void run();
             }}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            variant="destructive"
           >
             {busy ? "Revoking..." : "Revoke"}
           </AlertDialogAction>
@@ -165,7 +166,7 @@ export default function ApiTokenManager({
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-1">
-        <h2 className="text-lg">API tokens</h2>
+        <h2 className="text-heading">API tokens</h2>
         <p className="text-sm text-muted-foreground">
           Authenticate requests to the REST API with{" "}
           <code className="font-mono">Authorization: Bearer &lt;token&gt;</code>.
@@ -187,7 +188,7 @@ export default function ApiTokenManager({
         </Button>
       </div>
 
-      {error ? <p className="text-sm text-red-500">{error}</p> : null}
+      {error ? <p className="text-sm text-destructive-text">{error}</p> : null}
 
       {newToken ? (
         <div className="space-y-2 rounded-lg border border-amber-500/50 bg-amber-500/5 p-3">
@@ -212,7 +213,11 @@ export default function ApiTokenManager({
       ) : null}
 
       {tokens.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No tokens yet.</p>
+        <EmptyState
+          icon={KeyIcon}
+          title="No API tokens yet"
+          description="Create one to call the REST API from a script or another app."
+        />
       ) : (
         <ul className="flex flex-col divide-y rounded-lg border">
           {tokens.map((token) => (

@@ -63,7 +63,7 @@ export default function AdminDeleteButton({
           <AlertDialogTitle>{label}?</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
-        {error ? <p className="text-sm text-red-500">{error}</p> : null}
+        {error ? <p className="text-sm text-destructive-text">{error}</p> : null}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
           <AlertDialogAction
@@ -73,7 +73,7 @@ export default function AdminDeleteButton({
               e.preventDefault();
               void run();
             }}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            variant="destructive"
           >
             {busy ? "Deleting..." : label}
           </AlertDialogAction>

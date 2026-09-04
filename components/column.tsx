@@ -93,9 +93,7 @@ const ColumnComponent = memo(function ColumnComponent({
   const thumbnail =
     column.type === "channel" ? (
       <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center">
-        <span className="max-w-full font-serif text-lg font-medium">
-          {column.linked_channel?.title ?? "Channel"}
-        </span>
+        <span className="max-w-full text-heading">{column.linked_channel?.title ?? "Channel"}</span>
         {column.linked_channel?.description ? (
           <p className="line-clamp-4 break-words text-sm text-muted-foreground">
             {column.linked_channel.description}

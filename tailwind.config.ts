@@ -53,10 +53,18 @@ export default {
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
       },
+      // Every radius the app uses derives from --radius, so changing the token
+      // moves the whole surface. Only lg/md/sm were wired up, which left bare
+      // `rounded` (13 uses) and `rounded-xl` (6, Card among them) pinned to
+      // Tailwind's defaults and immune to the token. These values reproduce
+      // those defaults exactly at --radius: 0.5rem, so nothing shifts today —
+      // they just move together from here on.
       borderRadius: {
+        xl: "calc(var(--radius) + 4px)",
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        DEFAULT: "calc(var(--radius) - 4px)",
       },
       screens: {
         "3xl": "2000px", // now 3xl triggers at 1440p monitors

@@ -116,16 +116,18 @@ export function OnboardingForm({ className, ...props }: React.ComponentPropsWith
               {HANDLE_MIN_LENGTH} to {HANDLE_MAX_LENGTH} characters. Lowercase letters, numbers,
               hyphens and underscores.
             </p>
-            {rule && <p className="text-sm text-red-500">{rule}</p>}
+            {rule && <p className="text-sm text-destructive-text">{rule}</p>}
             {!rule && status === "checking" && <p className="text-caption">Checking...</p>}
             {!rule && status === "free" && (
               <p className="text-caption">/{normalized} is available.</p>
             )}
             {!rule && status === "taken" && (
-              <p className="text-sm text-red-500">That handle is already taken. Try another.</p>
+              <p className="text-sm text-destructive-text">
+                That handle is already taken. Try another.
+              </p>
             )}
           </div>
-          {error && <p className="text-sm text-red-500">{error}</p>}
+          {error && <p className="text-sm text-destructive-text">{error}</p>}
           <Button
             type="submit"
             className="w-full"

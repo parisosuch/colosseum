@@ -85,7 +85,7 @@ export default function CreateChannelForm({
             <AccessSelect value={access} onChange={setAccess} idPrefix={`${uid}-access`} />
           </div>
         </div>
-        {error && <p className="text-sm text-red-500">{error}</p>}
+        {error && <p className="text-sm text-destructive-text">{error}</p>}
         <Button type="submit" className="w-full" disabled={isLoading}>
           {isLoading ? "Creating channel..." : submitLabel}
           <PlusIcon />

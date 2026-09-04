@@ -11,6 +11,12 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Visualize the web.",
     start_url: "/",
     display: "standalone",
+    // Both stay light. The manifest format has no media-query form for either
+    // colour, so there is no dark path to add here — the theme-aware value is
+    // the <meta name="theme-color"> pair in the root layout's viewport export,
+    // which browsers prefer over theme_color where both are present. This is
+    // the fallback, and background_color only paints the launch splash before
+    // the first render.
     background_color: "#ffffff",
     theme_color: "#ffffff",
     icons: [

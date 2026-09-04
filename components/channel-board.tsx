@@ -19,6 +19,7 @@ import ChannelControls from "@/components/channel-controls";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { GradientSpin } from "@/components/gradient-spin";
 import type { Channel } from "@/lib/colosseum/channel";
 import type { ChannelMember } from "@/lib/colosseum/member";
@@ -52,25 +53,29 @@ function BlockSkeleton({ view }: { view: "grid" | "list" }) {
     return (
       <div className={`border-b px-2 py-2 ${LIST_GRID}`}>
         <div className="flex items-center gap-2">
-          <div className="size-10 shrink-0 rounded-md bg-muted animate-pulse" />
-          <div className="h-4 w-2/3 rounded bg-muted animate-pulse" />
+          <Skeleton className="size-10 shrink-0" />
+          <Skeleton className="h-4 w-2/3" />
         </div>
-        <div className="h-4 w-1/2 rounded bg-muted animate-pulse" />
-        <div className="hidden h-4 w-2/3 rounded bg-muted animate-pulse sm:block" />
-        <div className="hidden h-3 w-1/2 rounded bg-muted animate-pulse sm:block" />
+        <Skeleton className="h-4 w-1/2" />
+        <Skeleton className="hidden h-4 w-2/3 sm:block" />
+        <Skeleton className="hidden h-3 w-1/2 sm:block" />
       </div>
     );
   }
   return (
     <div className="w-full">
-      <div className="w-full aspect-square border rounded-lg bg-muted animate-pulse" />
-      {/* Two caption lines, matching a real card's title + timestamp. */}
-      <p className="pt-1 text-xs">
-        <span className="inline-block h-3 w-2/3 rounded bg-muted align-middle animate-pulse" />
-      </p>
-      <p className="text-xs">
-        <span className="inline-block h-3 w-1/3 rounded bg-muted align-middle animate-pulse" />
-      </p>
+      {/* rounded-lg rather than the Skeleton default, so the placeholder tile
+          has the same corner as the real card it stands in for. */}
+      <Skeleton className="w-full aspect-square border rounded-lg" />
+      {/* Two caption lines, matching a real card's title + timestamp. The
+          wrappers are divs, not <p>: Skeleton renders a div, which a paragraph
+          may not contain, and all these carry is the caption line-height. */}
+      <div className="pt-1 text-xs">
+        <Skeleton className="inline-block h-3 w-2/3 align-middle" />
+      </div>
+      <div className="text-xs">
+        <Skeleton className="inline-block h-3 w-1/3 align-middle" />
+      </div>
     </div>
   );
 }

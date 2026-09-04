@@ -1,5 +1,10 @@
+import Link from "next/link";
+import { UserX } from "lucide-react";
+
 import PageHeader from "@/components/page-header";
 import CreateChannelButton from "@/components/create-channel-button";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { buildChannelCards } from "@/components/channel-card";
 import { CHANNELS_PAGE } from "@/components/channel-filter";
 import { ChannelsView } from "@/components/channels-view";
@@ -18,9 +23,17 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
 
   if (!userProfile) {
     return (
-      <div className="w-full p-12 space-y-2">
+      <div className="w-full p-12 space-y-8">
         <PageHeader crumbs={[{ label: handle }]} />
-        <p className="text-muted-foreground">No one here.</p>
+        <EmptyState
+          icon={UserX}
+          title={`No one goes by @${handle}`}
+          description="The handle may have changed, or the account may be gone."
+        >
+          <Button asChild variant="secondary">
+            <Link href="/explore">Explore</Link>
+          </Button>
+        </EmptyState>
       </div>
     );
   }

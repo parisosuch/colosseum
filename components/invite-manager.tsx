@@ -69,7 +69,7 @@ function RevokeInviteButton({ code, onRevoke }: { code: string; onRevoke: () => 
             link you shared can be brought back. The capacity it reserved returns to your quota.
           </AlertDialogDescription>
         </AlertDialogHeader>
-        {error ? <p className="text-sm text-red-500">{error}</p> : null}
+        {error ? <p className="text-sm text-destructive-text">{error}</p> : null}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
           <AlertDialogAction
@@ -79,7 +79,7 @@ function RevokeInviteButton({ code, onRevoke }: { code: string; onRevoke: () => 
               e.preventDefault();
               void run();
             }}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            variant="destructive"
           >
             {busy ? "Revoking..." : "Revoke"}
           </AlertDialogAction>
@@ -211,7 +211,7 @@ export default function InviteManager({
         <p>{creating ? "Creating..." : "New invite"}</p>
       </Button>
 
-      {error ? <p className="text-sm text-red-500">{error}</p> : null}
+      {error ? <p className="text-sm text-destructive-text">{error}</p> : null}
 
       {limitMessage ? (
         <p className="text-sm text-muted-foreground">

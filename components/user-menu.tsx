@@ -3,12 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import {
-  Code,
   Laptop,
   LogOutIcon,
   MailIcon,
   Moon,
-  ScrollText,
   SettingsIcon,
   ShieldIcon,
   Sun,
@@ -37,9 +35,10 @@ function ThemeIcon({ theme }: { theme?: string }) {
   return <Icon size={ICON_SIZE} className="text-muted-foreground" />;
 }
 
-// The desktop avatar menu body: Profile, Settings, Invites, Developers,
-// Changelog, a Theme submenu, and Logout. (The mobile bottom nav mirrors these
-// in ProfileDrawer.)
+// The desktop avatar menu body: Profile, Settings, Invites, a Theme submenu,
+// and Logout — account actions only. The Developers and Changelog pages are
+// public and live in the site footer, where a signed-out visitor can find them.
+// (The mobile bottom nav mirrors these in ProfileDrawer.)
 export function UserMenuItems({ handle, isAdmin }: { handle: string; isAdmin?: boolean }) {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
@@ -74,16 +73,6 @@ export function UserMenuItems({ handle, isAdmin }: { handle: string; isAdmin?: b
           Admin
         </DropdownMenuItem>
       ) : null}
-
-      <DropdownMenuItem onSelect={() => router.push("/developers")}>
-        <Code />
-        Developers
-      </DropdownMenuItem>
-
-      <DropdownMenuItem onSelect={() => router.push("/changelog")}>
-        <ScrollText />
-        Changelog
-      </DropdownMenuItem>
 
       <DropdownMenuSub>
         <DropdownMenuSubTrigger className="gap-2">

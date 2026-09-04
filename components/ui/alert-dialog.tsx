@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog";
+import { type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
@@ -108,11 +109,23 @@ function AlertDialogDescription({
   );
 }
 
+// Takes Button's `variant`/`size`. Without the pass-through the confirm button
+// in every delete dialog could only be restyled by hand-rolling the destructive
+// fill as a className, which is how four call sites ended up spelling it three
+// different ways — two of them with a literal `text-white` that assumed the
+// fill stays dark in both themes.
 function AlertDialogAction({
   className,
+  variant,
+  size,
   ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Action>) {
-  return <AlertDialogPrimitive.Action className={cn(buttonVariants(), className)} {...props} />;
+}: React.ComponentProps<typeof AlertDialogPrimitive.Action> & VariantProps<typeof buttonVariants>) {
+  return (
+    <AlertDialogPrimitive.Action
+      className={cn(buttonVariants({ variant, size }), className)}
+      {...props}
+    />
+  );
 }
 
 function AlertDialogCancel({

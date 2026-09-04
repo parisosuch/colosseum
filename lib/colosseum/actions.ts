@@ -1004,6 +1004,19 @@ export async function getMyProfileAction(): Promise<UserProfile | null> {
   return getUserProfile(userId);
 }
 
+// Whether a handle is still free, for the check the handle form runs while the
+// user types. Returns null when the handle isn't valid to begin with — there is
+// nothing to look up, and the form is already saying why. Handles are public
+// (every profile lives at /{handle}), so this discloses nothing a caller
+// couldn't get by loading that page.
+export async function isHandleAvailableAction(rawHandle: string): Promise<boolean | null> {
+  const handle = normalizeHandle(rawHandle);
+  if (validateHandle(handle)) {
+    return null;
+  }
+  return (await getPublicUserProfile(handle)) === null;
+}
+
 export async function createUserProfileAction(rawHandle: string): Promise<ProfileResult> {
   const userId = await currentUserId();
   if (!userId) {

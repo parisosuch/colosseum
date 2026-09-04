@@ -34,7 +34,8 @@ const DEBOUNCE_MS = 150;
 // `results` holds the last successful response until the next one lands, so a
 // query in flight leaves the previous results on screen instead of blanking the
 // list and filling it back in. Callers that render a "No results" state should
-// gate it on `searching` being false, or it shows up in that gap.
+// hold it back while `searching` is true — hidden, or relabeled to say a
+// search is out — or the verdict shows up in that gap before the answer does.
 export function useSearch(input: string): {
   query: string;
   results: SearchResults;

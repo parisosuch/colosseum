@@ -63,7 +63,7 @@ function RevokeTokenButton({
           type="button"
           variant="ghost"
           size="sm"
-          className="text-destructive hover:text-destructive"
+          className="text-destructive-text hover:text-destructive-text"
         >
           <Trash2Icon size={14} /> Revoke
         </Button>

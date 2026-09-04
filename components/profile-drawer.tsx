@@ -119,7 +119,7 @@ export function ProfileDrawer({
               icon={<LogOutIcon size={18} />}
               label="Logout"
               onClick={logout}
-              className="text-destructive"
+              className="text-destructive-text"
             />
           </div>
         </div>

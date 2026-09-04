@@ -52,7 +52,7 @@ export default function AdminDeleteButton({
           variant="secondary"
           size={size}
           aria-label={label}
-          className="text-destructive hover:text-destructive"
+          className="text-destructive-text hover:text-destructive-text"
         >
           <ShieldAlert />
           {size === "sm" ? <span>{label}</span> : null}

@@ -40,6 +40,32 @@ export const auth = betterAuth({
       is_admin: { type: "boolean", input: false, defaultValue: false },
       banned: { type: "boolean", input: false, defaultValue: false },
     },
+    changeEmail: {
+      enabled: true,
+      // An address nobody has proven they own is usually a sign-up typo, and
+      // it's the one thing an account can't recover from — the reset link goes
+      // to the wrong inbox forever. So while it's unverified it can be
+      // corrected in place, which also keeps the escape hatch open on an
+      // instance with no mail provider configured at all.
+      updateEmailWithoutVerification: true,
+      // Once the address is verified, the change is confirmed from the old
+      // inbox first, so a stolen session can't quietly take the account with it.
+      sendChangeEmailConfirmation: async ({ user, newEmail, url }) => {
+        const { html, text } = renderEmail({
+          heading: "Confirm your new email",
+          body: `A request was made to change this account's email to ${newEmail}. Approve it below — the address only changes once you do.`,
+          buttonLabel: "Approve the change",
+          buttonUrl: url,
+          footnote: "If you didn't request this, ignore this email and nothing will change.",
+        });
+        await sendEmail({
+          to: user.email,
+          subject: "Confirm your new Colosseum email",
+          text,
+          html,
+        });
+      },
+    },
   },
   emailAndPassword: {
     enabled: true,
@@ -54,6 +80,26 @@ export const auth = betterAuth({
         footnote: "If you didn't request this, you can safely ignore this email.",
       });
       await sendEmail({ to: user.email, subject: "Reset your Colosseum password", text, html });
+    },
+  },
+  // Verification is offered, never required: `requireEmailVerification` would
+  // gate sign-in on an email arriving, and a self-hosted instance may have no
+  // mail provider set up yet (lib/email.ts logs to the server console then).
+  // What it buys is proof of the address — the account's only recovery channel
+  // — and, once proven, a safe email-change flow in settings.
+  emailVerification: {
+    sendOnSignUp: true,
+    // Called with `user.email` already set to the address the link should go
+    // to, including on an email change, so this always mails the right inbox.
+    sendVerificationEmail: async ({ user, url }) => {
+      const { html, text } = renderEmail({
+        heading: "Confirm your email",
+        body: "Confirm this address so it can be used to get back into your Colosseum account if you ever lose the password.",
+        buttonLabel: "Confirm email",
+        buttonUrl: url,
+        footnote: "If you didn't create a Colosseum account, you can safely ignore this email.",
+      });
+      await sendEmail({ to: user.email, subject: "Confirm your Colosseum email", text, html });
     },
   },
   databaseHooks: {

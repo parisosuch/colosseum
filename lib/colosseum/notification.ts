@@ -325,19 +325,39 @@ export async function unreadNotificationCount(userId: string): Promise<number> {
 }
 
 // One page of the recipient's notifications, newest first. `before` is a
-// created_at ISO cursor for load-more.
+// created_at ISO cursor for load-more. `unreadOnly` pages the unread rows on
+// their own, so the Unread filter reaches every unread notification rather than
+// whichever ones happen to sit in the pages the full list has loaded.
 export async function listNotifications(
   userId: string,
   before?: string,
+  options?: { unreadOnly?: boolean },
 ): Promise<NotificationItem[]> {
   const rows = await joinNotifications(
     and(
       eq(notification.recipient_id, userId),
       before ? lt(notification.created_at, new Date(before)) : undefined,
+      options?.unreadOnly ? isNull(notification.read_at) : undefined,
     ),
     NOTIFICATION_PAGE,
   );
   return rows.map(toItem);
+}
+
+// Mark one notification read, on opening it. Scoped to the recipient so an id
+// from someone else's feed matches nothing, and to unread rows so a re-open
+// doesn't move the timestamp.
+export async function markNotificationRead(userId: string, notificationId: number): Promise<void> {
+  await db
+    .update(notification)
+    .set({ read_at: new Date() })
+    .where(
+      and(
+        eq(notification.id, notificationId),
+        eq(notification.recipient_id, userId),
+        isNull(notification.read_at),
+      ),
+    );
 }
 
 // Mark every unread notification read. Returns nothing; the bell/count refresh

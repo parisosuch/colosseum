@@ -90,6 +90,7 @@ import {
   createNotification,
   listNotifications,
   markAllNotificationsRead,
+  markNotificationRead,
   NotificationItem,
   NotificationType,
 } from "./notification";
@@ -1045,9 +1046,19 @@ export async function updateUserProfileAction(updates: {
 // ---------------------------------------------------------------------------
 // Notifications — the bell, the /notifications page, and the email toggle.
 // ---------------------------------------------------------------------------
-export async function listNotificationsAction(before?: string): Promise<NotificationItem[]> {
+export async function listNotificationsAction(
+  before?: string,
+  unreadOnly?: boolean,
+): Promise<NotificationItem[]> {
   const userId = await requireUserId();
-  return listNotifications(userId, before);
+  return listNotifications(userId, before, { unreadOnly });
+}
+
+// Opening a notification marks that one read. The id is scoped to the caller in
+// the data layer, so an id from another feed is a no-op rather than an error.
+export async function markNotificationReadAction(notificationId: number): Promise<void> {
+  const userId = await requireUserId();
+  await markNotificationRead(userId, notificationId);
 }
 
 export async function markNotificationsReadAction(): Promise<void> {

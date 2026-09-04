@@ -4,6 +4,16 @@ All notable changes to Colosseum are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.1] - 2026-09-04
+
+### Fixed
+
+- The installed app no longer zooms. 1.12.0 lifted the zoom cap, which left the
+  PWA pinching and panning under the thumb like a web page in an app frame. The
+  cap is back, on iOS as well as Android.
+- The channel pickers' search field is 16px like every other field, so focusing
+  it can't make the page jump on iOS.
+
 ## [1.12.0] - 2026-09-04
 
 ### Added

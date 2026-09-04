@@ -14,7 +14,11 @@ import { useState } from "react";
 // the form so the rule isn't first met as a server error after submitting.
 const MIN_PASSWORD_LENGTH = 8;
 
-export function UpdatePasswordForm({ className, ...props }: React.ComponentPropsWithoutRef<"div">) {
+export function UpdatePasswordForm({
+  className,
+  token,
+  ...props
+}: React.ComponentPropsWithoutRef<"div"> & { token: string }) {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,13 +31,14 @@ export function UpdatePasswordForm({ className, ...props }: React.ComponentProps
     setError(null);
 
     try {
-      // The reset email's link carries a one-time token as ?token=...; Better
-      // Auth verifies it and sets the new password.
-      const token = new URLSearchParams(window.location.search).get("token") ?? undefined;
+      // The one-time token off the reset link, checked before this page
+      // rendered; Better Auth verifies it again here and sets the password.
       const { error } = await authClient.resetPassword({ newPassword: password, token });
       if (error) throw new Error(error.message ?? "Could not update the password.");
-      // send the user to the app root, which routes them to their profile
-      router.push("/");
+      // Resetting a password doesn't start a session, so the app root would put
+      // them back on the signed-out hero with nothing to say the reset worked.
+      // Login says it, and the new password gets used once straight away.
+      router.push("/auth/login?reset=1");
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
     } finally {

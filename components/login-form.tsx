@@ -10,12 +10,19 @@ import { Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { getMyProfileAction } from "@/lib/colosseum/actions";
+import { safeNextPath } from "@/lib/next-path";
 
 export function LoginForm({
   className,
   invite = "",
+  next = "",
+  passwordUpdated = false,
   ...props
-}: React.ComponentPropsWithoutRef<"div"> & { invite?: string }) {
+}: React.ComponentPropsWithoutRef<"div"> & {
+  invite?: string;
+  next?: string;
+  passwordUpdated?: boolean;
+}) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -41,7 +48,9 @@ export function LoginForm({
         window.location.assign("/auth/onboarding");
         return;
       }
-      window.location.assign(`/${userProfile.handle}`);
+      // Where the auth gate bounced them from, if it did; re-checked against
+      // the allowlist here so the form is safe wherever the value came from.
+      window.location.assign(safeNextPath(next) ?? `/${userProfile.handle}`);
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
     } finally {
@@ -56,6 +65,11 @@ export function LoginForm({
         <h1 className="text-title">Login</h1>
         <p className="text-muted-foreground">Enter your email below to login to your account</p>
       </div>
+      {passwordUpdated && (
+        <p className="rounded-md border bg-muted/50 p-3 text-sm">
+          Your password has been updated. Log in with the new one.
+        </p>
+      )}
       <form onSubmit={handleLogin}>
         <div className="flex flex-col gap-6">
           <div className="grid gap-2">

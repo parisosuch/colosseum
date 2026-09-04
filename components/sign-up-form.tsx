@@ -64,9 +64,10 @@ export function SignUpForm({
         ...(inviteRequired ? { inviteCode: code } : {}),
       });
       if (error) throw new Error(error.message ?? "Could not sign up.");
-      // Sign-up starts a session immediately (no email confirmation step), so
-      // go straight to onboarding to pick a handle. Full-document navigation
-      // so the server-rendered nav reflects the new session.
+      // Sign-up starts a session immediately — the confirmation email that goes
+      // out proves the address, it doesn't gate getting in — so go straight to
+      // onboarding to pick a handle. Full-document navigation so the
+      // server-rendered nav reflects the new session.
       window.location.assign("/auth/onboarding");
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");

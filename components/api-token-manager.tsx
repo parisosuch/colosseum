@@ -7,6 +7,95 @@ import { revokeApiTokenAction } from "@/lib/colosseum/actions";
 import type { ApiToken } from "@/lib/colosseum/api-token";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+
+// Revoke is confirm-gated: the plaintext was shown exactly once, so a slipped
+// click breaks every script holding it with nothing to undo and nothing to
+// re-copy. The dialog names the token so the admin can see which one dies.
+function RevokeTokenButton({
+  token,
+  onRevoke,
+}: {
+  token: ApiToken;
+  onRevoke: () => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const name = token.name?.trim() ? token.name : `${token.token_prefix}…`;
+
+  const run = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await onRevoke();
+      setOpen(false);
+    } catch (e) {
+      console.error(e);
+      setError(e instanceof Error ? e.message : "Couldn't revoke that token. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <AlertDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (busy) return;
+        setOpen(next);
+        if (!next) setError(null);
+      }}
+    >
+      <AlertDialogTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="text-destructive-text hover:text-destructive-text"
+        >
+          <Trash2Icon size={14} /> Revoke
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Revoke {name}?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Requests signed with this token start failing immediately, and anything running on it
+            stops working. The token can&apos;t be restored — you&apos;d have to create a new one
+            and update whatever uses it.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        {error ? <p className="text-sm text-red-500">{error}</p> : null}
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={busy}
+            onClick={(e) => {
+              // Keep the dialog open while the action runs / on error.
+              e.preventDefault();
+              void run();
+            }}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            {busy ? "Revoking..." : "Revoke"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
 
 export default function ApiTokenManager({
   userId: _userId,
@@ -57,7 +146,8 @@ export default function ApiTokenManager({
     } catch (e) {
       console.error(e);
       setTokens(prev);
-      setError("Couldn't revoke that token. Please try again.");
+      // Rethrown so the confirmation dialog can report it in place.
+      throw new Error("Couldn't revoke that token. Please try again.", { cause: e });
     }
   };
 
@@ -136,15 +226,7 @@ export default function ApiTokenManager({
                     : "Never used"}
                 </span>
               </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => handleRevoke(token.id)}
-                className="text-destructive-text hover:text-destructive-text"
-              >
-                <Trash2Icon size={14} /> Revoke
-              </Button>
+              <RevokeTokenButton token={token} onRevoke={() => handleRevoke(token.id)} />
             </li>
           ))}
         </ul>

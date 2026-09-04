@@ -1,7 +1,8 @@
 "use client";
 
 import PageHeader from "@/components/page-header";
-import ColumnComponent, { LIST_GRID } from "@/components/column";
+import ColumnComponent, { LIST_GRID, REORDER_HELP_ID } from "@/components/column";
+import { useBlockReorder } from "@/components/use-block-reorder";
 import BlockModal from "@/components/block-modal";
 import { useNeighbourPrefetch } from "@/components/block-prefetch";
 import ConnectChannelButton from "@/components/connect-channel-button";
@@ -30,6 +31,7 @@ import {
   getChannelColumnsAction,
   getColumnNeighboursAction,
   getScreenshotsForUrlsAction,
+  reorderColumnAction,
 } from "@/lib/colosseum/actions";
 import { Plus, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -174,7 +176,9 @@ export default function ChannelBoard({
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<ColumnFilter>("all");
-  const [sort, setSort] = useState<ColumnSort>("newest");
+  // Matches the sort the page server-rendered `initialColumns` with, or the
+  // mount effect would immediately refetch the page already on screen.
+  const [sort, setSort] = useState<ColumnSort>("manual");
 
   // Paging state for the current control selection. Seeded from the
   // server-rendered first page, so nothing loads on mount.
@@ -625,6 +629,42 @@ export default function ChannelBoard({
     };
   }, [detachedColumn?.id, channel.id, debouncedSearch, typeFilter, sort]);
 
+  // Whether blocks can be dragged into a new order right now. Three conditions,
+  // each answering a question the feature can't dodge:
+  //
+  //  - `isOwner`: a block's place is stored on its row, so one person's reorder
+  //    rearranges the board for everyone. That is the channel's arrangement,
+  //    not the viewer's, so it follows ownership rather than the contributor
+  //    rule that governs adding blocks. The action enforces the same thing; this
+  //    only decides whether to draw the handles.
+  //  - `sort === "manual"`: every other sort is computed from the block itself,
+  //    so a drag under "Title A–Z" would be undone by the next read.
+  //  - `!isFiltered`: dragging card 3 above card 1 in a filtered grid is
+  //    ambiguous, because the blocks the filter hid still sit between them and
+  //    the drop can't say which side of those it means. The order shown is real
+  //    either way — it just can't be edited through a partial view.
+  const canReorder = isOwner && sort === "manual" && !isFiltered;
+
+  // The element the cards are in, so the reorder hook can measure them. One ref
+  // for both views; it reads `[data-column-id]`, so the grid's add-block tile
+  // and the list's header row are simply not cards.
+  const blockAreaRef = useRef<HTMLDivElement | null>(null);
+
+  const blockLabel = useCallback((c: Column) => c.title || c.url || "Untitled block", []);
+  const commitReorder = useCallback(async (id: number, afterId: number | null) => {
+    await reorderColumnAction(id, afterId);
+  }, []);
+
+  const reorder = useBlockReorder<Column>({
+    enabled: canReorder,
+    containerRef: blockAreaRef,
+    items: columns,
+    setItems: setColumns,
+    axis: view === "list" ? "vertical" : "horizontal",
+    label: blockLabel,
+    commit: commitReorder,
+  });
+
   // Warm the blocks either side of the open one — their media and their comment
   // thread — so stepping with ← / → arrives on something already loaded. Inert
   // while the modal is closed (openIndex is -1).
@@ -785,8 +825,28 @@ export default function ChannelBoard({
               `${totalCount} blocks`
             )}
           </p>
+          {/* Manual sort is selected but the board can't be arranged. Saying
+              which of the two reasons applies is the difference between "this
+              is broken" and "clear the search". */}
+          {isOwner && sort === "manual" && isFiltered ? (
+            <p className="text-caption">
+              Clear the search and type filter to rearrange blocks — a drop inside a partial view
+              can’t say where it lands.
+            </p>
+          ) : null}
         </div>
       ) : null}
+
+      {/* Read out when a block is lifted, moved and dropped. Assertive because
+          a move only exists as a change of position: with nothing announced,
+          the arrow key does nothing a screen reader can report. */}
+      <p aria-live="assertive" aria-atomic="true" className="sr-only">
+        {reorder.message}
+      </p>
+      <p id={REORDER_HELP_ID} className="sr-only">
+        Press space to lift this block, the arrow keys to move it, space again to drop it, and
+        escape to put it back.
+      </p>
 
       {!canContribute && totalCount === 0 ? (
         <p className="text-muted-foreground">No columns yet.</p>
@@ -796,6 +856,7 @@ export default function ChannelBoard({
               one lands: dimmed and inert rather than cleared, so a control
               change neither flashes an empty board nor reads as finished. */}
           <div
+            ref={blockAreaRef}
             aria-busy={loadingPage}
             className={
               loadingPage && columns.length > 0
@@ -843,6 +904,12 @@ export default function ChannelBoard({
                               author={handle}
                               onOpen={openBlock}
                               priority={i < EAGER_LIST_THUMBS}
+                              reorderable={canReorder}
+                              reorderActive={reorder.activeId === column.id}
+                              reorderLifted={reorder.lifted}
+                              onReorderPointerDown={reorder.onHandlePointerDown}
+                              onReorderKeyDown={reorder.onHandleKeyDown}
+                              onReorderBlur={reorder.onHandleBlur}
                               key={column.id}
                             />
                           ))}
@@ -877,6 +944,12 @@ export default function ChannelBoard({
                         // The add-block tile takes the first cell when it's there,
                         // pushing one block out of the top row.
                         priority={i < EAGER_GRID_THUMBS - (canContribute ? 1 : 0)}
+                        reorderable={canReorder}
+                        reorderActive={reorder.activeId === column.id}
+                        reorderLifted={reorder.lifted}
+                        onReorderPointerDown={reorder.onHandlePointerDown}
+                        onReorderKeyDown={reorder.onHandleKeyDown}
+                        onReorderBlur={reorder.onHandleBlur}
                         key={column.id}
                       />
                     ))}

@@ -38,6 +38,7 @@ import {
   getColumn,
   moveColumn,
   copyColumn,
+  reorderColumn,
   searchColumns,
   updateColumnDescription,
   updateColumnMeta,
@@ -771,6 +772,30 @@ export async function moveColumnAction(columnId: number, targetChannelId: number
   await requireWritableBlock(columnId, userId);
   await requireOwnedChannel(targetChannelId, userId);
   await moveColumn(columnId, targetChannelId);
+}
+
+// Place a block after another one in its channel's manual order, or at the head
+// when `afterId` is null.
+//
+// Owner-only, which is stricter than every other block mutation here: a
+// contributor can add a block to an open channel and can edit or delete the
+// block they added, but a reorder rearranges everyone's blocks at once. The
+// arrangement of a channel is the channel's, so it follows ownership rather
+// than the contributor rule. requireOwnedChannel 404s a non-owner, so this
+// leaks nothing a reader couldn't already see.
+export async function reorderColumnAction(columnId: number, afterId: number | null): Promise<void> {
+  const userId = await requireUserId();
+  const block = await getColumn(columnId);
+  if (!block) {
+    throw new Error("Not found.");
+  }
+  await requireOwnedChannel(block.channel_id, userId);
+  const moved = await reorderColumn(columnId, afterId);
+  // The block, or the block it was dropped after, went away between the board
+  // painting and the drop landing. The board reverts and refetches.
+  if (!moved) {
+    throw new Error("Not found.");
+  }
 }
 
 // Copy a block into another channel, leaving the original in place. The caller

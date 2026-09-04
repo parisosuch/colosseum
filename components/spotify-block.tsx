@@ -1,8 +1,10 @@
 import { Music } from "lucide-react";
 
+import { CARD_BADGE_CLASS, CARD_MEDIA_RADIUS } from "@/lib/utils";
+
 // Renders a Spotify item (track/album/playlist/artist/…). Nothing is persisted
 // but the URL, title, and cover-art URL — the grid card shows the cover art
-// with a music badge, and the full view (modal / block page) embeds the live
+// marked as audio, and the full view (modal / block page) embeds the live
 // iframe player. If the item is later removed the embed breaks, the accepted
 // trade-off for a live embed.
 export default function SpotifyBlock({
@@ -23,16 +25,16 @@ export default function SpotifyBlock({
           <img
             src={image}
             alt="Spotify cover art"
-            className="h-full w-full rounded-lg object-cover"
+            className={`h-full w-full object-cover ${CARD_MEDIA_RADIUS}`}
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center rounded-lg bg-[#1db954]" />
+          <div
+            className={`flex h-full w-full items-center justify-center bg-[#1db954] ${CARD_MEDIA_RADIUS}`}
+          />
         )}
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <span className="rounded-full bg-black/50 p-2 text-white">
-            <Music className="size-4" />
-          </span>
-        </div>
+        <span className={CARD_BADGE_CLASS}>
+          <Music className="size-3" />
+        </span>
       </div>
     );
   }

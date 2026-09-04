@@ -6,7 +6,16 @@ import { RenderedMarkdown } from "./rendered-markdown";
 import type { Column } from "@/lib/colosseum/column";
 import { useBlockMediaPrefetch } from "@/components/block-prefetch";
 import { useNearViewport } from "@/components/near-viewport";
-import { spotifyEmbedRef, thumbSrc, timeAgo, tweetIdFromUrl, youtubeIdFromUrl } from "@/lib/utils";
+import {
+  CARD_MEDIA_RADIUS,
+  CARD_TEXT_CLASS,
+  CARD_TEXT_SIZE,
+  spotifyEmbedRef,
+  thumbSrc,
+  timeAgo,
+  tweetIdFromUrl,
+  youtubeIdFromUrl,
+} from "@/lib/utils";
 import ScreenShotPreview from "./screenshot-preview";
 import TweetBlock from "./tweet-block-lazy";
 import YouTubeBlock from "./youtube-block";
@@ -94,8 +103,8 @@ const ColumnComponent = memo(function ColumnComponent({
         ) : null}
       </div>
     ) : column.type === "text" ? (
-      <div className="h-full w-full overflow-hidden p-2">
-        <RenderedMarkdown html={column.html ?? ""} className="text-xs" />
+      <div className={CARD_TEXT_CLASS}>
+        <RenderedMarkdown html={column.html ?? ""} className={CARD_TEXT_SIZE} />
       </div>
     ) : column.type === "image" ? (
       <img
@@ -103,21 +112,17 @@ const ColumnComponent = memo(function ColumnComponent({
         alt={column.title ?? "Image column"}
         loading={priority ? "eager" : "lazy"}
         decoding="async"
-        className="w-full h-full object-cover rounded-lg"
+        className={`w-full h-full object-cover ${CARD_MEDIA_RADIUS}`}
       />
     ) : column.type === "pdf" ? (
       <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center text-muted-foreground">
         <FileText className="size-10" />
-        <span className="line-clamp-2 max-w-full break-words text-xs">{column.title || "PDF"}</span>
+        <span className={`line-clamp-2 max-w-full break-words ${CARD_TEXT_SIZE}`}>
+          {column.title || "PDF"}
+        </span>
       </div>
     ) : column.type === "video" ? (
-      <VideoPoster
-        image={column.image}
-        alt={column.title ?? "Video column"}
-        priority={priority}
-        className="rounded-lg"
-        iconClassName="size-4"
-      />
+      <VideoPoster image={column.image} alt={column.title ?? "Video column"} priority={priority} />
     ) : column.type === "tweet" ? (
       <TweetBlock id={tweetIdFromUrl(column.url ?? "") ?? ""} compact />
     ) : column.type === "youtube" ? (
@@ -229,19 +234,22 @@ const ColumnComponent = memo(function ColumnComponent({
 
   // The block's title under the card, for every type (falls back to the URL
   // screenshot's title). A non-breaking space is reserved when untitled so the
-  // block isn't a line shorter than its siblings (or its own hover state, which
-  // swaps in the timestamp) and doesn't visibly shift. A plain " " collapses to
-  // zero height, so untitled blocks (e.g. images) would jump when hover reveals
-  // the timestamp.
+  // block isn't a line shorter than its siblings and doesn't visibly shift. A
+  // plain " " collapses to zero height, so untitled blocks (e.g. images) would
+  // stand a line short against titled ones.
   const gridTitle = column.title || urlTitle || " ";
 
+  // Title and timestamp both stay on the card. They used to share one line, the
+  // timestamp replacing the title on hover — so the one card whose title you
+  // were reading was the one card not showing it. Two lines cost a row of
+  // height once, and nothing moves under the pointer.
   const gridInner = (
-    <div className="group relative w-full">
-      <div className="w-full aspect-square border rounded-lg text-left">{media}</div>
-      <p className="group-hover:hidden truncate pt-1 text-caption">{gridTitle}</p>
-      <p className="hidden group-hover:block truncate pt-1 text-caption">
-        {timeAgo(new Date(column.created_at))}
+    <div className="relative w-full">
+      <div className={`w-full aspect-square border text-left ${CARD_MEDIA_RADIUS}`}>{media}</div>
+      <p className="truncate pt-1 text-xs" title={column.title || urlTitle || undefined}>
+        {gridTitle}
       </p>
+      <p className="truncate text-caption">{timeAgo(new Date(column.created_at))}</p>
     </div>
   );
 

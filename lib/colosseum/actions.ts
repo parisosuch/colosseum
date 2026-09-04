@@ -32,6 +32,8 @@ import {
   ColumnSearchResult,
   addChannelColumn,
   deleteColumn,
+  getChannelColumnCount,
+  getChannelColumnNeighbours,
   getChannelColumns,
   getColumn,
   moveColumn,
@@ -334,6 +336,29 @@ export async function getChannelColumnsAction(
 ): Promise<Column[]> {
   await requireReadableChannel(channelId);
   return getChannelColumns(channelId, query, await currentUserId());
+}
+
+// How many blocks match the board's current search/type filter, for the result
+// count beside the controls. Separate from the page fetch so the list's shape
+// (and its other callers) stay as they are.
+export async function getChannelColumnCountAction(
+  channelId: number,
+  query: ColumnQuery = {},
+): Promise<number> {
+  await requireReadableChannel(channelId);
+  return getChannelColumnCount(channelId, query);
+}
+
+// The blocks either side of one block in the channel's order, so the modal's
+// arrows work on a block the board hasn't loaded — a `?block=` deep link past
+// the first page, and anything stepped to from there.
+export async function getColumnNeighboursAction(
+  channelId: number,
+  columnId: number,
+  query: ColumnQuery = {},
+): Promise<{ prev: Column | null; next: Column | null }> {
+  await requireReadableChannel(channelId);
+  return getChannelColumnNeighbours(channelId, columnId, query, await currentUserId());
 }
 
 // Add a link block. A URL that points straight at an image file becomes an

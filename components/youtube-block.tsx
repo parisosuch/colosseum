@@ -1,7 +1,9 @@
 import { Play } from "lucide-react";
 
+import { CARD_BADGE_CLASS, CARD_MEDIA_RADIUS } from "@/lib/utils";
+
 // Renders a YouTube video by id. Nothing is persisted (unlike TweetBlock) — the
-// grid card shows YouTube's free thumbnail with a play badge, and the full view
+// grid card shows YouTube's free thumbnail marked as a video, and the full view
 // (modal / block page) embeds the live iframe player. If the video is later
 // deleted the embed breaks, which is the accepted trade-off (see issue: storing
 // the video would be too costly).
@@ -12,13 +14,11 @@ export default function YouTubeBlock({ id, compact = false }: { id: string; comp
         <img
           src={`https://i.ytimg.com/vi/${id}/hqdefault.jpg`}
           alt="YouTube video"
-          className="h-full w-full rounded-lg object-cover"
+          className={`h-full w-full object-cover ${CARD_MEDIA_RADIUS}`}
         />
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <span className="rounded-full bg-black/50 p-2 text-white">
-            <Play className="size-4 fill-current" />
-          </span>
-        </div>
+        <span className={CARD_BADGE_CLASS}>
+          <Play className="size-3 fill-current" />
+        </span>
       </div>
     );
   }

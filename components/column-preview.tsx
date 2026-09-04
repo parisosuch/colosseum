@@ -2,7 +2,14 @@ import { FileText } from "lucide-react";
 
 import type { Column } from "@/lib/colosseum/column";
 import { getScreenshot, type ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
-import { spotifyEmbedRef, tweetIdFromUrl, youtubeIdFromUrl } from "@/lib/utils";
+import {
+  CARD_MEDIA_RADIUS,
+  CARD_TEXT_CLASS,
+  CARD_TEXT_SIZE,
+  spotifyEmbedRef,
+  tweetIdFromUrl,
+  youtubeIdFromUrl,
+} from "@/lib/utils";
 import { Markdown } from "./markdown";
 import ScreenShotPreview from "./screenshot-preview";
 import TweetBlock from "./tweet-block-lazy";
@@ -46,8 +53,8 @@ export default async function ColumnPreview({
 
   if (column.type === "text") {
     return (
-      <div className="h-full w-full overflow-hidden p-3">
-        <Markdown text={column.text ?? ""} />
+      <div className={CARD_TEXT_CLASS}>
+        <Markdown text={column.text ?? ""} className={CARD_TEXT_SIZE} />
       </div>
     );
   }
@@ -59,7 +66,7 @@ export default async function ColumnPreview({
         alt={column.title ?? "Image column"}
         loading={priority ? "eager" : "lazy"}
         decoding="async"
-        className="w-full h-full object-cover rounded-md"
+        className={`w-full h-full object-cover ${CARD_MEDIA_RADIUS}`}
       />
     );
   }
@@ -68,23 +75,19 @@ export default async function ColumnPreview({
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center text-muted-foreground">
         <FileText className="size-10" />
-        <span className="line-clamp-2 max-w-full break-words text-sm">{column.title || "PDF"}</span>
+        <span className={`line-clamp-2 max-w-full break-words ${CARD_TEXT_SIZE}`}>
+          {column.title || "PDF"}
+        </span>
       </div>
     );
   }
 
   if (column.type === "video") {
-    // The poster frame stored beside the video, as a plain image; the play
-    // badge signals it's a video (the real controls live in the modal / block
+    // The poster frame stored beside the video, as a plain image; the corner
+    // marker says it's a video (the real controls live in the modal / block
     // page, which is also the only place the file itself gets fetched).
     return (
-      <VideoPoster
-        image={column.image}
-        alt={column.title ?? "Video column"}
-        priority={priority}
-        className="rounded-md"
-        iconClassName="size-5"
-      />
+      <VideoPoster image={column.image} alt={column.title ?? "Video column"} priority={priority} />
     );
   }
 

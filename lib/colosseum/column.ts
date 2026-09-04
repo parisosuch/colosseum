@@ -195,7 +195,69 @@ export async function getColumn(
 }
 
 export type ColumnSort = "newest" | "oldest" | "title_az" | "title_za";
-export type ColumnFilter = "all" | "url" | "text" | "image";
+export type ColumnFilter = "all" | "url" | "text" | "image" | "video" | "pdf" | "channel";
+
+// Which stored types each filter option keeps. A pasted URL is classified into
+// one of eight kinds at add time (urlBlockKind), so "url" has to match all of
+// them: matching the `url` type alone hides a channel of YouTube links behind
+// its own filter. The five remaining options cover the rest of the enum, so
+// every block a channel can hold is reachable from some option.
+export const COLUMN_FILTER_TYPES: Record<Exclude<ColumnFilter, "all">, Column["type"][]> = {
+  url: ["url", "tweet", "youtube", "youtube_channel", "spotify", "github", "instagram"],
+  text: ["text"],
+  image: ["image"],
+  video: ["video"],
+  pdf: ["pdf"],
+  channel: ["channel"],
+};
+
+// The WHERE clause behind every channel-scoped block read: the channel itself,
+// the type filter, and the search term. Shared by the list, the count and the
+// neighbour lookup so a filtered board, its result count and its arrows can
+// never disagree about which blocks are in play.
+function columnFilters(channel_id: number, query: ColumnQuery): SQL[] {
+  const { search, type = "all" } = query;
+  const filters: SQL[] = [eq(column.channel_id, channel_id)];
+
+  if (type !== "all") {
+    filters.push(inArray(column.type, COLUMN_FILTER_TYPES[type]));
+  }
+
+  const term = search ? sanitizeSearch(search) : "";
+  if (term) {
+    const pattern = `%${term}%`;
+    const tag = term.replace(/["\\]/g, "");
+    filters.push(
+      or(
+        ilike(column.title, pattern),
+        ilike(column.description, pattern),
+        ilike(column.text, pattern),
+        ilike(column.url, pattern),
+        sql`${column.tags} @> ARRAY[${tag}]::text[]`,
+      )!,
+    );
+  }
+
+  return filters;
+}
+
+// The ORDER BY for a sort mode. `id` breaks ties so the order is total: blocks
+// added in the same second, or sharing a title, would otherwise be free to swap
+// places between two queries — which paging, and the neighbour lookup below
+// (two statements ranking the same rows), both read as blocks skipped or shown
+// twice.
+function columnOrder(sort: ColumnSort): SQL[] {
+  switch (sort) {
+    case "oldest":
+      return [asc(column.created_at), asc(column.id)];
+    case "title_az":
+      return [sql`${column.title} asc nulls last`, asc(column.id)];
+    case "title_za":
+      return [sql`${column.title} desc nulls last`, asc(column.id)];
+    default:
+      return [desc(column.created_at), desc(column.id)];
+  }
+}
 
 // Options for querying a channel's blocks. Every channel-page control feeds the
 // same query so search, type-filter, ordering and paging compose server-side
@@ -203,7 +265,8 @@ export type ColumnFilter = "all" | "url" | "text" | "image";
 export type ColumnQuery = {
   // Case-insensitive substring matched against title/description/text/url.
   search?: string;
-  // Block type to keep; "all" (the default) applies no type filter.
+  // Which group of block types to keep (see COLUMN_FILTER_TYPES); "all" (the
+  // default) applies no type filter.
   type?: ColumnFilter;
   // Result ordering; defaults to "newest".
   sort?: ColumnSort;
@@ -225,47 +288,13 @@ export async function getChannelColumns(
   query: ColumnQuery = {},
   viewerId: string | null = null,
 ): Promise<Column[]> {
-  const { search, type = "all", sort = "newest", limit, offset = 0, html } = query;
-
-  const filters: SQL[] = [eq(column.channel_id, channel_id)];
-
-  if (type !== "all") {
-    filters.push(eq(column.type, type));
-  }
-
-  const term = search ? sanitizeSearch(search) : "";
-  if (term) {
-    const pattern = `%${term}%`;
-    const tag = term.replace(/["\\]/g, "");
-    filters.push(
-      or(
-        ilike(column.title, pattern),
-        ilike(column.description, pattern),
-        ilike(column.text, pattern),
-        ilike(column.url, pattern),
-        sql`${column.tags} @> ARRAY[${tag}]::text[]`,
-      )!,
-    );
-  }
-
-  const orderBy: SQL = (() => {
-    switch (sort) {
-      case "oldest":
-        return asc(column.created_at);
-      case "title_az":
-        return sql`${column.title} asc nulls last`;
-      case "title_za":
-        return sql`${column.title} desc nulls last`;
-      default:
-        return desc(column.created_at);
-    }
-  })();
+  const { sort = "newest", limit, offset = 0, html } = query;
 
   const rows = await db
     .select()
     .from(column)
-    .where(and(...filters))
-    .orderBy(orderBy)
+    .where(and(...columnFilters(channel_id, query)))
+    .orderBy(...columnOrder(sort))
     .limit(limit ?? Number.MAX_SAFE_INTEGER)
     .offset(offset);
 
@@ -275,6 +304,63 @@ export async function getChannelColumns(
       viewerId,
     ),
   );
+}
+
+// The blocks either side of `column_id` in the channel's current ordering.
+// Resolved against the whole channel rather than a loaded page, which is what a
+// `?block=` deep link needs: the linked block can be older than the board's
+// first page, and its neighbours can't be found in a list that doesn't contain
+// it. Either side is null at the ends of the channel, or when the block isn't
+// in the filtered set at all.
+//
+// `query`'s `limit`/`offset` are ignored — the whole channel is what's being
+// ranked — but its search/type/sort are honoured, so stepping through a
+// filtered board follows the same order the grid shows. Ranking the channel to
+// find one row is why this runs only when the board can't answer from what it
+// has loaded, which is a deep link and its onward steps.
+export async function getChannelColumnNeighbours(
+  channel_id: number,
+  column_id: number,
+  query: ColumnQuery = {},
+  viewerId: string | null = null,
+): Promise<{ prev: Column | null; next: Column | null }> {
+  const none = { prev: null, next: null };
+  if (!Number.isFinite(column_id)) return none;
+
+  const ranked = db
+    .select({
+      ...getTableColumns(column),
+      // ::int like the count queries: postgres.js hands back a bigint as a
+      // string, and the ranks are compared and offset in JS below.
+      rn: sql<number>`(row_number() over (order by ${sql.join(columnOrder(query.sort ?? "newest"), sql`, `)}))::int`.as(
+        "rn",
+      ),
+    })
+    .from(column)
+    .where(and(...columnFilters(channel_id, query)))
+    .as("ranked");
+
+  const [target] = await db
+    .select({ rn: ranked.rn })
+    .from(ranked)
+    .where(eq(ranked.id, column_id))
+    .limit(1);
+  if (!target) return none;
+
+  const rows = await db
+    .select()
+    .from(ranked)
+    .where(inArray(ranked.rn, [target.rn - 1, target.rn + 1]));
+  if (rows.length === 0) return none;
+
+  const enriched = await withCreators(
+    await withLinkedChannels(
+      rows.map((row) => toColumn(row, { html: query.html })),
+      viewerId,
+    ),
+  );
+  const byRank = new Map(enriched.map((c, i) => [rows[i].rn, c]));
+  return { prev: byRank.get(target.rn - 1) ?? null, next: byRank.get(target.rn + 1) ?? null };
 }
 
 // The `perChannel` newest blocks for each of `channelIds`, as one windowed query
@@ -770,11 +856,17 @@ export async function deleteScreenshotIfUnreferenced(url: string): Promise<void>
   }
 }
 
-export async function getChannelColumnCount(channel_id: number): Promise<number> {
+// How many blocks a channel holds. With a `query` it counts what that query
+// would return instead (its search and type filter; paging and sort don't
+// change a count), which is what the board's controls report as a result count.
+export async function getChannelColumnCount(
+  channel_id: number,
+  query: ColumnQuery = {},
+): Promise<number> {
   const [row] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(column)
-    .where(eq(column.channel_id, channel_id));
+    .where(and(...columnFilters(channel_id, query)));
   return row?.count ?? 0;
 }
 

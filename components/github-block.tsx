@@ -68,7 +68,7 @@ export default function GitHubBlock({
             not a bespoke one — a mixed grid should read as one system. Two
             lines are reserved so a name that wraps doesn't push its avatar up
             relative to the card beside it. */}
-        <span className="line-clamp-2 min-h-14 max-w-full break-words font-serif text-lg font-medium">
+        <span className="line-clamp-2 min-h-14 max-w-full break-words text-heading">
           {nameLine("size-4")}
         </span>
       </div>

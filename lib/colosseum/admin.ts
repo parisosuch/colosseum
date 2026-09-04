@@ -169,7 +169,10 @@ export async function setUserLimits(
 export type Quota = { limit: number | null; used: number };
 
 // How many invites (summed code capacity) the user has issued, against their
-// effective invite limit. Admins report an unlimited (null) limit.
+// effective invite limit. Admins report an unlimited (null) limit. `used` here
+// is capacity minted, so it moves when a code is created or revoked and not
+// when one is redeemed — anything rendering it has to say "created", since the
+// invite rows report redemptions under the same word.
 export async function getInviteQuota(userId: string): Promise<Quota> {
   const [{ used }] = await db
     .select({ used: sql<number>`coalesce(sum(${inviteCode.max_uses}), 0)` })

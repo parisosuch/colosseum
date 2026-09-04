@@ -6,7 +6,14 @@ const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElemen
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn("rounded-xl border bg-card text-card-foreground shadow", className)}
+      // rounded-lg, matching the `rounded-lg border` panel recipe the app
+      // hand-rolls in ~43 places, so a Card and a panel are the same object at
+      // different elevations rather than two radii for one idea. The shadow is
+      // what's left of the difference: Card is for a surface that floats over
+      // the page (the auth screens), a plain panel for one that sits in it.
+      // Padding on the sub-parts is a default — cn() lets a call site pass
+      // p-3/p-4 for a denser panel.
+      className={cn("rounded-lg border bg-card text-card-foreground shadow", className)}
       {...props}
     />
   ),

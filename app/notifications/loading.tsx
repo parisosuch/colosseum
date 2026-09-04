@@ -25,7 +25,7 @@ export default function Loading() {
         {/* One day group: label + a bordered, divided list of rows. */}
         <div className="space-y-3">
           <Skeleton className="h-3 w-16" />
-          <div className="divide-y overflow-hidden rounded-xl border">
+          <div className="divide-y overflow-hidden rounded-lg border">
             {Array.from({ length: 8 }).map((_, i) => (
               <div key={i} className="flex items-start gap-3 px-4 py-3">
                 <Skeleton className="size-8 shrink-0 rounded-full" />

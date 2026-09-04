@@ -1,6 +1,7 @@
 import { getSessionCookie } from "better-auth/cookies";
 import { NextResponse, type NextRequest } from "next/server";
 import { logInfo } from "@/lib/log";
+import { NEXT_PARAM, safeNextPath } from "@/lib/next-path";
 
 // Optimistic auth gate for routes that require a signed-in user: only checks
 // that a session cookie exists (no DB lookup in middleware). The protected
@@ -34,8 +35,16 @@ export function middleware(request: NextRequest) {
   }
 
   if (!hasSession) {
+    // Carry where they were headed so login can finish the trip instead of
+    // dropping them on their own profile. Filtered through safeNextPath here
+    // too, so the param we write is one the login form will accept.
+    const destination = `${pathname}${request.nextUrl.search}`;
     const url = request.nextUrl.clone();
     url.pathname = "/auth/login";
+    url.search = "";
+    if (safeNextPath(destination)) {
+      url.searchParams.set(NEXT_PARAM, destination);
+    }
     return NextResponse.redirect(url);
   }
   return NextResponse.next();

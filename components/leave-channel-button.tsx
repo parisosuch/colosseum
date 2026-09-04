@@ -54,7 +54,7 @@ export function LeaveChannelButton({
         <Button
           variant="ghost"
           size="sm"
-          className="text-destructive hover:text-destructive"
+          className="text-destructive-text hover:text-destructive-text"
           disabled={leaving}
         >
           Leave
@@ -71,10 +71,7 @@ export function LeaveChannelButton({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            className="bg-destructive text-white hover:bg-destructive/90"
-            onClick={leave}
-          >
+          <AlertDialogAction variant="destructive" onClick={leave}>
             Leave
           </AlertDialogAction>
         </AlertDialogFooter>

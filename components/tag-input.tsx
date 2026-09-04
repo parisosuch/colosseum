@@ -47,14 +47,17 @@ export default function TagInput({
   return (
     <div className="flex flex-wrap items-center gap-1">
       {tags.map((tag) => (
-        <Badge key={tag} variant="secondary" className="gap-1">
+        // The pill and its × grow on touch: the bare glyph was about 8×20px,
+        // which is unhittable with a thumb. On a mouse the row keeps its
+        // original height.
+        <Badge key={tag} variant="secondary" className="gap-1 coarse:min-h-11 coarse:px-3">
           #{tag}
           {!disabled ? (
             <button
               type="button"
               aria-label={`Remove tag ${tag}`}
               onClick={() => remove(tag)}
-              className="hover:text-foreground"
+              className="focus-ring inline-flex size-5 shrink-0 items-center justify-center rounded-sm hover:text-foreground coarse:size-8"
             >
               <span aria-hidden>×</span>
             </button>
@@ -66,7 +69,9 @@ export default function TagInput({
           ref={(el) => el?.focus()}
           value={draft}
           placeholder="tag"
-          className="h-5 w-24 px-2 py-0 text-xs [field-sizing:content]"
+          // Only shrink the text from md up: Input's own text-base keeps this
+          // at 16px on phones, below which iOS Safari zooms the page on focus.
+          className="h-5 w-24 px-2 py-0 md:text-xs [field-sizing:content]"
           onChange={(e) => setDraft(sanitize(e.target.value))}
           onBlur={() => {
             commit();
@@ -88,7 +93,10 @@ export default function TagInput({
           type="button"
           aria-label="Add tag"
           onClick={() => setEditing(true)}
-          className={cn(badgeVariants({ variant: "secondary" }), "h-5 cursor-pointer gap-0 px-1.5")}
+          className={cn(
+            badgeVariants({ variant: "secondary" }),
+            "h-5 cursor-pointer gap-0 px-1.5 coarse:h-11 coarse:px-4",
+          )}
         >
           <Plus className="size-3" />
         </button>

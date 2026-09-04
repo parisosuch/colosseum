@@ -4,12 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import {
-  Code,
   Laptop,
   LogOutIcon,
   MailIcon,
   Moon,
-  ScrollText,
   SettingsIcon,
   ShieldIcon,
   Sun,
@@ -25,10 +23,12 @@ import {
   DrawerTitle,
   DrawerTrigger,
 } from "@/components/ui/drawer";
+import { TAB, TabLabel } from "@/components/mobile-tab";
 
-// The mobile avatar opens a bottom drawer of nav links (Profile, Settings,
-// Invites, Developers, Changelog), a theme picker, and Logout — the mobile
-// counterpart to the desktop avatar dropdown (UserMenu).
+// The mobile avatar opens a bottom drawer of account links (Profile, Settings,
+// Invites), a theme picker, and Logout — the mobile counterpart to the desktop
+// avatar dropdown (UserMenu), and kept in step with it. Developers and
+// Changelog are public pages and live in the site footer instead.
 export function ProfileDrawer({
   handle,
   avatarUrl,
@@ -56,14 +56,15 @@ export function ProfileDrawer({
 
   return (
     <Drawer open={open} onOpenChange={setOpen}>
-      <DrawerTrigger
-        aria-label="Profile menu"
-        className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <Avatar className="size-9">
+      {/* The trigger is one of the bottom bar's tabs, so it wears the same
+          shape as its siblings; the avatar sits inside it at roughly the size
+          of their icons rather than being the target itself. */}
+      <DrawerTrigger aria-label="Profile menu" className={TAB}>
+        <Avatar className="size-6">
           <AvatarImage src={avatarUrl} />
-          <AvatarFallback>{handle.charAt(0).toUpperCase()}</AvatarFallback>
+          <AvatarFallback className="text-[10px]">{handle.charAt(0).toUpperCase()}</AvatarFallback>
         </Avatar>
+        <TabLabel>Profile</TabLabel>
       </DrawerTrigger>
       <DrawerContent>
         <DrawerHeader>
@@ -81,12 +82,6 @@ export function ProfileDrawer({
           {isAdmin ? (
             <NavRow icon={<ShieldIcon size={18} />} label="Admin" onClick={() => go("/admin")} />
           ) : null}
-          <NavRow icon={<Code size={18} />} label="Developers" onClick={() => go("/developers")} />
-          <NavRow
-            icon={<ScrollText size={18} />}
-            label="Changelog"
-            onClick={() => go("/changelog")}
-          />
 
           <div className="mt-2 border-t px-2 pt-3">
             <p className="pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -119,7 +114,7 @@ export function ProfileDrawer({
               icon={<LogOutIcon size={18} />}
               label="Logout"
               onClick={logout}
-              className="text-destructive"
+              className="text-destructive-text"
             />
           </div>
         </div>

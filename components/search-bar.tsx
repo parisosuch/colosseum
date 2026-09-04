@@ -12,6 +12,22 @@ function blockLabel(column: Column): string {
   return column.title || column.url || column.text || "Untitled";
 }
 
+// Each of the three searches returns up to ten rows, and thirty of them under
+// one heading-less scroll is a list nobody reads to the end of. Show the top
+// few per group and name what was left out, so a searcher can tell whether to
+// narrow the query or open the palette.
+const RESULT_LIMIT = 5;
+
+function groupHeading(label: string, shown: number, total: number): string {
+  return shown < total ? `${label} (${shown} of ${total})` : label;
+}
+
+// Same shape as cmdk's group headings in the command palette, so the dropdown
+// and the palette read as one surface.
+function GroupHeading({ children }: { children: React.ReactNode }) {
+  return <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{children}</p>;
+}
+
 // Nav search box over everyone's public content plus the viewer's own: profiles,
 // channels, and blocks. Debounced, with results in a dropdown under the input;
 // each result carries its owner's handle for the link.
@@ -36,6 +52,9 @@ export default function SearchBar() {
   }, []);
 
   const hasResults = profiles.length > 0 || channels.length > 0 || columns.length > 0;
+  const shownProfiles = profiles.slice(0, RESULT_LIMIT);
+  const shownChannels = channels.slice(0, RESULT_LIMIT);
+  const shownColumns = columns.slice(0, RESULT_LIMIT);
 
   return (
     <div ref={containerRef} className="relative w-full max-w-xs">
@@ -62,39 +81,57 @@ export default function SearchBar() {
             )
           ) : (
             <>
-              {profiles.map((profile) => (
-                <Link
-                  key={`profile-${profile.handle}`}
-                  href={`/${profile.handle}`}
-                  className="block truncate rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
-                  onClick={() => setOpen(false)}
-                >
-                  @{profile.handle}
-                  <span className="ml-2 text-xs text-muted-foreground">user</span>
-                </Link>
-              ))}
-              {channels.map((channel) => (
-                <Link
-                  key={`channel-${channel.id}`}
-                  href={`/${channel.handle}/${channel.id}`}
-                  className="block rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
-                  onClick={() => setOpen(false)}
-                >
-                  {channel.title}
-                  <span className="ml-2 text-xs text-muted-foreground">channel</span>
-                </Link>
-              ))}
-              {columns.map((column) => (
-                <Link
-                  key={`block-${column.id}`}
-                  href={`/${column.handle}/${column.channel_id}/${column.id}`}
-                  className="block truncate rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
-                  onClick={() => setOpen(false)}
-                >
-                  {blockLabel(column)}
-                  <span className="ml-2 text-xs text-muted-foreground">column</span>
-                </Link>
-              ))}
+              {shownProfiles.length > 0 ? (
+                <div>
+                  <GroupHeading>
+                    {groupHeading("People", shownProfiles.length, profiles.length)}
+                  </GroupHeading>
+                  {shownProfiles.map((profile) => (
+                    <Link
+                      key={`profile-${profile.handle}`}
+                      href={`/${profile.handle}`}
+                      className="block truncate rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                      onClick={() => setOpen(false)}
+                    >
+                      @{profile.handle}
+                    </Link>
+                  ))}
+                </div>
+              ) : null}
+              {shownChannels.length > 0 ? (
+                <div>
+                  <GroupHeading>
+                    {groupHeading("Channels", shownChannels.length, channels.length)}
+                  </GroupHeading>
+                  {shownChannels.map((channel) => (
+                    <Link
+                      key={`channel-${channel.id}`}
+                      href={`/${channel.handle}/${channel.id}`}
+                      className="block truncate rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                      onClick={() => setOpen(false)}
+                    >
+                      {channel.title}
+                    </Link>
+                  ))}
+                </div>
+              ) : null}
+              {shownColumns.length > 0 ? (
+                <div>
+                  <GroupHeading>
+                    {groupHeading("Columns", shownColumns.length, columns.length)}
+                  </GroupHeading>
+                  {shownColumns.map((column) => (
+                    <Link
+                      key={`block-${column.id}`}
+                      href={`/${column.handle}/${column.channel_id}/${column.id}`}
+                      className="block truncate rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                      onClick={() => setOpen(false)}
+                    >
+                      {blockLabel(column)}
+                    </Link>
+                  ))}
+                </div>
+              ) : null}
             </>
           )}
         </div>

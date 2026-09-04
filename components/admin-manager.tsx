@@ -34,6 +34,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 // "" ⇄ null; otherwise a non-negative integer. Anything invalid becomes null
 // (unlimited) rather than throwing — the field is a convenience, not a form gate.
@@ -45,6 +56,12 @@ function toLimit(value: string): number | null {
 }
 function fromLimit(value: number | null): string {
   return value === null ? "" : String(value);
+}
+
+// How an account is named in confirmation copy. Handles are optional, so fall
+// back to the email — the admin has to recognise who they're about to act on.
+function userLabel(u: AdminUser): string {
+  return u.handle ? `@${u.handle}` : u.email;
 }
 
 type SortKey = "handle" | "invites" | "columns";
@@ -83,6 +100,93 @@ function IconAction({
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
+  );
+}
+
+// Same dense icon button, but confirm-gated: the account-level actions change
+// who can sign in or who can moderate, and they sit inches from Save in the
+// row. Mirrors AdminDeleteButton — the dialog stays open while the action runs
+// and reports its own failure rather than the page-level banner.
+function ConfirmIconAction({
+  icon,
+  label,
+  title,
+  description,
+  confirmLabel,
+  onConfirm,
+  variant = "secondary",
+  className,
+  destructive = false,
+}: {
+  icon: ReactNode;
+  label: string;
+  title: string;
+  description: string;
+  confirmLabel: string;
+  onConfirm: () => Promise<void>;
+  variant?: "default" | "secondary" | "outline";
+  className?: string;
+  destructive?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await onConfirm();
+      setOpen(false);
+    } catch (e) {
+      console.error(e);
+      setError(e instanceof Error ? e.message : "Couldn't apply that change.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <AlertDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (busy) return;
+        setOpen(next);
+        if (!next) setError(null);
+      }}
+    >
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <AlertDialogTrigger asChild>
+            <Button variant={variant} size="icon" className={className} aria-label={label}>
+              {icon}
+            </Button>
+          </AlertDialogTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
+        </AlertDialogHeader>
+        {error ? <p className="text-sm text-destructive-text">{error}</p> : null}
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={busy}
+            onClick={(e) => {
+              // Keep the dialog open while the action runs / on error.
+              e.preventDefault();
+              void run();
+            }}
+            variant={destructive ? "destructive" : "default"}
+          >
+            {busy ? "Working..." : confirmLabel}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
@@ -197,7 +301,9 @@ export default function AdminManager({
   const [columnsGlobal, setColumnsGlobal] = useState(
     fromLimit(initialSettings.max_columns_per_user),
   );
-  const [savingSettings, setSavingSettings] = useState(false);
+  // Which section is mid-save, so only its own button says "Saving...".
+  const [savingScope, setSavingScope] = useState<"limits" | "email" | null>(null);
+  const savingSettings = savingScope !== null;
   const [testingEmail, setTestingEmail] = useState(false);
 
   // Email config. Secrets arrive blank (redacted); an edited field overwrites,
@@ -206,31 +312,45 @@ export default function AdminManager({
   const [savedEmail, setSavedEmail] = useState(initialSettings.email);
   const patchEmail = (patch: Partial<EmailSettings>) => setEmail((e) => ({ ...e, ...patch }));
 
-  const settingsDirty =
+  // Each section owns its own dirty flag so its Save enables on its own edits.
+  const globalLimitsDirty =
     toLimit(invitesGlobal) !== savedSettings.max_invites_per_user ||
-    toLimit(columnsGlobal) !== savedSettings.max_columns_per_user ||
-    JSON.stringify(email) !== JSON.stringify(savedEmail);
+    toLimit(columnsGlobal) !== savedSettings.max_columns_per_user;
+  const emailDirty = JSON.stringify(email) !== JSON.stringify(savedEmail);
 
-  const saveSettings = async () => {
-    setSavingSettings(true);
+  // One write for both sections (app_settings is a single row), but each Save
+  // commits only its own fields, so saving limits can't smuggle in a half-typed
+  // email config and saving email can't commit an in-progress limit.
+  const saveSettings = async (scope: "limits" | "email") => {
+    setSavingScope(scope);
     setError(null);
     try {
       await updateAppSettingsAction({
-        max_invites_per_user: toLimit(invitesGlobal),
-        max_columns_per_user: toLimit(columnsGlobal),
-        email,
+        max_invites_per_user:
+          scope === "limits" ? toLimit(invitesGlobal) : savedSettings.max_invites_per_user,
+        max_columns_per_user:
+          scope === "limits" ? toLimit(columnsGlobal) : savedSettings.max_columns_per_user,
+        // Omitted on a limits save, which leaves the stored email exactly as it
+        // is rather than writing a copy of it back over itself.
+        email: scope === "email" ? email : undefined,
       });
       const fresh = await getAppSettingsAction();
       setSavedSettings(fresh);
-      setInvitesGlobal(fromLimit(fresh.max_invites_per_user));
-      setColumnsGlobal(fromLimit(fresh.max_columns_per_user));
-      setEmail(fresh.email);
-      setSavedEmail(fresh.email);
+      // Only re-seed the section that was saved; the other keeps its edits.
+      if (scope === "limits") {
+        setInvitesGlobal(fromLimit(fresh.max_invites_per_user));
+        setColumnsGlobal(fromLimit(fresh.max_columns_per_user));
+        toast.success("Global limits saved.");
+      } else {
+        setEmail(fresh.email);
+        setSavedEmail(fresh.email);
+        toast.success("Email settings saved.");
+      }
     } catch (e) {
       console.error(e);
       setError("Couldn't save settings.");
     } finally {
-      setSavingSettings(false);
+      setSavingScope(null);
     }
   };
 
@@ -262,29 +382,30 @@ export default function AdminManager({
     }
   };
 
-  const toggleBan = (u: AdminUser) =>
-    run(async () => {
-      await setUserBannedAction(u.user_id, !u.banned);
-      patchUser(u.user_id, { banned: !u.banned });
-    }, "Couldn't update ban status.");
+  // These two reject rather than swallow: their trigger is a confirm dialog
+  // that reports the failure in place, next to what the admin just confirmed.
+  const toggleBan = async (u: AdminUser) => {
+    await setUserBannedAction(u.user_id, !u.banned);
+    patchUser(u.user_id, { banned: !u.banned });
+  };
 
-  const toggleAdmin = (u: AdminUser) =>
-    run(async () => {
-      await setUserAdminAction(u.user_id, !u.is_admin);
-      patchUser(u.user_id, { is_admin: !u.is_admin });
-    }, "Couldn't update admin status.");
+  const toggleAdmin = async (u: AdminUser) => {
+    await setUserAdminAction(u.user_id, !u.is_admin);
+    patchUser(u.user_id, { is_admin: !u.is_admin });
+  };
 
   const saveLimits = (u: AdminUser) =>
     run(async () => {
       const limits = { invite_limit: u.invite_limit, column_limit: u.column_limit };
       await setUserLimitsAction(u.user_id, limits);
       setSavedLimits((m) => new Map(m).set(u.user_id, limits));
+      toast.success(u.handle ? `Limits saved for @${u.handle}.` : "Limits saved.");
     }, "Couldn't save limits.");
 
   return (
     <TooltipProvider>
       <div className="space-y-10">
-        {error ? <p className="text-sm text-red-500">{error}</p> : null}
+        {error ? <p className="text-sm text-destructive-text">{error}</p> : null}
 
         {/* Global limits */}
         <section className="space-y-4">
@@ -312,7 +433,15 @@ export default function AdminManager({
                 onChange={(e) => setColumnsGlobal(e.target.value)}
               />
             </div>
+            <Button
+              onClick={() => saveSettings("limits")}
+              disabled={savingSettings || !globalLimitsDirty}
+            >
+              <Check />
+              {savingScope === "limits" ? "Saving..." : "Save global limits"}
+            </Button>
           </div>
+          {globalLimitsDirty ? <p className="text-caption">Unsaved changes.</p> : null}
         </section>
 
         {/* Outbound email */}
@@ -418,18 +547,20 @@ export default function AdminManager({
             <div className="flex gap-2">
               <Button
                 className="flex-1"
-                onClick={saveSettings}
-                disabled={savingSettings || !settingsDirty}
+                onClick={() => saveSettings("email")}
+                disabled={savingSettings || !emailDirty}
               >
                 <Check />
-                {savingSettings ? "Saving..." : "Save settings"}
+                {savingScope === "email" ? "Saving..." : "Save email"}
               </Button>
               <Button
                 variant="outline"
                 onClick={sendTest}
-                disabled={testingEmail || settingsDirty || savedEmail.provider === null}
+                // The test uses what's persisted, so only unsaved *email* edits
+                // make it misleading — a dirty limits field is unrelated.
+                disabled={testingEmail || emailDirty || savedEmail.provider === null}
                 title={
-                  settingsDirty
+                  emailDirty
                     ? "Save your changes first"
                     : savedEmail.provider === null
                       ? "Turn on a provider first"
@@ -545,20 +676,45 @@ export default function AdminManager({
                     disabled={!limitsDirty(u)}
                     onClick={() => saveLimits(u)}
                   />
-                  <IconAction
-                    icon={u.is_admin ? <ShieldOff /> : <Shield />}
-                    label={u.is_admin ? "Remove admin" : "Make admin"}
-                    onClick={() => toggleAdmin(u)}
-                  />
-                  {u.user_id === currentUserId ? null : (
-                    <IconAction
-                      icon={u.banned ? <Undo2 /> : <Ban />}
-                      label={u.banned ? "Unban" : "Ban"}
-                      variant="outline"
-                      className={u.banned ? "" : "text-destructive hover:text-destructive"}
-                      onClick={() => toggleBan(u)}
+                  {/* Account-level actions get their own group, set apart from
+                      Save so a slip along the cluster can't land on Ban. */}
+                  <div className="ml-2 flex items-end gap-2 border-l pl-4">
+                    <ConfirmIconAction
+                      icon={u.is_admin ? <ShieldOff /> : <Shield />}
+                      label={u.is_admin ? "Remove admin" : "Make admin"}
+                      title={
+                        u.is_admin
+                          ? `Remove admin from ${userLabel(u)}?`
+                          : `Make ${userLabel(u)} an admin?`
+                      }
+                      description={
+                        u.is_admin
+                          ? "They lose this settings panel and the ability to moderate other people's channels and blocks."
+                          : "Admins can change global limits, ban accounts, and delete anyone's channels and blocks."
+                      }
+                      confirmLabel={u.is_admin ? "Remove admin" : "Make admin"}
+                      onConfirm={() => toggleAdmin(u)}
                     />
-                  )}
+                    {u.user_id === currentUserId ? null : (
+                      <ConfirmIconAction
+                        icon={u.banned ? <Undo2 /> : <Ban />}
+                        label={u.banned ? "Unban" : "Ban"}
+                        variant="outline"
+                        className={
+                          u.banned ? "" : "text-destructive-text hover:text-destructive-text"
+                        }
+                        title={u.banned ? `Unban ${userLabel(u)}?` : `Ban ${userLabel(u)}?`}
+                        description={
+                          u.banned
+                            ? "They can sign in again and pick up where they left off."
+                            : "They're locked out of the account until you unban them. Their channels and blocks stay where they are."
+                        }
+                        confirmLabel={u.banned ? "Unban" : "Ban"}
+                        destructive={!u.banned}
+                        onConfirm={() => toggleBan(u)}
+                      />
+                    )}
+                  </div>
                 </div>
               </li>
             ))}

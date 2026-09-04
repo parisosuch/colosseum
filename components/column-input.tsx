@@ -17,6 +17,7 @@ import { resumeVideoUploads, startVideoUpload, type UploadHandlers } from "@/lib
 import type { SessionUser } from "@/components/channel-board";
 import type { Channel } from "@/lib/colosseum/channel";
 import { GradientSpin } from "./gradient-spin";
+import { Button } from "./ui/button";
 import { toast } from "sonner";
 
 // On an add failure, prefer a specific "you hit your column limit" message
@@ -39,40 +40,38 @@ const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/webm", "video/quicktime", "vide
 const MAX_MD_BYTES = 256 * 1024; // 256KB
 const isMarkdownFile = (f: File) => f.type === "text/markdown" || /\.(md|markdown)$/i.test(f.name);
 
-type ColumnInputProps = {
-  user: SessionUser | null;
-  columns: Column[];
-  setColumns: Dispatch<SetStateAction<Column[]>>;
-  channel: Channel | null;
-  // Notify the parent that a block was added so it can update channel stats.
-  onBlockAdded: () => void;
-  // A URL block's screenshot is captured after the block already shows in the
-  // list. `onScreenshotStart` fires when the capture begins (so the row shows a
-  // spinner); `onScreenshotReady` fires when it lands (rehydrate the preview).
-  onScreenshotStart?: (url: string) => void;
-  onScreenshotReady?: (url: string) => void;
+// One video file in flight: the resumable endpoint reports progress against it
+// while the block is created in the background.
+type ActiveUpload = { filename: string; sent: number; total: number; error?: string };
+
+export type ColumnUploader = {
+  // Create a block per dropped or picked file.
+  uploadFiles: (files: FileList | File[]) => Promise<void>;
+  // Paste path: prefer the copied image's source URL, fall back to its bytes.
+  uploadPastedImages: (sourceUrl: string | null, files: File[]) => Promise<void>;
+  // Files still in flight in the sequential (image / PDF / markdown) loop.
+  uploading: number;
+  // Background video uploads, keyed by fingerprint.
+  videoUploads: Record<string, ActiveUpload>;
 };
 
-export default function ColumnInput({
+// The file side of adding blocks, owned by the channel board rather than by the
+// input tile. A drop anywhere on the board and a drop on the tile have to land
+// in the same uploader, and in list view the tile isn't mounted at all. One
+// instance per board — a second would resume the same pending video uploads a
+// second time.
+export function useColumnUpload({
   user,
-  columns,
-  setColumns,
   channel,
+  setColumns,
   onBlockAdded,
-  onScreenshotStart,
-  onScreenshotReady,
-}: ColumnInputProps) {
-  const [text, setText] = useState("");
+}: {
+  user: SessionUser | null;
+  channel: Channel | null;
+  setColumns: Dispatch<SetStateAction<Column[]>>;
+  onBlockAdded: () => void;
+}): ColumnUploader {
   const [uploading, setUploading] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const loading = uploading > 0;
-
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // Active resumable video uploads, keyed by fingerprint. Videos upload in the
-  // background (they can be large) with a progress row, instead of blocking the
-  // sequential file loop like image/PDF do.
-  type ActiveUpload = { filename: string; sent: number; total: number; error?: string };
   const [videoUploads, setVideoUploads] = useState<Record<string, ActiveUpload>>({});
 
   // Latest handlers in a ref so the resume effect can read them without
@@ -116,33 +115,6 @@ export default function ColumnInput({
     resumeVideoUploads(channelId, uploadHandlersRef.current);
   }, [channelId, user?.id]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.length) handleFilesUpload(e.target.files);
-    // Reset so picking the same file(s) again still fires onChange.
-    e.target.value = "";
-  };
-
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-
-    if (e.dataTransfer.files?.length) handleFilesUpload(e.dataTransfer.files);
-  };
-
-  // Paste image(s) straight into a block — a clipboard screenshot or a copied
-  // image file. Text/URL pastes fall through to the textarea (submit with
-  // Enter), so only swallow the event when there's actually an image.
-  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const images = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith("image/"));
-    if (images.length === 0) return;
-    e.preventDefault();
-    // A web-copied image also carries its source URL; prefer that so a pasted
-    // GIF stays animated (the clipboard file is a flattened snapshot). A plain
-    // clipboard screenshot has no such URL and uses the file directly.
-    uploadPastedImages(imageSrcFromHtml(e.clipboardData.getData("text/html")), images);
-  };
-
   // Prefer the copied image's source URL (fetched server-side into an image
   // column) and fall back to the clipboard's rasterized file if that fetch
   // fails — a relative/blob src, a private image, a dead link, etc.
@@ -154,6 +126,7 @@ export default function ColumnInput({
         const column = await uploadImageColumnFromUrlAction(channel.id, sourceUrl);
         setColumns((prev) => [column, ...prev]);
         onBlockAdded();
+        toast.success("Image added.");
         return;
       } catch (err) {
         console.error(err);
@@ -246,7 +219,115 @@ export default function ColumnInput({
     if (created.length > 0) {
       setColumns((prev) => [...created.reverse(), ...prev]);
       created.forEach(() => onBlockAdded());
+      // Videos aren't in `created` — they toast from onComplete as each lands.
+      toast.success(created.length === 1 ? "Block added." : `${created.length} blocks added.`);
     }
+  };
+
+  return { uploadFiles: handleFilesUpload, uploadPastedImages, uploading, videoUploads };
+}
+
+// Progress for the background video uploads, rendered by the board rather than
+// inside the input tile: a file can be dropped on the board in either view, and
+// in list view there is no tile to put the rows in.
+export function ColumnUploadProgress({ uploader }: { uploader: ColumnUploader }) {
+  const entries = Object.entries(uploader.videoUploads);
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="pointer-events-none fixed bottom-4 right-4 z-40 flex w-64 flex-col gap-1">
+      {entries.map(([fp, u]) => {
+        const pct = u.total ? Math.min(100, Math.round((u.sent / u.total) * 100)) : 0;
+        return (
+          <div key={fp} className="rounded-md border bg-background/90 px-2 py-1 backdrop-blur">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="truncate">{u.filename || "Video"}</span>
+              {/* The failure reads as type, not as a fill, so it takes
+                  --destructive-text; --destructive is picked to sit under
+                  white and barely clears the background in dark mode. */}
+              <span className={u.error ? "text-destructive-text" : "text-muted-foreground"}>
+                {u.error ? "Failed" : `${pct}%`}
+              </span>
+            </div>
+            {!u.error && (
+              <div className="mt-1 h-1 w-full overflow-hidden rounded bg-muted">
+                <div
+                  className="h-full bg-primary transition-[width]"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+type ColumnInputProps = {
+  user: SessionUser | null;
+  columns: Column[];
+  setColumns: Dispatch<SetStateAction<Column[]>>;
+  channel: Channel | null;
+  // Notify the parent that a block was added so it can update channel stats.
+  onBlockAdded: () => void;
+  // The board's upload path (see useColumnUpload). Shared with the board's own
+  // drop target, so a file dropped on either lands in the same queue.
+  uploader: ColumnUploader;
+  // A URL block's screenshot is captured after the block already shows in the
+  // list. `onScreenshotStart` fires when the capture begins (so the row shows a
+  // spinner); `onScreenshotReady` fires when it lands (rehydrate the preview).
+  onScreenshotStart?: (url: string) => void;
+  onScreenshotReady?: (url: string) => void;
+};
+
+export default function ColumnInput({
+  user,
+  columns,
+  setColumns,
+  channel,
+  onBlockAdded,
+  uploader,
+  onScreenshotStart,
+  onScreenshotReady,
+}: ColumnInputProps) {
+  const [text, setText] = useState("");
+  const { uploadFiles, uploadPastedImages, uploading } = uploader;
+  const loading = uploading > 0;
+
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Enter submits on a pointer-capable device only. On a phone the soft
+  // keyboard's Enter has to stay a newline, or a multi-line text block can't be
+  // typed here at all — the same rule the quick-add flow applies through
+  // `advanceOnEnter`. Starts false so the server render and the first client
+  // render agree; the effect settles it before anyone can type.
+  const [submitOnEnter, setSubmitOnEnter] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia("(pointer: fine)");
+    const sync = () => setSubmitOnEnter(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.length) uploadFiles(e.target.files);
+    // Reset so picking the same file(s) again still fires onChange.
+    e.target.value = "";
+  };
+
+  // Paste image(s) straight into a block — a clipboard screenshot or a copied
+  // image file. Text/URL pastes fall through to the textarea (submit with
+  // Enter), so only swallow the event when there's actually an image.
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const images = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith("image/"));
+    if (images.length === 0) return;
+    e.preventDefault();
+    // A web-copied image also carries its source URL; prefer that so a pasted
+    // GIF stays animated (the clipboard file is a flattened snapshot). A plain
+    // clipboard screenshot has no such URL and uses the file directly.
+    uploadPastedImages(imageSrcFromHtml(e.clipboardData.getData("text/html")), images);
   };
 
   const screenshotURL = async (url: string) => {
@@ -308,37 +389,38 @@ export default function ColumnInput({
     setText("");
     onBlockAdded();
 
+    toast.success(
+      column.type === "tweet"
+        ? "Tweet added."
+        : column.type === "youtube"
+          ? "Video added."
+          : column.type === "youtube_channel"
+            ? "Channel added."
+            : column.type === "spotify"
+              ? "Track added."
+              : column.type === "github"
+                ? // "owner/repo" means a repo; an account title has no slash.
+                  column.title?.includes("/")
+                  ? "Repo added."
+                  : "Profile added."
+                : column.type === "instagram"
+                  ? // Read post-or-profile off the URL. The title can't tell
+                    // them apart: a profile Instagram refused to serve is
+                    // titled "@handle" too, from the URL alone.
+                    instagramRef(column.url ?? "")?.kind === "account"
+                    ? "Profile added."
+                    : "Post added."
+                  : column.type === "image"
+                    ? "Image added."
+                    : column.type === "url"
+                      ? "Link added."
+                      : "Column added.",
+    );
+
     // Only plain URL blocks get the async screenshot pass. A tweet block already
     // carries its snapshot; a text block has nothing to capture; a URL that
     // pointed at an image file came back as an image block holding the bytes.
-    if (column.type !== "url") {
-      toast.success(
-        column.type === "tweet"
-          ? "Tweet added."
-          : column.type === "youtube"
-            ? "Video added."
-            : column.type === "youtube_channel"
-              ? "Channel added."
-              : column.type === "spotify"
-                ? "Track added."
-                : column.type === "github"
-                  ? // "owner/repo" means a repo; an account title has no slash.
-                    column.title?.includes("/")
-                    ? "Repo added."
-                    : "Profile added."
-                  : column.type === "instagram"
-                    ? // Read post-or-profile off the URL. The title can't tell
-                      // them apart: a profile Instagram refused to serve is
-                      // titled "@handle" too, from the URL alone.
-                      instagramRef(column.url ?? "")?.kind === "account"
-                      ? "Profile added."
-                      : "Post added."
-                    : column.type === "image"
-                      ? "Image added."
-                      : "Column added.",
-      );
-      return;
-    }
+    if (column.type !== "url") return;
 
     // Mark the row as capturing so it shows a spinner until the shot lands. This
     // batches with the add above, so the row never flashes an empty preview.
@@ -372,32 +454,20 @@ export default function ColumnInput({
     })();
   };
 
+  // Files are dropped on the board, not on this tile: the tile is one grid cell
+  // and isn't rendered at all in list view, so the drop target and its overlay
+  // belong to the container (see channel-board). A drop landing here bubbles
+  // there like any other.
   return (
-    <div
-      className={`relative w-full aspect-square rounded-lg dark:bg-white/10 bg-gray-100
-        ${isDragging ? "border-2 border-dashed dark:border-white/20 border-gray-200" : ""}`}
-      onDragOver={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-      }}
-      onDragEnter={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragging(true);
-      }}
-      onDragLeave={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragging(false);
-      }}
-      onDrop={handleDrop}
-    >
+    <div className="relative w-full aspect-square rounded-lg dark:bg-white/10 bg-gray-100">
       {/* Text input. text-base (16px), not text-sm — iOS Safari auto-zooms on
           focus of any input smaller than 16px. */}
       <textarea
         ref={textareaRef}
         disabled={loading}
-        className={`w-full h-full bg-transparent resize-none focus:outline-none p-3 leading-normal text-base ${loading ? "hidden" : ""}`}
+        // Extra bottom padding once there's something to submit, so the text
+        // doesn't run under the Add button sitting in that corner.
+        className={`w-full h-full bg-transparent resize-none focus:outline-none p-3 leading-normal text-base ${text ? "pb-12" : ""} ${loading ? "hidden" : ""}`}
         value={text}
         onChange={(e) => {
           setText(e.target.value);
@@ -405,7 +475,7 @@ export default function ColumnInput({
         onPaste={handlePaste}
         placeholder=""
         onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey) {
+          if (submitOnEnter && e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             handleTextAreaUpload();
           }
@@ -432,40 +502,23 @@ export default function ColumnInput({
         </div>
       )}
 
+      {/* Adding is a real control, not just a key. Enter is a shortcut for it on
+          a desktop and does nothing on a phone, so without this the tile has no
+          visible way to post what's been typed. */}
+      {text && !loading ? (
+        <div className="absolute bottom-2 right-2 z-10">
+          <Button size="sm" onClick={handleTextAreaUpload}>
+            Add
+          </Button>
+        </div>
+      ) : null}
+
       {loading && (
         <div className="absolute inset-0 flex flex-col gap-2 items-center justify-center bg-gray-100/60 dark:bg-black/50 z-10">
           <GradientSpin />
           {uploading > 1 ? (
             <p className="text-xs text-muted-foreground">{uploading} left…</p>
           ) : null}
-        </div>
-      )}
-
-      {/* Background video uploads: a progress row per file. Survives a refresh —
-          resumeVideoUploads repopulates this on mount. */}
-      {Object.keys(videoUploads).length > 0 && (
-        <div className="absolute inset-x-0 bottom-0 z-20 flex flex-col gap-1 p-2">
-          {Object.entries(videoUploads).map(([fp, u]) => {
-            const pct = u.total ? Math.min(100, Math.round((u.sent / u.total) * 100)) : 0;
-            return (
-              <div key={fp} className="rounded-md border bg-background/90 px-2 py-1 backdrop-blur">
-                <div className="flex items-center justify-between gap-2 text-xs">
-                  <span className="truncate">{u.filename || "Video"}</span>
-                  <span className={u.error ? "text-destructive" : "text-muted-foreground"}>
-                    {u.error ? "Failed" : `${pct}%`}
-                  </span>
-                </div>
-                {!u.error && (
-                  <div className="mt-1 h-1 w-full overflow-hidden rounded bg-muted">
-                    <div
-                      className="h-full bg-primary transition-[width]"
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                )}
-              </div>
-            );
-          })}
         </div>
       )}
     </div>

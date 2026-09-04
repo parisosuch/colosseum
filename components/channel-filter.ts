@@ -5,6 +5,13 @@
 
 export type ChannelAccess = "public" | "open" | "private";
 
+// Channel cards rendered per page on a profile. The server renders the first
+// page; the client asks for the next as the reader scrolls. Lives here, in a
+// module that is neither "use client" nor server-only, for the same reason
+// lib/pagination.ts does: a const exported from a "use client" file reaches a
+// Server Component as a client reference, not the number.
+export const CHANNELS_PAGE = 12;
+
 export type ChannelRow = {
   id: number;
   title: string;

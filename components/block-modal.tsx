@@ -432,25 +432,33 @@ function BlockModalBody({
     else if (dx > 0 && hasPrev) onPrev();
   };
 
+  // The field savers throw on failure rather than logging and returning: their
+  // callers are the only place that knows whether to report one failed write or
+  // a whole failed Save, and a swallowed error here reads to the user as a
+  // successful edit. Nothing after the await runs on failure, so the input keeps
+  // focus and the card keeps the old value.
   const handleTitleChange = async () => {
     if ((column.title ?? "") === title) return;
-    try {
-      await updateColumnTitleAction(column.id, title);
-      setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, title } : c)));
-      titleInputRef.current?.blur();
-    } catch (e) {
-      console.error(e);
-    }
+    await updateColumnTitleAction(column.id, title);
+    setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, title } : c)));
+    titleInputRef.current?.blur();
   };
 
   const handleDescriptionChange = async () => {
     if ((column.description ?? "") === description) return;
+    await updateColumnDescriptionAction(column.id, description);
+    setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, description } : c)));
+    descriptionInputRef.current?.blur();
+  };
+
+  // Enter in the title or description commits that one field. Success is visible
+  // (the input blurs, the card updates), so only the failure needs saying.
+  const saveField = async (save: () => Promise<void>) => {
     try {
-      await updateColumnDescriptionAction(column.id, description);
-      setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, description } : c)));
-      descriptionInputRef.current?.blur();
+      await save();
     } catch (e) {
       console.error(e);
+      toast.error("Couldn't save. Please try again.");
     }
   };
 
@@ -483,6 +491,9 @@ function BlockModalBody({
       setColumns((cols) => cols.filter((c) => c.id !== column.id));
     } catch (e) {
       console.error(e);
+      // The confirmation dialog has already closed itself, so the toast is the
+      // only thing left to say the block is still there.
+      toast.error("Couldn't delete that block. Please try again.");
     }
   };
 
@@ -530,6 +541,9 @@ function BlockModalBody({
     }
   };
 
+  // Saves the dirty fields in order and stops at the first failure, so "Saved."
+  // is only ever shown over writes that landed. A failure leaves the block
+  // dirty, which keeps the Save button on screen to try again.
   const handleSave = async () => {
     try {
       await handleTitleChange();
@@ -632,7 +646,7 @@ function BlockModalBody({
             href={`/${column.linked_channel?.handle}/${column.linked_channel_id}`}
             className="flex aspect-square w-full max-w-md flex-col items-center justify-center gap-2 rounded-md border p-6 text-center transition-colors hover:bg-accent"
           >
-            <span className="max-w-full font-serif text-2xl font-medium">
+            <span className="max-w-full text-title">
               {column.linked_channel?.title ?? "Channel"}
             </span>
             {column.linked_channel?.description ? (
@@ -659,12 +673,15 @@ function BlockModalBody({
               >
                 {column.url!}
               </a>
+              {/* The icon is small; the button isn't. Sizing comes from the
+                  icon variant (and its coarse-pointer size) rather than being
+                  overridden down to the glyph. */}
               <Button
                 variant="ghost"
                 size="icon"
                 aria-label={urlCopied ? "Link copied" : "Copy link"}
                 onClick={handleCopyUrl}
-                className="size-7 shrink-0"
+                className="shrink-0"
               >
                 {urlCopied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
               </Button>
@@ -685,7 +702,11 @@ function BlockModalBody({
         )}
       </div>
       <div className="w-full md:w-1/4 space-y-2 md:flex md:flex-col md:min-h-0">
-        <div className="flex justify-end gap-1 shrink-0">
+        {/* Left, not right. The dialog's close button owns the top-right corner
+            and its touch box reaches well into it, so a right-aligned Next sat
+            directly under Close: reaching for one hit the other, and hitting
+            Next by mistake discards the block being read. */}
+        <div className="flex justify-start gap-1 shrink-0">
           <Button
             variant="ghost"
             size="icon"
@@ -717,7 +738,7 @@ function BlockModalBody({
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
-                  handleTitleChange();
+                  saveField(handleTitleChange);
                 }
               }}
             />
@@ -736,7 +757,7 @@ function BlockModalBody({
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  handleDescriptionChange();
+                  saveField(handleDescriptionChange);
                 }
               }}
             />
@@ -758,118 +779,127 @@ function BlockModalBody({
               </Link>
             </div>
           ) : null}
-          <div className="p-3 w-full flex justify-end items-center gap-2">
-            <Button asChild variant="link" size="sm">
-              {/* Deep link, not the standalone block page: sharing this drops
+          {/* Two rows, not one. Copy-to-channel used to sit 8px from Delete,
+              which is close enough that a slip destroys the block instead of
+              duplicating it; the confirmation was the only thing between them. */}
+          <div className="flex w-full flex-col gap-2 p-3">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button asChild variant="link" size="sm">
+                {/* Deep link, not the standalone block page: sharing this drops
                   the recipient on the channel with the block already open, so
                   closing it leaves them somewhere instead of nowhere. */}
-              <Link href={`/${handle}/${column.channel_id}?block=${column.id}`}>
-                <LinkIcon className="size-3" />
-                Permalink
-              </Link>
-            </Button>
-            {isDirty ? (
-              <Button size="sm" onClick={handleSave}>
-                Save
+                <Link href={`/${handle}/${column.channel_id}?block=${column.id}`}>
+                  <LinkIcon className="size-3" />
+                  Permalink
+                </Link>
               </Button>
-            ) : null}
-            {/* Move is owner-only (it removes the block from this channel). */}
-            {isOwner && moveTargets.length > 0 ? (
-              <>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Move to another channel"
-                      disabled={moving}
-                      onPointerEnter={move.warm}
-                      onFocus={move.warm}
-                      onClick={move.show}
-                    >
-                      <FolderInput />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Move to another channel</TooltipContent>
-                </Tooltip>
-                {/* Searchable picker so it scales past a handful of channels. */}
-                {move.mounted ? (
-                  <BlockChannelPicker
-                    open={move.open}
-                    onOpenChange={move.setOpen}
-                    title="Move to channel"
-                    description="Search your channels and move this column to one of them."
-                    channels={moveTargets}
-                    busy={moving}
-                    onPick={handleMove}
-                  />
-                ) : null}
-              </>
-            ) : null}
-            {/* Copy needs only read access to this block, so any signed-in viewer
+              {isDirty ? (
+                <Button size="sm" onClick={handleSave}>
+                  Save
+                </Button>
+              ) : null}
+              {/* Move is owner-only (it removes the block from this channel). */}
+              {isOwner && moveTargets.length > 0 ? (
+                <>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Move to another channel"
+                        disabled={moving}
+                        onPointerEnter={move.warm}
+                        onFocus={move.warm}
+                        onClick={move.show}
+                      >
+                        <FolderInput />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Move to another channel</TooltipContent>
+                  </Tooltip>
+                  {/* Searchable picker so it scales past a handful of channels. */}
+                  {move.mounted ? (
+                    <BlockChannelPicker
+                      open={move.open}
+                      onOpenChange={move.setOpen}
+                      title="Move to channel"
+                      description="Search your channels and move this column to one of them."
+                      channels={moveTargets}
+                      busy={moving}
+                      onPick={handleMove}
+                    />
+                  ) : null}
+                </>
+              ) : null}
+              {/* Copy needs only read access to this block, so any signed-in viewer
                 with a channel of their own to copy into gets it — including on
                 someone else's channel. */}
-            {copyTargets.length > 0 ? (
-              <>
-                <Tooltip>
-                  <TooltipTrigger asChild>
+              {copyTargets.length > 0 ? (
+                <>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Copy to another channel"
+                        disabled={copying}
+                        onPointerEnter={copy.warm}
+                        onFocus={copy.warm}
+                        onClick={copy.show}
+                      >
+                        <Copy />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Copy to one of your channels</TooltipContent>
+                  </Tooltip>
+                  {copy.mounted ? (
+                    <BlockChannelPicker
+                      open={copy.open}
+                      onOpenChange={copy.setOpen}
+                      title="Copy to channel"
+                      description="Search your channels and copy this column into one of them."
+                      channels={copyTargets}
+                      busy={copying}
+                      onPick={handleCopy}
+                    />
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+            {canEdit || isAdmin ? (
+              <div className="flex justify-end border-t pt-2">
+                {canEdit ? (
+                  <>
                     <Button
                       variant="ghost"
-                      size="icon"
-                      aria-label="Copy to another channel"
-                      disabled={copying}
-                      onPointerEnter={copy.warm}
-                      onFocus={copy.warm}
-                      onClick={copy.show}
+                      size="sm"
+                      className="text-destructive-text hover:text-destructive-text"
+                      onPointerEnter={confirmDelete.warm}
+                      onFocus={confirmDelete.warm}
+                      onClick={confirmDelete.show}
                     >
-                      <Copy />
+                      Delete
                     </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Copy to one of your channels</TooltipContent>
-                </Tooltip>
-                {copy.mounted ? (
-                  <BlockChannelPicker
-                    open={copy.open}
-                    onOpenChange={copy.setOpen}
-                    title="Copy to channel"
-                    description="Search your channels and copy this column into one of them."
-                    channels={copyTargets}
-                    busy={copying}
-                    onPick={handleCopy}
+                    {confirmDelete.mounted ? (
+                      <DeleteBlockDialog
+                        open={confirmDelete.open}
+                        onOpenChange={confirmDelete.setOpen}
+                        onConfirm={handleDelete}
+                      />
+                    ) : null}
+                  </>
+                ) : (
+                  <AdminDeleteButton
+                    label="Delete block"
+                    description="Delete this block from a public channel as an admin. This can’t be undone."
+                    size="sm"
+                    onDelete={async () => {
+                      await adminDeleteColumnAction(column.id);
+                      setColumns((cols) => cols.filter((c) => c.id !== column.id));
+                    }}
                   />
-                ) : null}
-              </>
-            ) : null}
-            {canEdit ? (
-              <>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-destructive hover:text-destructive"
-                  onPointerEnter={confirmDelete.warm}
-                  onFocus={confirmDelete.warm}
-                  onClick={confirmDelete.show}
-                >
-                  Delete
-                </Button>
-                {confirmDelete.mounted ? (
-                  <DeleteBlockDialog
-                    open={confirmDelete.open}
-                    onOpenChange={confirmDelete.setOpen}
-                    onConfirm={handleDelete}
-                  />
-                ) : null}
-              </>
-            ) : isAdmin ? (
-              <AdminDeleteButton
-                label="Delete block"
-                description="Delete this block from a public channel as an admin. This can’t be undone."
-                size="sm"
-                onDelete={async () => {
-                  await adminDeleteColumnAction(column.id);
-                  setColumns((cols) => cols.filter((c) => c.id !== column.id));
-                }}
-              />
+                )}
+              </div>
             ) : null}
           </div>
         </div>

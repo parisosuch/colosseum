@@ -49,7 +49,7 @@ export default function YouTubeChannelBlock({
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center">
         <div className="w-1/2 max-w-24">{avatar}</div>
-        <span className="line-clamp-2 min-h-14 max-w-full break-words font-serif text-lg font-medium">
+        <span className="line-clamp-2 min-h-14 max-w-full break-words text-heading">
           {name("size-4")}
         </span>
       </div>

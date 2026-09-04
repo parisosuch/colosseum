@@ -4,6 +4,88 @@ All notable changes to Colosseum are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] - 2026-09-04
+
+### Added
+
+- Blocks can be arranged by hand. Drag a card by its grip, or lift it with the
+  keyboard — space, then the arrow keys — and a channel's order stops being
+  just the order things were added. Channel owners only, and not while a filter
+  or search is narrowing the board.
+- Email addresses are confirmed, and you can change the one on your account
+  from settings. A typo at sign-up used to be permanent: the only way back into
+  the account was an address you didn't own.
+- Notifications can be read one at a time. Opening one marks it read, so the
+  unread count means something and clearing it no longer costs you the ones you
+  were keeping. "Mark all read" is still there.
+- The invite graph can be searched by handle, and names its members on tap and
+  on keyboard focus rather than only on hover — the page used to tell touch
+  users to hover.
+- Explore has an ending. A marker at the bottom, and a retry when a page fails
+  to load, where before a failure looked exactly like reaching the end.
+
+### Changed
+
+- Pinch-zoom works again, everywhere, including on iOS where it had been
+  deliberately overridden.
+- Controls reach a full-size touch target on phones — the tab bar, the
+  notification bell, the buttons in dialogs, the tag editor — without changing
+  how dense things are on a desktop.
+- Banning someone, granting admin, revoking an API token and revoking an invite
+  all ask first. Each names what it's about to act on.
+- The bottom tab bar has labels, shows which tab you're on, spreads its tabs
+  across the full width, and carries notifications.
+- Deleting, revoking and leaving are legible in dark mode. The red they were
+  drawn in sat at 1.98:1 against the background.
+- The "Links" filter matches every kind of link — YouTube, Spotify, GitHub,
+  tweets, Instagram — instead of only plain ones. A channel of videos filtered
+  to Links used to come back empty.
+- The command palette holds its size while you type, and a command you've named
+  outranks a block that happens to contain the word. Typing "settings" and
+  pressing enter goes to settings.
+- Profiles load a page of channels at a time, so a large collection stops
+  sending everything at once. Search and sorting still cover all of it.
+- The search dropdown groups its results into people, channels and columns, the
+  way the command palette already did.
+- Developers and Changelog moved out of the account menu into a footer, where
+  someone who hasn't signed up can find them.
+- A card keeps its title when you hover it. The title used to be replaced by
+  the date.
+
+### Fixed
+
+- "Saved." now appears only when the save landed. A title or description edit
+  that failed reported success, closed, and was gone on reload.
+- The unread count is the real number rather than however many notifications
+  had loaded, and the Unread filter pages through all of them instead of
+  stopping at 30.
+- The invite meter counts what it says it counts. Creating five codes read as
+  "5 of 5 invites used" before anyone had accepted one.
+- Onboarding no longer shows a navigation bar whose every link sends you back
+  to onboarding.
+- An expired password-reset link says so before you choose a new password, not
+  after, and a successful reset lands on sign-in with a confirmation instead of
+  on the signed-out home page.
+- Signing in returns you to the page you were trying to reach.
+- The rules for a handle are on screen while you type it, and availability is
+  checked as you go rather than one submit at a time.
+- The arrow keys keep moving past the fiftieth block, and a block opened from a
+  shared link can be browsed from where it sits.
+- Files can be dropped anywhere on a channel, in both grid and list view, and
+  dragging over it shows where they'll land.
+- On a phone, return adds a newline instead of posting the block.
+- Adding a plain link confirms it, the way adding a video or a track already
+  did. Uploading several files reports how many arrived.
+- Admin settings say when they've saved, and the global limits have their own
+  save button rather than sharing one with the email settings.
+- Loading placeholders match the pages they stand in for, so profiles and
+  channels stop jolting as they finish loading.
+- Play badges appear only where the card actually plays something.
+- Password managers can save and fill credentials, and passwords can be
+  revealed while typing.
+- The browser's chrome follows the app's theme in dark mode, along with
+  scrollbars, dropdown menus and autofilled fields.
+
 ## [1.11.3] - 2026-08-23
 
 ### Fixed

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Play } from "lucide-react";
 
-import { thumbSrc } from "@/lib/utils";
+import { CARD_BADGE_CLASS, CARD_MEDIA_RADIUS, thumbSrc } from "@/lib/utils";
 
 // A video block's card art: the poster frame decoded at upload time, served as
 // a small webp by the same `?thumb` that backs image cards. No <video> element
@@ -19,8 +19,8 @@ export default function VideoPoster({
   image,
   alt,
   priority = false,
-  className = "rounded-lg",
-  iconClassName = "size-4",
+  className = CARD_MEDIA_RADIUS,
+  iconClassName = "size-3",
 }: {
   // Media URL of the video blob (the block's `image` field).
   image: string | null | undefined;
@@ -28,8 +28,8 @@ export default function VideoPoster({
   // Set for the cards that can start above the fold; the rest wait until
   // they're scrolled near, matching how image cards load.
   priority?: boolean;
-  // Corner radius (and anything else) for the media box — the grid and the
-  // preview round differently.
+  // Corner radius (and anything else) for the media box. Both renderers take
+  // the shared default; a caller only passes this to add something to it.
   className?: string;
   iconClassName?: string;
 }) {
@@ -50,11 +50,9 @@ export default function VideoPoster({
       ) : (
         <div className={`h-full w-full bg-muted ${className}`} />
       )}
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-        <span className="rounded-full bg-black/50 p-2 text-white">
-          <Play className={`${iconClassName} fill-current`} />
-        </span>
-      </div>
+      <span className={CARD_BADGE_CLASS}>
+        <Play className={`${iconClassName} fill-current`} />
+      </span>
     </div>
   );
 }

@@ -22,14 +22,29 @@ type ChannelControlsProps = {
   onSortChange: (value: ColumnSort) => void;
 };
 
+// Every option maps onto a set of stored block types (COLUMN_FILTER_TYPES), not
+// onto one: "Links" covers the eight kinds a pasted URL is classified into, so
+// a channel of YouTube links is no longer invisible to its own filter. The
+// options between them reach all twelve types.
 const TYPE_LABELS: Record<ColumnFilter, string> = {
   all: "All types",
   url: "Links",
   text: "Text",
   image: "Images",
+  video: "Video",
+  pdf: "PDFs",
+  channel: "Channels",
 };
 
+// "Manual" is the channel's own arrangement, and the only mode blocks can be
+// dragged in — a drag under any of the other four would be undone by the next
+// read, since those orders are computed from the block rather than stored.
+// Key order is the order of the menu, and manual leads it because it is the
+// board's default: a channel nobody has rearranged reads exactly as "Newest"
+// did, and one that has been arranged shows that arrangement to every visitor
+// rather than only to the person who made it.
 const SORT_LABELS: Record<ColumnSort, string> = {
+  manual: "Manual",
   newest: "Newest",
   oldest: "Oldest",
   title_az: "Title A–Z",

@@ -9,6 +9,8 @@ import {
   deleteColumn,
   getChannelColumns,
   getColumn,
+  moveColumn,
+  reorderColumn,
   searchColumns,
   updateColumnDescription,
   updateColumnTags,
@@ -230,4 +232,133 @@ test("searchColumns ranks title over tag over description over text over url", a
 
   const hits = await searchColumns(USERS.alice.id, "ceramics");
   expect(hits.map((c) => c.id)).toEqual([titled.id, tagged.id, described.id, texted.id, urled.id]);
+});
+
+// ---------------------------------------------------------------------------
+// Manual order
+// ---------------------------------------------------------------------------
+
+test("a new block is added at the top of the channel's manual order", async () => {
+  const ch = await createChannel({ title: "Manual", access: "public", owner_id: USERS.alice.id });
+  const mk = (text: string) =>
+    uploadTextColumn({ created_by: USERS.alice.id, channel_id: ch.id, text });
+
+  const first = await mk("one");
+  const second = await mk("two");
+  const third = await mk("three");
+
+  // Manual starts out reading the same as the default sort, so switching to it
+  // on a channel nobody has arranged looks like nothing happened.
+  const manual = await getChannelColumns(ch.id, { sort: "manual" });
+  expect(manual.map((c) => c.id)).toEqual([third.id, second.id, first.id]);
+  expect(manual.map((c) => c.id)).toEqual(
+    (await getChannelColumns(ch.id, { sort: "newest" })).map((c) => c.id),
+  );
+});
+
+test("reorderColumn places a block after the one it names, and only moves that row", async () => {
+  const ch = await createChannel({ title: "Drag", access: "public", owner_id: USERS.alice.id });
+  const mk = (text: string) =>
+    uploadTextColumn({ created_by: USERS.alice.id, channel_id: ch.id, text });
+
+  // Added oldest first, so manual order is d, c, b, a.
+  const a = await mk("a");
+  const b = await mk("b");
+  const c = await mk("c");
+  const d = await mk("d");
+
+  expect(await reorderColumn(a.id, d.id)).not.toBeNull();
+  expect((await getChannelColumns(ch.id, { sort: "manual" })).map((x) => x.id)).toEqual([
+    d.id,
+    a.id,
+    c.id,
+    b.id,
+  ]);
+
+  // A null anchor is the head of the channel.
+  await reorderColumn(b.id, null);
+  expect((await getChannelColumns(ch.id, { sort: "manual" })).map((x) => x.id)).toEqual([
+    b.id,
+    d.id,
+    a.id,
+    c.id,
+  ]);
+
+  // And the end of the channel is naming the block currently last.
+  await reorderColumn(d.id, c.id);
+  expect((await getChannelColumns(ch.id, { sort: "manual" })).map((x) => x.id)).toEqual([
+    b.id,
+    a.id,
+    c.id,
+    d.id,
+  ]);
+});
+
+test("a reorder that names a stale or foreign anchor is a not-found, not a throw", async () => {
+  const mine = await createChannel({ title: "Mine", access: "public", owner_id: USERS.alice.id });
+  const other = await createChannel({ title: "Other", access: "public", owner_id: USERS.bob.id });
+  const block = await uploadTextColumn({
+    created_by: USERS.alice.id,
+    channel_id: mine.id,
+    text: "x",
+  });
+  const elsewhere = await uploadTextColumn({
+    created_by: USERS.bob.id,
+    channel_id: other.id,
+    text: "y",
+  });
+
+  expect(await reorderColumn(-1, null)).toBeNull();
+  expect(await reorderColumn(block.id, -1)).toBeNull();
+  // An anchor in another channel would place the block against a key from a
+  // different channel's number line, which orders against nothing.
+  expect(await reorderColumn(block.id, elsewhere.id)).toBeNull();
+  // Dropping a block on itself is where it already is.
+  expect(await reorderColumn(block.id, block.id)).not.toBeNull();
+});
+
+test("repeatedly dropping a block into the same gap keeps the order intact", async () => {
+  const ch = await createChannel({ title: "Split", access: "public", owner_id: USERS.alice.id });
+  const mk = (text: string) =>
+    uploadTextColumn({ created_by: USERS.alice.id, channel_id: ch.id, text });
+
+  const top = await mk("top");
+  const bottom = await mk("bottom");
+  const movers = [];
+  for (let i = 0; i < 12; i++) {
+    movers.push(await mk(`m${i}`));
+  }
+
+  // Every one of them dropped into the same gap, which is the shape that eats
+  // precision in a numeric index. Here it costs key length and nothing else.
+  for (const mover of movers) {
+    await reorderColumn(mover.id, bottom.id);
+  }
+
+  const order = (await getChannelColumns(ch.id, { sort: "manual" })).map((x) => x.id);
+  // Each drop lands directly after `bottom`, so the anchor ends up first, the
+  // movers follow it in reverse order of when they were dropped, and `top` —
+  // never touched — is still last.
+  expect(order[0]).toBe(bottom.id);
+  expect(order.slice(1, -1)).toEqual([...movers].reverse().map((m) => m.id));
+  expect(order[order.length - 1]).toBe(top.id);
+  expect(new Set(order).size).toBe(order.length);
+});
+
+test("a block moved to another channel is placed in the new channel, not the old one", async () => {
+  const from = await createChannel({ title: "From", access: "public", owner_id: USERS.alice.id });
+  const to = await createChannel({ title: "To", access: "public", owner_id: USERS.alice.id });
+  const mk = (channel_id: number, text: string) =>
+    uploadTextColumn({ created_by: USERS.alice.id, channel_id, text });
+
+  await mk(to.id, "already here");
+  const sitting = await mk(to.id, "also here");
+  const travelling = await mk(from.id, "moving");
+
+  await moveColumn(travelling.id, to.id);
+  const order = (await getChannelColumns(to.id, { sort: "manual" })).map((x) => x.id);
+  // It arrives at the head, like anything else newly added to that channel —
+  // its old key ordered it against blocks it no longer sits with.
+  expect(order[0]).toBe(travelling.id);
+  expect(order[1]).toBe(sitting.id);
 });

@@ -17,8 +17,11 @@ export default async function OnboardingPage() {
     redirect(`/${userProfile.handle}`);
   }
 
+  // Same slot classes as login and sign-up: onboarding renders inside the hero
+  // frame, which supplies the padding and centering itself, so the panel lands
+  // where the step before it did instead of shifting mid-flow.
   return (
-    <div className="flex flex-1 w-full items-center justify-center p-6 md:p-10">
+    <div className="flex flex-1 justify-center md:justify-start">
       <div className="w-full max-w-sm">
         <OnboardingForm />
       </div>

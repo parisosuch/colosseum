@@ -138,7 +138,7 @@ export default function ManageChannelButton({
                   <AccessSelect value={access} onChange={setAccess} idPrefix="edit-access" />
                 </div>
               </div>
-              {error && <p className="text-sm text-red-500">{error}</p>}
+              {error && <p className="text-sm text-destructive-text">{error}</p>}
               <Button type="submit" disabled={isLoading}>
                 {isLoading ? "Saving..." : "Save changes"}
               </Button>
@@ -160,7 +160,10 @@ export default function ManageChannelButton({
             <div className="border-t pt-4">
               <Button
                 variant="outline"
-                className="w-full border-destructive bg-transparent text-destructive shadow-none hover:bg-destructive/10 hover:text-destructive"
+                // Red type on a transparent ground, so the label takes
+                // --destructive-text (contrast-picked for the page background)
+                // while the border and hover wash stay on the fill color.
+                className="w-full border-destructive bg-transparent text-destructive-text shadow-none hover:bg-destructive/10 hover:text-destructive-text"
                 onClick={() => {
                   setError(null);
                   setView("confirmDelete");
@@ -177,7 +180,7 @@ export default function ManageChannelButton({
             <DialogDescription>
               This permanently deletes the channel and all of its blocks. This can’t be undone.
             </DialogDescription>
-            {error && <p className="text-sm text-red-500">{error}</p>}
+            {error && <p className="text-sm text-destructive-text">{error}</p>}
             <div className="flex justify-end gap-2">
               <Button variant="outline" disabled={isDeleting} onClick={() => setView("manage")}>
                 Cancel

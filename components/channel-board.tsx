@@ -1,7 +1,8 @@
 "use client";
 
 import PageHeader from "@/components/page-header";
-import ColumnComponent, { LIST_GRID } from "@/components/column";
+import ColumnComponent, { LIST_GRID, REORDER_HELP_ID } from "@/components/column";
+import { useBlockReorder } from "@/components/use-block-reorder";
 import BlockModal from "@/components/block-modal";
 import { useNeighbourPrefetch } from "@/components/block-prefetch";
 import ConnectChannelButton from "@/components/connect-channel-button";
@@ -12,13 +13,14 @@ import ChannelMembersBar from "@/components/channel-members-bar";
 import ExportChannelButton from "@/components/export-channel-button";
 import AdminDeleteButton from "@/components/admin-delete-button";
 import { ViewToggle } from "@/components/view-toggle";
-import { PAGE_SIZE } from "@/lib/pagination";
+import { PAGE_SIZE, SKELETON_COUNT } from "@/lib/pagination";
 import { SCREENSHOT_MAX_ATTEMPTS, nextScreenshotPoll, whenVisible } from "@/lib/screenshot-poll";
-import ColumnInput from "@/components/column-input";
+import ColumnInput, { ColumnUploadProgress, useColumnUpload } from "@/components/column-input";
 import ChannelControls from "@/components/channel-controls";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { GradientSpin } from "@/components/gradient-spin";
 import type { Channel } from "@/lib/colosseum/channel";
 import type { ChannelMember } from "@/lib/colosseum/member";
@@ -26,16 +28,16 @@ import type { Column, ColumnFilter, ColumnSort } from "@/lib/colosseum/column";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import {
   adminDeleteChannelAction,
+  getChannelColumnCountAction,
   getChannelColumnsAction,
+  getColumnNeighboursAction,
   getScreenshotsForUrlsAction,
+  reorderColumnAction,
 } from "@/lib/colosseum/actions";
-import { Plus } from "lucide-react";
+import { Plus, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-
-// Placeholder tiles shown while the first page loads — a few rows' worth.
-const SKELETON_COUNT = 18;
 
 // How many cards load their thumbnail eagerly; the rest are lazy and wait until
 // they're scrolled near. The grid tops out at six columns (2xl), so six covers
@@ -53,22 +55,41 @@ function BlockSkeleton({ view }: { view: "grid" | "list" }) {
     return (
       <div className={`border-b px-2 py-2 ${LIST_GRID}`}>
         <div className="flex items-center gap-2">
-          <div className="size-10 shrink-0 rounded-md bg-muted animate-pulse" />
-          <div className="h-4 w-2/3 rounded bg-muted animate-pulse" />
+          <Skeleton className="size-10 shrink-0" />
+          <Skeleton className="h-4 w-2/3" />
         </div>
-        <div className="h-4 w-1/2 rounded bg-muted animate-pulse" />
-        <div className="hidden h-4 w-2/3 rounded bg-muted animate-pulse sm:block" />
-        <div className="hidden h-3 w-1/2 rounded bg-muted animate-pulse sm:block" />
+        <Skeleton className="h-4 w-1/2" />
+        <Skeleton className="hidden h-4 w-2/3 sm:block" />
+        <Skeleton className="hidden h-3 w-1/2 sm:block" />
       </div>
     );
   }
   return (
     <div className="w-full">
-      <div className="w-full aspect-square border rounded-lg bg-muted animate-pulse" />
-      <p className="pt-1 text-xs">
-        <span className="inline-block h-3 w-2/3 rounded bg-muted align-middle animate-pulse" />
-      </p>
+      {/* rounded-lg rather than the Skeleton default, so the placeholder tile
+          has the same corner as the real card it stands in for. */}
+      <Skeleton className="w-full aspect-square border rounded-lg" />
+      {/* Two caption lines, matching a real card's title + timestamp. The
+          wrappers are divs, not <p>: Skeleton renders a div, which a paragraph
+          may not contain, and all these carry is the caption line-height. */}
+      <div className="pt-1 text-xs">
+        <Skeleton className="inline-block h-3 w-2/3 align-middle" />
+      </div>
+      <div className="text-xs">
+        <Skeleton className="inline-block h-3 w-1/3 align-middle" />
+      </div>
     </div>
+  );
+}
+
+// Nothing to show. Distinguishes an empty channel from a filter that matched
+// nothing — the second is a control the viewer can undo, and in list view both
+// used to render as a bare table header over no rows.
+function EmptyBlocks({ filtered }: { filtered: boolean }) {
+  return (
+    <p className="py-8 text-center text-muted-foreground">
+      {filtered ? "No blocks match this search or filter." : "No blocks yet."}
+    </p>
   );
 }
 
@@ -160,13 +181,19 @@ export default function ChannelBoard({
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<ColumnFilter>("all");
-  const [sort, setSort] = useState<ColumnSort>("newest");
+  // Matches the sort the page server-rendered `initialColumns` with, or the
+  // mount effect would immediately refetch the page already on screen.
+  const [sort, setSort] = useState<ColumnSort>("manual");
 
   // Paging state for the current control selection. Seeded from the
   // server-rendered first page, so nothing loads on mount.
   const [loadingPage, setLoadingPage] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(initialColumns.length === PAGE_SIZE);
+  // How many blocks the current search/filter matches, channel-wide. Null while
+  // nothing is filtered (the answer is then the channel's own length) and while
+  // the count for a new selection is still in flight.
+  const [filteredCount, setFilteredCount] = useState<number | null>(null);
 
   // Grid (square cards) vs list (Are.na-style table) layout for the block area.
   const [view, setView] = useState<"grid" | "list">("grid");
@@ -177,10 +204,23 @@ export default function ChannelBoard({
   // Seeded from the `?block=` deep link so a shared URL opens straight into it.
   const [openId, setOpenId] = useState<number | null>(initialBlock?.id ?? null);
   const openBlock = useCallback((id: number) => setOpenId(id), []);
-  // The deep-linked block may sit past the first page, so it isn't in `columns`
-  // and can't be found there. Keep it as a standalone fallback until the user
-  // opens something else.
-  const deepLinked = openId != null && openId === initialBlock?.id ? initialBlock : null;
+
+  // A block being read that the board hasn't loaded: the `?block=` deep link
+  // when it points past the first page, and whatever the arrows step to from
+  // there. Its neighbours can't come from `columns` — it isn't in it — so they
+  // are resolved against the whole channel below.
+  const [detached, setDetached] = useState<Column | null>(initialBlock);
+  const [detachedSiblings, setDetachedSiblings] = useState<{
+    prev: Column | null;
+    next: Column | null;
+  }>({ prev: null, next: null });
+
+  const openIndex = openId == null ? -1 : columns.findIndex((c) => c.id === openId);
+  // The detached block is only authoritative while it really is absent from
+  // `columns`: step back into the loaded prefix and ordinary index navigation
+  // takes over again.
+  const detachedColumn =
+    openIndex < 0 && openId != null && detached?.id === openId ? detached : null;
 
   // URLs whose screenshot is being captured in the background. The hydrate
   // effect skips these so the row keeps showing a spinner (instead of resolving
@@ -198,6 +238,14 @@ export default function ChannelBoard({
   // this to re-run the hydrate effect, either off a timer or when a hidden tab
   // comes back.
   const [pollTick, setPollTick] = useState(0);
+
+  // Which blocks need a screenshot resolved. The loaded ones, plus a detached
+  // block being read: it isn't in `columns`, so without this a link block
+  // arrived at by arrowing past the loaded page shows an empty preview frame.
+  const screenshotTargets = useMemo(
+    () => (detachedColumn ? [...columns, detachedColumn] : columns),
+    [columns, detachedColumn],
+  );
 
   const metaData = useMemo(() => {
     let lastModified = "-";
@@ -224,9 +272,13 @@ export default function ChannelBoard({
   // into `columns`. Any later control change still refetches.
   const skipInitialFetch = useRef(true);
 
+  // Whether the board is showing a subset of the channel. Sort doesn't narrow
+  // anything, so it isn't part of this.
+  const isFiltered = debouncedSearch.trim() !== "" || typeFilter !== "all";
+
   // Load (or reload) the first page whenever the channel or any control changes.
-  // The previous list stays on screen until the new one resolves, so changing a
-  // control doesn't flash an empty grid.
+  // The previous list stays on screen until the new one resolves — the grid dims
+  // rather than emptying — so changing a control doesn't flash a blank board.
   useEffect(() => {
     if (skipInitialFetch.current) {
       skipInitialFetch.current = false;
@@ -235,18 +287,27 @@ export default function ChannelBoard({
 
     let cancelled = false;
     setLoadingPage(true);
+    setFilteredCount(null);
     (async () => {
       try {
-        const first = await getChannelColumnsAction(channel.id, {
-          search: debouncedSearch,
-          type: typeFilter,
-          sort,
-          limit: PAGE_SIZE,
-          offset: 0,
-        });
+        // The count is what the controls report; it's a separate query because
+        // the page is capped at PAGE_SIZE and can't answer "how many matched".
+        const [first, matched] = await Promise.all([
+          getChannelColumnsAction(channel.id, {
+            search: debouncedSearch,
+            type: typeFilter,
+            sort,
+            limit: PAGE_SIZE,
+            offset: 0,
+          }),
+          isFiltered
+            ? getChannelColumnCountAction(channel.id, { search: debouncedSearch, type: typeFilter })
+            : Promise.resolve(null),
+        ]);
         if (cancelled) return;
         setColumns(first);
         setHasMore(first.length === PAGE_SIZE);
+        setFilteredCount(matched);
       } catch (e) {
         console.error(e);
         if (!cancelled) toast.error("Failed to load columns.");
@@ -258,7 +319,7 @@ export default function ChannelBoard({
     return () => {
       cancelled = true;
     };
-  }, [channel.id, debouncedSearch, typeFilter, sort]);
+  }, [channel.id, debouncedSearch, typeFilter, sort, isFiltered]);
 
   // Append the next page. Offset is the count already loaded.
   const loadMore = useCallback(async () => {
@@ -316,7 +377,7 @@ export default function ChannelBoard({
   // query instead of each ColumnComponent fetching its own. Runs as pages
   // append; only URLs not already resolved are fetched.
   useEffect(() => {
-    const missing = columns
+    const missing = screenshotTargets
       .filter((c) => c.type === "url" && c.url && !screenshots.has(c.url) && !capturing.has(c.url))
       .map((c) => c.url!);
 
@@ -407,7 +468,7 @@ export default function ChannelBoard({
       stopWaiting?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- pollTick only retriggers the effect; it's not read inside.
-  }, [columns, screenshots, capturing, pollTick]);
+  }, [screenshotTargets, screenshots, capturing, pollTick]);
 
   // A new block is the newest and bumps the channel length; reflect that in the
   // stats without refetching the whole channel.
@@ -417,6 +478,55 @@ export default function ChannelBoard({
     // Close the table view's add-block modal.
     setAdding(false);
   }, []);
+
+  // One upload path for the whole board: the input tile, the list view's
+  // add-block dialog, and the board-wide drop target below all feed it, so a
+  // file lands the same way wherever it was let go.
+  const uploader = useColumnUpload({
+    user,
+    channel,
+    setColumns,
+    onBlockAdded: handleBlockAdded,
+  });
+
+  // Dragging files anywhere over the board. Counted, not a boolean: dragenter
+  // and dragleave fire for every element the pointer crosses, so a plain flag
+  // clears itself the moment the drag passes over a card.
+  const dragDepth = useRef(0);
+  const [dragging, setDragging] = useState(false);
+
+  // Only file drags — dragging selected text across the page shouldn't put a
+  // "drop to upload" sheet over the channel.
+  const isFileDrag = (e: React.DragEvent) => e.dataTransfer.types.includes("Files");
+
+  const boardDragProps = canContribute
+    ? {
+        onDragEnter: (e: React.DragEvent) => {
+          if (!isFileDrag(e)) return;
+          dragDepth.current += 1;
+          setDragging(true);
+        },
+        onDragOver: (e: React.DragEvent) => {
+          if (!isFileDrag(e)) return;
+          // Without this the browser navigates away to the dropped file.
+          e.preventDefault();
+        },
+        onDragLeave: (e: React.DragEvent) => {
+          if (!isFileDrag(e)) return;
+          // No relatedTarget means the drag left the window rather than moving
+          // onto another element, and there'll be no matching enter to balance.
+          dragDepth.current = e.relatedTarget === null ? 0 : Math.max(0, dragDepth.current - 1);
+          if (dragDepth.current === 0) setDragging(false);
+        },
+        onDrop: (e: React.DragEvent) => {
+          if (!isFileDrag(e)) return;
+          e.preventDefault();
+          dragDepth.current = 0;
+          setDragging(false);
+          if (e.dataTransfer.files?.length) void uploader.uploadFiles(e.dataTransfer.files);
+        },
+      }
+    : {};
 
   const beginCapture = useCallback((url: string) => {
     setCapturing((prev) => new Set(prev).add(url));
@@ -449,25 +559,116 @@ export default function ChannelBoard({
     });
   }, []);
 
-  // Step the open modal to an adjacent block. Clamps at the ends.
+  const openColumn = openIndex >= 0 ? columns[openIndex] : detachedColumn;
+
+  const hasPrev = detachedColumn ? detachedSiblings.prev != null : openIndex > 0;
+  // Past the last loaded block there can still be more of the channel. The
+  // arrow stays live and fetches the next page, instead of dead-ending at
+  // whatever the last scroll happened to load.
+  const hasNext = detachedColumn
+    ? detachedSiblings.next != null
+    : openIndex >= 0 && (openIndex < columns.length - 1 || hasMore);
+
+  // Set when Next ran out of loaded blocks: the step is owed until the page it
+  // asked for lands.
+  const [pendingNext, setPendingNext] = useState(false);
+
+  // Step the open modal to an adjacent block. Clamps at the ends of the channel
+  // (not at the end of what's loaded, and not at a deep-linked block's own id).
   const navigate = useCallback(
     (dir: -1 | 1) => {
-      setOpenId((cur) => {
-        if (cur == null) return cur;
-        const i = columns.findIndex((c) => c.id === cur);
-        return columns[i + dir]?.id ?? cur;
-      });
+      if (detachedColumn) {
+        const target = dir === 1 ? detachedSiblings.next : detachedSiblings.prev;
+        if (!target) return;
+        setDetached(target);
+        setOpenId(target.id);
+        return;
+      }
+      if (openIndex < 0) return;
+      const target = columns[openIndex + dir];
+      if (target) {
+        setOpenId(target.id);
+      } else if (dir === 1 && hasMore) {
+        setPendingNext(true);
+        void loadMore();
+      }
     },
-    [columns],
+    [columns, openIndex, detachedColumn, detachedSiblings, hasMore, loadMore],
   );
 
-  const openIndex = openId == null ? -1 : columns.findIndex((c) => c.id === openId);
-  // Falls back to the deep-linked block when it isn't in the loaded page. There
-  // are no siblings to step to in that case, so the arrows stay off until the
-  // user scrolls far enough for it to join `columns`.
-  const openColumn = openIndex >= 0 ? columns[openIndex] : deepLinked;
-  const hasPrev = openIndex > 0;
-  const hasNext = openIndex >= 0 && openIndex < columns.length - 1;
+  // The page Next asked for has landed (or the request went nowhere): take the
+  // owed step, or drop it. The modal covers the infinite-scroll sentinel, so
+  // this is the only thing that pages a channel while a block is open.
+  useEffect(() => {
+    if (!pendingNext || loadingMore) return;
+    const i = openId == null ? -1 : columns.findIndex((c) => c.id === openId);
+    const target = i >= 0 ? columns[i + 1] : undefined;
+    if (target) setOpenId(target.id);
+    setPendingNext(false);
+  }, [pendingNext, loadingMore, columns, openId]);
+
+  // Resolve a detached block's neighbours against the whole channel, in the
+  // order the board is currently showing. Without this a shared `?block=` link
+  // to anything past the first page opens with both arrows dead.
+  useEffect(() => {
+    const id = detachedColumn?.id;
+    if (id == null) return;
+
+    let cancelled = false;
+    setDetachedSiblings({ prev: null, next: null });
+    (async () => {
+      try {
+        const siblings = await getColumnNeighboursAction(channel.id, id, {
+          search: debouncedSearch,
+          type: typeFilter,
+          sort,
+        });
+        if (!cancelled) setDetachedSiblings(siblings);
+      } catch (e) {
+        console.error(e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [detachedColumn?.id, channel.id, debouncedSearch, typeFilter, sort]);
+
+  // Whether blocks can be dragged into a new order right now. Three conditions,
+  // each answering a question the feature can't dodge:
+  //
+  //  - `isOwner`: a block's place is stored on its row, so one person's reorder
+  //    rearranges the board for everyone. That is the channel's arrangement,
+  //    not the viewer's, so it follows ownership rather than the contributor
+  //    rule that governs adding blocks. The action enforces the same thing; this
+  //    only decides whether to draw the handles.
+  //  - `sort === "manual"`: every other sort is computed from the block itself,
+  //    so a drag under "Title A–Z" would be undone by the next read.
+  //  - `!isFiltered`: dragging card 3 above card 1 in a filtered grid is
+  //    ambiguous, because the blocks the filter hid still sit between them and
+  //    the drop can't say which side of those it means. The order shown is real
+  //    either way — it just can't be edited through a partial view.
+  const canReorder = isOwner && sort === "manual" && !isFiltered;
+
+  // The element the cards are in, so the reorder hook can measure them. One ref
+  // for both views; it reads `[data-column-id]`, so the grid's add-block tile
+  // and the list's header row are simply not cards.
+  const blockAreaRef = useRef<HTMLDivElement | null>(null);
+
+  const blockLabel = useCallback((c: Column) => c.title || c.url || "Untitled block", []);
+  const commitReorder = useCallback(async (id: number, afterId: number | null) => {
+    await reorderColumnAction(id, afterId);
+  }, []);
+
+  const reorder = useBlockReorder<Column>({
+    enabled: canReorder,
+    containerRef: blockAreaRef,
+    items: columns,
+    setItems: setColumns,
+    axis: view === "list" ? "vertical" : "horizontal",
+    label: blockLabel,
+    commit: commitReorder,
+  });
 
   // Warm the blocks either side of the open one — their media and their comment
   // thread — so stepping with ← / → arrives on something already loaded. Inert
@@ -475,14 +676,14 @@ export default function ChannelBoard({
   useNeighbourPrefetch(columns, openIndex, screenshots);
 
   // If the open block leaves the list (deleted, or filtered out by a control
-  // change), close the modal instead of stranding it on a gone block. The
-  // deep-linked block is exempt — it legitimately isn't in `columns` when it
-  // sits past the first page, and closing it would defeat the whole deep link.
+  // change), close the modal instead of stranding it on a gone block. A
+  // detached block is exempt — it legitimately isn't in `columns` when it sits
+  // past the first page, and closing it would defeat the whole deep link.
   useEffect(() => {
-    if (openId != null && openId !== initialBlock?.id && !columns.some((c) => c.id === openId)) {
+    if (openId != null && openId !== detached?.id && !columns.some((c) => c.id === openId)) {
       setOpenId(null);
     }
-  }, [columns, openId, initialBlock?.id]);
+  }, [columns, openId, detached?.id]);
 
   // Keep the URL in step with the modal, so a permalink can be copied from the
   // address bar and Back closes the modal rather than leaving the channel.
@@ -525,7 +726,20 @@ export default function ChannelBoard({
   }, []);
 
   return (
-    <div className="w-full p-6 sm:p-12 space-y-8">
+    <div className="relative w-full p-6 sm:p-12 space-y-8" {...boardDragProps}>
+      {/* Drop anywhere. The input tile is one cell of the grid and isn't on the
+          page at all in list view, so a drag from outside the browser used to
+          have a 2.5%-of-the-board target and no feedback until it found it. */}
+      {dragging ? (
+        <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-background/85 p-6">
+          <div className="flex flex-col items-center gap-3 rounded-lg border-2 border-dashed px-10 py-8 text-center">
+            <Upload className="size-8 text-muted-foreground" />
+            <p className="text-lg font-medium">Drop to add blocks</p>
+            <p className="text-caption">Images, videos, PDFs and Markdown files.</p>
+          </div>
+        </div>
+      ) : null}
+      <ColumnUploadProgress uploader={uploader} />
       <PageHeader crumbs={[{ label: handle, href: `/${handle}` }, { label: channel.title }]} />
       <div className="flex items-center gap-2">
         {isOwner ? (
@@ -592,42 +806,136 @@ export default function ChannelBoard({
       </div>
 
       {totalCount > 0 ? (
-        <ChannelControls
-          search={search}
-          onSearchChange={setSearch}
-          type={typeFilter}
-          onTypeChange={setTypeFilter}
-          sort={sort}
-          onSortChange={setSort}
-        />
+        <div className="flex flex-col gap-2">
+          <ChannelControls
+            search={search}
+            onSearchChange={setSearch}
+            type={typeFilter}
+            onTypeChange={setTypeFilter}
+            sort={sort}
+            onSortChange={setSort}
+          />
+          {/* What the controls actually selected. The Meta panel's Length is the
+              channel's, and stays the channel's; a search matching three blocks
+              used to report the other four hundred and nothing else. */}
+          <p className="text-caption" aria-live="polite">
+            {loadingPage ? (
+              <span className="inline-flex items-center gap-2">
+                <GradientSpin cellSize={3} />
+                Loading…
+              </span>
+            ) : isFiltered ? (
+              `${filteredCount ?? columns.length} of ${totalCount} blocks`
+            ) : (
+              `${totalCount} blocks`
+            )}
+          </p>
+          {/* Manual sort is selected but the board can't be arranged. Saying
+              which of the two reasons applies is the difference between "this
+              is broken" and "clear the search". */}
+          {isOwner && sort === "manual" && isFiltered ? (
+            <p className="text-caption">
+              Clear the search and type filter to rearrange blocks — a drop inside a partial view
+              can’t say where it lands.
+            </p>
+          ) : null}
+        </div>
       ) : null}
+
+      {/* Read out when a block is lifted, moved and dropped. Assertive because
+          a move only exists as a change of position: with nothing announced,
+          the arrow key does nothing a screen reader can report. */}
+      <p aria-live="assertive" aria-atomic="true" className="sr-only">
+        {reorder.message}
+      </p>
+      <p id={REORDER_HELP_ID} className="sr-only">
+        Press space to lift this block, the arrow keys to move it, space again to drop it, and
+        escape to put it back.
+      </p>
 
       {!canContribute && totalCount === 0 ? (
         <p className="text-muted-foreground">No columns yet.</p>
       ) : (
         <>
-          {view === "list" ? (
-            // Table view: the block input collapses behind an "Add block"
-            // button, then a plain header + full-width rows (see column.tsx).
-            <div className="flex flex-col gap-2">
-              {canContribute ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-fit"
-                  onClick={() => setAdding(true)}
-                >
-                  <Plus />
-                  Add column
-                </Button>
-              ) : null}
-              <div>
-                <div className={`border-b px-2 py-2 text-label ${LIST_GRID}`}>
-                  <span>Content</span>
-                  <span>Title</span>
-                  <span className="hidden sm:block">Author</span>
-                  <span className="hidden sm:block">Added at</span>
+          {/* The list on screen belongs to the previous selection until the new
+              one lands: dimmed and inert rather than cleared, so a control
+              change neither flashes an empty board nor reads as finished. */}
+          <div
+            ref={blockAreaRef}
+            aria-busy={loadingPage}
+            className={
+              loadingPage && columns.length > 0
+                ? "pointer-events-none opacity-50 transition-opacity"
+                : "transition-opacity"
+            }
+          >
+            {view === "list" ? (
+              // Table view: the block input collapses behind an "Add block"
+              // button, then a plain header + full-width rows (see column.tsx).
+              <div className="flex flex-col gap-2">
+                {canContribute ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-fit"
+                    onClick={() => setAdding(true)}
+                  >
+                    <Plus />
+                    Add column
+                  </Button>
+                ) : null}
+                <div>
+                  {/* No header over an empty table — that reads as a rendering
+                      failure rather than as "there is nothing here". */}
+                  {columns.length === 0 && !loadingPage ? (
+                    <EmptyBlocks filtered={isFiltered} />
+                  ) : (
+                    <>
+                      <div className={`border-b px-2 py-2 text-label ${LIST_GRID}`}>
+                        <span>Content</span>
+                        <span>Title</span>
+                        <span className="hidden sm:block">Author</span>
+                        <span className="hidden sm:block">Added at</span>
+                      </div>
+                      {loadingPage && columns.length === 0
+                        ? Array.from({ length: SKELETON_COUNT }).map((_, i) => (
+                            <BlockSkeleton view={view} key={i} />
+                          ))
+                        : columns.map((column, i) => (
+                            <ColumnComponent
+                              column={column}
+                              screenshot={column.url ? screenshots.get(column.url) : undefined}
+                              view={view}
+                              author={handle}
+                              onOpen={openBlock}
+                              priority={i < EAGER_LIST_THUMBS}
+                              reorderable={canReorder}
+                              reorderActive={reorder.activeId === column.id}
+                              reorderLifted={reorder.lifted}
+                              onReorderPointerDown={reorder.onHandlePointerDown}
+                              onReorderKeyDown={reorder.onHandleKeyDown}
+                              onReorderBlur={reorder.onHandleBlur}
+                              key={column.id}
+                            />
+                          ))}
+                    </>
+                  )}
                 </div>
+              </div>
+            ) : (
+              <div className="grid items-start gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+                {canContribute ? (
+                  <ColumnInput
+                    user={user}
+                    columns={columns}
+                    setColumns={setColumns}
+                    channel={channel}
+                    onBlockAdded={handleBlockAdded}
+                    uploader={uploader}
+                    onScreenshotStart={beginCapture}
+                    onScreenshotReady={refreshScreenshot}
+                  />
+                ) : null}
                 {loadingPage && columns.length === 0
                   ? Array.from({ length: SKELETON_COUNT }).map((_, i) => (
                       <BlockSkeleton view={view} key={i} />
@@ -637,45 +945,27 @@ export default function ChannelBoard({
                         column={column}
                         screenshot={column.url ? screenshots.get(column.url) : undefined}
                         view={view}
-                        author={handle}
                         onOpen={openBlock}
-                        priority={i < EAGER_LIST_THUMBS}
+                        // The add-block tile takes the first cell when it's there,
+                        // pushing one block out of the top row.
+                        priority={i < EAGER_GRID_THUMBS - (canContribute ? 1 : 0)}
+                        reorderable={canReorder}
+                        reorderActive={reorder.activeId === column.id}
+                        reorderLifted={reorder.lifted}
+                        onReorderPointerDown={reorder.onHandlePointerDown}
+                        onReorderKeyDown={reorder.onHandleKeyDown}
+                        onReorderBlur={reorder.onHandleBlur}
                         key={column.id}
                       />
                     ))}
               </div>
-            </div>
-          ) : (
-            <div className="grid items-start gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-              {canContribute ? (
-                <ColumnInput
-                  user={user}
-                  columns={columns}
-                  setColumns={setColumns}
-                  channel={channel}
-                  onBlockAdded={handleBlockAdded}
-                  onScreenshotStart={beginCapture}
-                  onScreenshotReady={refreshScreenshot}
-                />
-              ) : null}
-              {loadingPage && columns.length === 0
-                ? Array.from({ length: SKELETON_COUNT }).map((_, i) => (
-                    <BlockSkeleton view={view} key={i} />
-                  ))
-                : columns.map((column, i) => (
-                    <ColumnComponent
-                      column={column}
-                      screenshot={column.url ? screenshots.get(column.url) : undefined}
-                      view={view}
-                      onOpen={openBlock}
-                      // The add-block tile takes the first cell when it's there,
-                      // pushing one block out of the top row.
-                      priority={i < EAGER_GRID_THUMBS - (canContribute ? 1 : 0)}
-                      key={column.id}
-                    />
-                  ))}
-            </div>
-          )}
+            )}
+            {/* The grid's own empty state sits under the input tile, which stays
+                available to add the first block. */}
+            {view === "grid" && columns.length === 0 && !loadingPage ? (
+              <EmptyBlocks filtered={isFiltered} />
+            ) : null}
+          </div>
           {/* Infinite-scroll sentinel + load-more spinner. */}
           <div ref={sentinelRef} className="h-1" />
           {loadingMore ? (
@@ -718,6 +1008,7 @@ export default function ChannelBoard({
             setColumns={setColumns}
             channel={channel}
             onBlockAdded={handleBlockAdded}
+            uploader={uploader}
             onScreenshotStart={beginCapture}
             onScreenshotReady={refreshScreenshot}
           />

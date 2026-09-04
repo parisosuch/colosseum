@@ -4,6 +4,7 @@ import { unreadNotificationCount } from "@/lib/colosseum/notification";
 import { getSessionUser } from "@/lib/auth";
 import { ArrowRight, Bell } from "lucide-react";
 import Link from "next/link";
+import { Button } from "./ui/button";
 import { AddBlockModal } from "./add-block-modal";
 import CommandPalette from "./command-palette";
 import { Logo } from "./logo";
@@ -19,11 +20,16 @@ export default async function NavBar() {
         <Link href="/">
           <Logo className="h-6 w-auto" />
         </Link>
-        <div className="flex flex-row space-x-2 items-center">
-          <Link href="/auth/login" className="flex flex-row items-center justify-center space-x-1">
-            <p className="underline">Login</p>
-            <ArrowRight size={16} />
-          </Link>
+        {/* Login is the app's only conversion action, so it's the same filled
+            button the landing page uses, far enough from the theme control
+            that the two error zones don't touch. */}
+        <div className="flex flex-row gap-3 items-center">
+          <Button asChild>
+            <Link href="/auth/login">
+              Login
+              <ArrowRight />
+            </Link>
+          </Button>
           <ThemeSwitcher />
         </div>
       </nav>
@@ -65,14 +71,24 @@ export default async function NavBar() {
         </>
       ) : null}
       <div className="flex flex-row space-x-2 items-center">
+        {/* Notifications are a bottom-bar tab on mobile, the way the avatar
+            menu below is, so the two don't compete for the same corner. The
+            badge hangs off the icon rather than the link, which keeps it
+            inside the hit area instead of beside it. */}
         {userProfile ? (
-          <Link href="/notifications" aria-label="Notifications" className="relative p-1">
-            <Bell className="size-5" />
-            {unread > 0 ? (
-              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground">
-                {unread > 9 ? "9+" : unread}
-              </span>
-            ) : null}
+          <Link
+            href="/notifications"
+            aria-label="Notifications"
+            className="hidden size-9 items-center justify-center rounded-md coarse:size-11 focus-ring sm:flex"
+          >
+            <span className="relative">
+              <Bell className="size-5" />
+              {unread > 0 ? (
+                <span className="absolute -right-2 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground">
+                  {unread > 9 ? "9+" : unread}
+                </span>
+              ) : null}
+            </span>
           </Link>
         ) : null}
         {/* Theme lives inside the avatar menu; a user who hasn't onboarded yet

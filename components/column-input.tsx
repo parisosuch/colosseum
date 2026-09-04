@@ -154,6 +154,7 @@ export default function ColumnInput({
         const column = await uploadImageColumnFromUrlAction(channel.id, sourceUrl);
         setColumns((prev) => [column, ...prev]);
         onBlockAdded();
+        toast.success("Image added.");
         return;
       } catch (err) {
         console.error(err);
@@ -246,6 +247,8 @@ export default function ColumnInput({
     if (created.length > 0) {
       setColumns((prev) => [...created.reverse(), ...prev]);
       created.forEach(() => onBlockAdded());
+      // Videos aren't in `created` — they toast from onComplete as each lands.
+      toast.success(created.length === 1 ? "Block added." : `${created.length} blocks added.`);
     }
   };
 
@@ -308,37 +311,38 @@ export default function ColumnInput({
     setText("");
     onBlockAdded();
 
+    toast.success(
+      column.type === "tweet"
+        ? "Tweet added."
+        : column.type === "youtube"
+          ? "Video added."
+          : column.type === "youtube_channel"
+            ? "Channel added."
+            : column.type === "spotify"
+              ? "Track added."
+              : column.type === "github"
+                ? // "owner/repo" means a repo; an account title has no slash.
+                  column.title?.includes("/")
+                  ? "Repo added."
+                  : "Profile added."
+                : column.type === "instagram"
+                  ? // Read post-or-profile off the URL. The title can't tell
+                    // them apart: a profile Instagram refused to serve is
+                    // titled "@handle" too, from the URL alone.
+                    instagramRef(column.url ?? "")?.kind === "account"
+                    ? "Profile added."
+                    : "Post added."
+                  : column.type === "image"
+                    ? "Image added."
+                    : column.type === "url"
+                      ? "Link added."
+                      : "Column added.",
+    );
+
     // Only plain URL blocks get the async screenshot pass. A tweet block already
     // carries its snapshot; a text block has nothing to capture; a URL that
     // pointed at an image file came back as an image block holding the bytes.
-    if (column.type !== "url") {
-      toast.success(
-        column.type === "tweet"
-          ? "Tweet added."
-          : column.type === "youtube"
-            ? "Video added."
-            : column.type === "youtube_channel"
-              ? "Channel added."
-              : column.type === "spotify"
-                ? "Track added."
-                : column.type === "github"
-                  ? // "owner/repo" means a repo; an account title has no slash.
-                    column.title?.includes("/")
-                    ? "Repo added."
-                    : "Profile added."
-                  : column.type === "instagram"
-                    ? // Read post-or-profile off the URL. The title can't tell
-                      // them apart: a profile Instagram refused to serve is
-                      // titled "@handle" too, from the URL alone.
-                      instagramRef(column.url ?? "")?.kind === "account"
-                      ? "Profile added."
-                      : "Post added."
-                    : column.type === "image"
-                      ? "Image added."
-                      : "Column added.",
-      );
-      return;
-    }
+    if (column.type !== "url") return;
 
     // Mark the row as capturing so it shows a spinner until the shot lands. This
     // batches with the add above, so the row never flashes an empty preview.

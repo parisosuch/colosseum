@@ -1,9 +1,25 @@
 import { expect, test } from "bun:test";
 
-import { HANDLE_MIN_LENGTH, normalizeHandle, validateHandle } from "./handle";
+import {
+  HANDLE_MAX_LENGTH,
+  HANDLE_MIN_LENGTH,
+  normalizeHandle,
+  sanitizeHandleInput,
+  validateHandle,
+} from "./handle";
 
 test("normalizeHandle trims and lowercases", () => {
   expect(normalizeHandle("  Alice ")).toBe("alice");
+});
+
+test("sanitizeHandleInput turns the three likely inputs into valid handles", () => {
+  expect(sanitizeHandleInput("Paris Osuch")).toBe("paris-osuch");
+  expect(sanitizeHandleInput("paris.osuch")).toBe("parisosuch");
+  expect(sanitizeHandleInput("@paris")).toBe("paris");
+});
+
+test("sanitizeHandleInput caps the length", () => {
+  expect(sanitizeHandleInput("a".repeat(HANDLE_MAX_LENGTH + 10))).toHaveLength(HANDLE_MAX_LENGTH);
 });
 
 test("validateHandle accepts a well-formed handle", () => {

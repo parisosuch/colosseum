@@ -32,6 +32,8 @@ import {
   ColumnSearchResult,
   addChannelColumn,
   deleteColumn,
+  getChannelColumnCount,
+  getChannelColumnNeighbours,
   getChannelColumns,
   getColumn,
   moveColumn,
@@ -90,6 +92,7 @@ import {
   createNotification,
   listNotifications,
   markAllNotificationsRead,
+  markNotificationRead,
   NotificationItem,
   NotificationType,
 } from "./notification";
@@ -334,6 +337,29 @@ export async function getChannelColumnsAction(
 ): Promise<Column[]> {
   await requireReadableChannel(channelId);
   return getChannelColumns(channelId, query, await currentUserId());
+}
+
+// How many blocks match the board's current search/type filter, for the result
+// count beside the controls. Separate from the page fetch so the list's shape
+// (and its other callers) stay as they are.
+export async function getChannelColumnCountAction(
+  channelId: number,
+  query: ColumnQuery = {},
+): Promise<number> {
+  await requireReadableChannel(channelId);
+  return getChannelColumnCount(channelId, query);
+}
+
+// The blocks either side of one block in the channel's order, so the modal's
+// arrows work on a block the board hasn't loaded — a `?block=` deep link past
+// the first page, and anything stepped to from there.
+export async function getColumnNeighboursAction(
+  channelId: number,
+  columnId: number,
+  query: ColumnQuery = {},
+): Promise<{ prev: Column | null; next: Column | null }> {
+  await requireReadableChannel(channelId);
+  return getChannelColumnNeighbours(channelId, columnId, query, await currentUserId());
 }
 
 // Add a link block. A URL that points straight at an image file becomes an
@@ -979,6 +1005,19 @@ export async function getMyProfileAction(): Promise<UserProfile | null> {
   return getUserProfile(userId);
 }
 
+// Whether a handle is still free, for the check the handle form runs while the
+// user types. Returns null when the handle isn't valid to begin with — there is
+// nothing to look up, and the form is already saying why. Handles are public
+// (every profile lives at /{handle}), so this discloses nothing a caller
+// couldn't get by loading that page.
+export async function isHandleAvailableAction(rawHandle: string): Promise<boolean | null> {
+  const handle = normalizeHandle(rawHandle);
+  if (validateHandle(handle)) {
+    return null;
+  }
+  return (await getPublicUserProfile(handle)) === null;
+}
+
 export async function createUserProfileAction(rawHandle: string): Promise<ProfileResult> {
   const userId = await currentUserId();
   if (!userId) {
@@ -1045,9 +1084,19 @@ export async function updateUserProfileAction(updates: {
 // ---------------------------------------------------------------------------
 // Notifications — the bell, the /notifications page, and the email toggle.
 // ---------------------------------------------------------------------------
-export async function listNotificationsAction(before?: string): Promise<NotificationItem[]> {
+export async function listNotificationsAction(
+  before?: string,
+  unreadOnly?: boolean,
+): Promise<NotificationItem[]> {
   const userId = await requireUserId();
-  return listNotifications(userId, before);
+  return listNotifications(userId, before, { unreadOnly });
+}
+
+// Opening a notification marks that one read. The id is scoped to the caller in
+// the data layer, so an id from another feed is a no-op rather than an error.
+export async function markNotificationReadAction(notificationId: number): Promise<void> {
+  const userId = await requireUserId();
+  await markNotificationRead(userId, notificationId);
 }
 
 export async function markNotificationsReadAction(): Promise<void> {

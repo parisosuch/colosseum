@@ -420,6 +420,22 @@ export function thumbSrc(image: string | null | undefined): string | null {
 // the modal knows whether its placeholder can be blown up to fill the panel.
 export const THUMB_MAX_WIDTH = 600;
 
+// A block's card art is drawn by two renderers — the interactive grid card
+// (column.tsx) and the server-rendered preview (column-preview.tsx) — plus the
+// per-type components both delegate to. They round and pad the same block, so
+// the values live here instead of being spelled out in each: a grid mixing the
+// two used to show the same block at two different corner radii.
+export const CARD_MEDIA_RADIUS = "rounded-lg";
+export const CARD_TEXT_CLASS = "h-full w-full overflow-hidden p-2";
+// Body size for a text block's markdown inside a card, at card scale.
+export const CARD_TEXT_SIZE = "text-xs";
+
+// The play/type badge over a card's art. A corner marker, not a control: the
+// card's own click opens the block modal (which holds the real player), and a
+// centred badge over the art reads as a play button that does something else.
+export const CARD_BADGE_CLASS =
+  "pointer-events-none absolute bottom-1 left-1 flex items-center justify-center rounded-full bg-black/60 p-1.5 text-white";
+
 // Escapes ilike wildcards so a literal `%`/`_` in a search term isn't treated
 // as one, and strips the characters PostgREST uses to delimit an `.or(...)`
 // filter so a search term can't break out of it.

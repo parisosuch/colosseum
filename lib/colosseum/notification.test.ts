@@ -13,6 +13,7 @@ import {
   EMAIL_QUIET_PERIOD_MINUTES,
   listNotifications,
   markAllNotificationsRead,
+  markNotificationRead,
   unreadNotificationCount,
 } from "./notification";
 
@@ -358,6 +359,33 @@ test("an excerpt cut mid-emoji doesn't leave a broken character", async () => {
   } finally {
     await deleteComment(created.id);
   }
+});
+
+test("markNotificationRead clears one row, and only for its recipient", async () => {
+  const notify = (channel: number) =>
+    createNotification({
+      recipient_id: USERS.bob.id,
+      actor_id: USERS.alice.id,
+      type: "member",
+      channel_id: channel,
+    });
+  await notify(channelId);
+  await notify(bobChannelId);
+  expect(await unreadNotificationCount(USERS.bob.id)).toBe(2);
+
+  const [newest] = await listNotifications(USERS.bob.id);
+  await markNotificationRead(USERS.bob.id, newest.id);
+  expect(await unreadNotificationCount(USERS.bob.id)).toBe(1);
+
+  // The row stays in the feed, read; only the unread page drops it.
+  expect(await listNotifications(USERS.bob.id)).toHaveLength(2);
+  const unread = await listNotifications(USERS.bob.id, undefined, { unreadOnly: true });
+  expect(unread).toHaveLength(1);
+  expect(unread[0].id).not.toBe(newest.id);
+
+  // Someone else's id doesn't reach it, so a stray id marks nothing.
+  await markNotificationRead(USERS.alice.id, unread[0].id);
+  expect(await unreadNotificationCount(USERS.bob.id)).toBe(1);
 });
 
 test("markAllNotificationsRead clears the unread count", async () => {

@@ -10,6 +10,7 @@ import {
   DrawerTrigger,
 } from "@/components/ui/drawer";
 import { AddBlockBody, useAddBlockFlow, type PickableChannel } from "@/components/add-block-flow";
+import { TAB, TabLabel } from "@/components/mobile-tab";
 
 export type { PickableChannel };
 
@@ -20,11 +21,11 @@ export function AddBlockDrawer({ channels }: { channels: PickableChannel[] }) {
 
   return (
     <Drawer open={flow.open} onOpenChange={flow.onOpenChange}>
-      <DrawerTrigger
-        aria-label="Add column"
-        className="flex size-10 items-center justify-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
+      {/* The trigger is one of the bottom bar's tabs, so it wears the same
+          shape as its siblings. "Add" is the visible half of "Add column". */}
+      <DrawerTrigger aria-label="Add column" className={TAB}>
         <PlusIcon />
+        <TabLabel>Add</TabLabel>
       </DrawerTrigger>
       {/* A fixed height, not one that follows the content. vaul caches the
           sheet's height the first time the soft keyboard opens and writes it

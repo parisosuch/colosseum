@@ -8,6 +8,7 @@ import { HeroFrame } from "@/components/hero-frame";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
+import { NoZoomGuard } from "@/components/no-zoom-guard";
 import SiteFooter from "@/components/site-footer";
 import MobileBottomNav from "@/components/mobile-bottom-nav";
 
@@ -61,10 +62,15 @@ export const metadata: Metadata = {
   },
 };
 
-// No maximumScale/userScalable: pinch-zoom is the only way a low-vision reader
-// can enlarge text that the layout won't, and the app still has controls near
-// the size floor plus a 10px unread badge. iOS auto-zoom on input focus — the
-// reason the cap was here — is handled instead by keeping text inputs at 16px.
+// The installed PWA should not zoom: a page that pinches and pans under the
+// thumb reads as a web page inside an app frame, and 1.12.0 shipping without
+// the cap made that the first thing anyone noticed. maximumScale/userScalable
+// cover Android; iOS ignores both for accessibility, which is what NoZoomGuard
+// is for. Auto-zoom on input focus is separately prevented by keeping every
+// text field at 16px, so the guard is not load-bearing for it.
+//
+// The cost is real and deliberate: pinch-zoom is how a low-vision reader
+// enlarges text the layout won't, and this takes it away.
 //
 // themeColor paints the mobile address bar and the installed PWA's title bar.
 // One unconditional white left both of them white against a #0a0a0a page, so
@@ -77,6 +83,8 @@ export const viewport: Viewport = {
     { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
   ],
   viewportFit: "cover",
+  maximumScale: 1,
+  userScalable: false,
 };
 
 const geistSans = Geist({
@@ -100,6 +108,7 @@ export default async function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.className} ${fraunces.variable} antialiased`}>
+        <NoZoomGuard />
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

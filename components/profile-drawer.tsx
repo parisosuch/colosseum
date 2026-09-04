@@ -4,12 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import {
-  Code,
   Laptop,
   LogOutIcon,
   MailIcon,
   Moon,
-  ScrollText,
   SettingsIcon,
   ShieldIcon,
   Sun,
@@ -27,9 +25,10 @@ import {
 } from "@/components/ui/drawer";
 import { TAB, TabLabel } from "@/components/mobile-tab";
 
-// The mobile avatar opens a bottom drawer of nav links (Profile, Settings,
-// Invites, Developers, Changelog), a theme picker, and Logout — the mobile
-// counterpart to the desktop avatar dropdown (UserMenu).
+// The mobile avatar opens a bottom drawer of account links (Profile, Settings,
+// Invites), a theme picker, and Logout — the mobile counterpart to the desktop
+// avatar dropdown (UserMenu), and kept in step with it. Developers and
+// Changelog are public pages and live in the site footer instead.
 export function ProfileDrawer({
   handle,
   avatarUrl,
@@ -83,12 +82,6 @@ export function ProfileDrawer({
           {isAdmin ? (
             <NavRow icon={<ShieldIcon size={18} />} label="Admin" onClick={() => go("/admin")} />
           ) : null}
-          <NavRow icon={<Code size={18} />} label="Developers" onClick={() => go("/developers")} />
-          <NavRow
-            icon={<ScrollText size={18} />}
-            label="Changelog"
-            onClick={() => go("/changelog")}
-          />
 
           <div className="mt-2 border-t px-2 pt-3">
             <p className="pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">

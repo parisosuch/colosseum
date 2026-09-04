@@ -170,7 +170,7 @@ function ConfirmIconAction({
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
-        {error ? <p className="text-sm text-red-500">{error}</p> : null}
+        {error ? <p className="text-sm text-destructive-text">{error}</p> : null}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
           <AlertDialogAction
@@ -180,11 +180,7 @@ function ConfirmIconAction({
               e.preventDefault();
               void run();
             }}
-            className={
-              destructive
-                ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                : undefined
-            }
+            variant={destructive ? "destructive" : "default"}
           >
             {busy ? "Working..." : confirmLabel}
           </AlertDialogAction>
@@ -409,7 +405,7 @@ export default function AdminManager({
   return (
     <TooltipProvider>
       <div className="space-y-10">
-        {error ? <p className="text-sm text-red-500">{error}</p> : null}
+        {error ? <p className="text-sm text-destructive-text">{error}</p> : null}
 
         {/* Global limits */}
         <section className="space-y-4">
@@ -704,7 +700,9 @@ export default function AdminManager({
                         icon={u.banned ? <Undo2 /> : <Ban />}
                         label={u.banned ? "Unban" : "Ban"}
                         variant="outline"
-                        className={u.banned ? "" : "text-destructive hover:text-destructive"}
+                        className={
+                          u.banned ? "" : "text-destructive-text hover:text-destructive-text"
+                        }
                         title={u.banned ? `Unban ${userLabel(u)}?` : `Ban ${userLabel(u)}?`}
                         description={
                           u.banned

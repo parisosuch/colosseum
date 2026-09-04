@@ -226,7 +226,7 @@ export default function ColumnComments({ columnId, viewerId, isOwner }: ColumnCo
                       return (
                         <Tooltip delayDuration={100}>
                           <TooltipTrigger asChild>
-                            <span className="font-mono text-[10px] text-muted-foreground cursor-default">
+                            <span className="font-mono text-xs text-muted-foreground cursor-default">
                               {relative}
                             </span>
                           </TooltipTrigger>
@@ -238,7 +238,7 @@ export default function ColumnComments({ columnId, viewerId, isOwner }: ColumnCo
                       <button
                         type="button"
                         onClick={() => remove(c.id)}
-                        className="ml-auto text-[10px] text-muted-foreground hover:text-destructive"
+                        className="ml-auto text-xs text-muted-foreground hover:text-destructive-text"
                       >
                         Delete
                       </button>

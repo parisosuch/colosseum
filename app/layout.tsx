@@ -8,6 +8,7 @@ import { HeroFrame } from "@/components/hero-frame";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
+import SiteFooter from "@/components/site-footer";
 import MobileBottomNav from "@/components/mobile-bottom-nav";
 
 // The public origin every absolute URL in metadata is resolved against — most
@@ -64,8 +65,17 @@ export const metadata: Metadata = {
 // can enlarge text that the layout won't, and the app still has controls near
 // the size floor plus a 10px unread badge. iOS auto-zoom on input focus — the
 // reason the cap was here — is handled instead by keeping text inputs at 16px.
+//
+// themeColor paints the mobile address bar and the installed PWA's title bar.
+// One unconditional white left both of them white against a #0a0a0a page, so
+// it's a media-keyed pair tracking --background in each theme. The manifest's
+// theme_color has no media form in the spec and stays light; browsers prefer
+// this meta tag over it wherever both are present.
 export const viewport: Viewport = {
-  themeColor: "#ffffff",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+  ],
   viewportFit: "cover",
 };
 
@@ -113,6 +123,13 @@ export default async function RootLayout({
                   <NavBar />
                 </NavBarGate>
                 <HeroFrame>{children}</HeroFrame>
+                {/* Last thing in the scroll region, so it sits below the page
+                    rather than floating over it and clears the fixed mobile
+                    bottom bar via this container's padding. Gated like the nav:
+                    the hero routes are full-bleed and drop the chrome. */}
+                <NavBarGate>
+                  <SiteFooter />
+                </NavBarGate>
               </div>
               <NavBarGate>
                 <MobileBottomNav />

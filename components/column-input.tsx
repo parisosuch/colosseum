@@ -242,7 +242,10 @@ export function ColumnUploadProgress({ uploader }: { uploader: ColumnUploader })
           <div key={fp} className="rounded-md border bg-background/90 px-2 py-1 backdrop-blur">
             <div className="flex items-center justify-between gap-2 text-xs">
               <span className="truncate">{u.filename || "Video"}</span>
-              <span className={u.error ? "text-destructive" : "text-muted-foreground"}>
+              {/* The failure reads as type, not as a fill, so it takes
+                  --destructive-text; --destructive is picked to sit under
+                  white and barely clears the background in dark mode. */}
+              <span className={u.error ? "text-destructive-text" : "text-muted-foreground"}>
                 {u.error ? "Failed" : `${pct}%`}
               </span>
             </div>

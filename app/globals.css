@@ -29,6 +29,11 @@
     --input: 0 0% 89.8%;
     --ring: 0 0% 3.9%;
     --radius: 0.5rem;
+    /* Which palette the browser draws its *own* UI in — native scrollbars,
+       <select> popups, date pickers, form autofill backgrounds. The theme
+       switch is a class toggle over these variables and nothing told the
+       browser about it, so all of that stayed light inside a dark app. */
+    color-scheme: light;
     /* Strong ease-out for UI feedback (stronger than the built-in curve). */
     --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   }
@@ -53,6 +58,7 @@
     --border: 0 0% 14.9%;
     --input: 0 0% 14.9%;
     --ring: 0 0% 83.1%;
+    color-scheme: dark;
   }
 }
 

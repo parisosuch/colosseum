@@ -56,7 +56,7 @@ export function ForgotPasswordForm({ className, ...props }: React.ComponentProps
                 If <span className="text-foreground">{sentTo}</span> belongs to an account, a reset
                 link is on its way to it.
               </p>
-              {error && <p className="text-sm text-red-500">{error}</p>}
+              {error && <p className="text-sm text-destructive-text">{error}</p>}
               <div className="flex flex-col gap-2 sm:flex-row">
                 <Button
                   type="button"
@@ -113,7 +113,7 @@ export function ForgotPasswordForm({ className, ...props }: React.ComponentProps
                     onChange={(e) => setEmail(e.target.value)}
                   />
                 </div>
-                {error && <p className="text-sm text-red-500">{error}</p>}
+                {error && <p className="text-sm text-destructive-text">{error}</p>}
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? "Sending..." : "Send reset email"}
                 </Button>

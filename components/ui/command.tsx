@@ -79,7 +79,10 @@ function CommandInput({
       <CommandPrimitive.Input
         data-slot="command-input"
         className={cn(
-          "flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50",
+          // text-base below md, like Input and Textarea: iOS zooms the page on
+          // focus for anything under 16px, and this field is reachable on a
+          // phone through the copy-to-channel and connect-channel pickers.
+          "flex h-10 w-full rounded-md bg-transparent py-3 text-base outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
           className,
         )}
         {...props}

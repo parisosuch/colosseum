@@ -190,10 +190,12 @@ export default function InviteManager({
       ) : limit !== null ? (
         <div className="max-w-md space-y-1">
           <div className="text-caption flex justify-between tabular-nums">
+            {/* Counts codes made, not redemptions — the per-code "n/m used"
+                below is the one that tracks people signing up. */}
             <span>
-              {used} of {limit} invites used
+              {used} of {limit} invite codes created
             </span>
-            <span>{remaining} left</span>
+            <span>{remaining} left to create</span>
           </div>
           <div className="h-2 w-full overflow-hidden rounded-full bg-secondary">
             <div

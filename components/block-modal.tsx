@@ -432,25 +432,33 @@ function BlockModalBody({
     else if (dx > 0 && hasPrev) onPrev();
   };
 
+  // The field savers throw on failure rather than logging and returning: their
+  // callers are the only place that knows whether to report one failed write or
+  // a whole failed Save, and a swallowed error here reads to the user as a
+  // successful edit. Nothing after the await runs on failure, so the input keeps
+  // focus and the card keeps the old value.
   const handleTitleChange = async () => {
     if ((column.title ?? "") === title) return;
-    try {
-      await updateColumnTitleAction(column.id, title);
-      setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, title } : c)));
-      titleInputRef.current?.blur();
-    } catch (e) {
-      console.error(e);
-    }
+    await updateColumnTitleAction(column.id, title);
+    setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, title } : c)));
+    titleInputRef.current?.blur();
   };
 
   const handleDescriptionChange = async () => {
     if ((column.description ?? "") === description) return;
+    await updateColumnDescriptionAction(column.id, description);
+    setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, description } : c)));
+    descriptionInputRef.current?.blur();
+  };
+
+  // Enter in the title or description commits that one field. Success is visible
+  // (the input blurs, the card updates), so only the failure needs saying.
+  const saveField = async (save: () => Promise<void>) => {
     try {
-      await updateColumnDescriptionAction(column.id, description);
-      setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, description } : c)));
-      descriptionInputRef.current?.blur();
+      await save();
     } catch (e) {
       console.error(e);
+      toast.error("Couldn't save. Please try again.");
     }
   };
 
@@ -483,6 +491,9 @@ function BlockModalBody({
       setColumns((cols) => cols.filter((c) => c.id !== column.id));
     } catch (e) {
       console.error(e);
+      // The confirmation dialog has already closed itself, so the toast is the
+      // only thing left to say the block is still there.
+      toast.error("Couldn't delete that block. Please try again.");
     }
   };
 
@@ -530,6 +541,9 @@ function BlockModalBody({
     }
   };
 
+  // Saves the dirty fields in order and stops at the first failure, so "Saved."
+  // is only ever shown over writes that landed. A failure leaves the block
+  // dirty, which keeps the Save button on screen to try again.
   const handleSave = async () => {
     try {
       await handleTitleChange();
@@ -724,7 +738,7 @@ function BlockModalBody({
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
-                  handleTitleChange();
+                  saveField(handleTitleChange);
                 }
               }}
             />
@@ -743,7 +757,7 @@ function BlockModalBody({
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  handleDescriptionChange();
+                  saveField(handleDescriptionChange);
                 }
               }}
             />

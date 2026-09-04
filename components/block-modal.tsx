@@ -845,7 +845,7 @@ function BlockModalBody({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="text-destructive hover:text-destructive"
+                  className="text-destructive-text hover:text-destructive-text"
                   onPointerEnter={confirmDelete.warm}
                   onFocus={confirmDelete.warm}
                   onClick={confirmDelete.show}

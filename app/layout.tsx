@@ -8,7 +8,6 @@ import { HeroFrame } from "@/components/hero-frame";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
-import { NoZoomGuard } from "@/components/no-zoom-guard";
 import MobileBottomNav from "@/components/mobile-bottom-nav";
 
 // The public origin every absolute URL in metadata is resolved against — most
@@ -61,14 +60,13 @@ export const metadata: Metadata = {
   },
 };
 
+// No maximumScale/userScalable: pinch-zoom is the only way a low-vision reader
+// can enlarge text that the layout won't, and the app still has controls near
+// the size floor plus a 10px unread badge. iOS auto-zoom on input focus — the
+// reason the cap was here — is handled instead by keeping text inputs at 16px.
 export const viewport: Viewport = {
   themeColor: "#ffffff",
   viewportFit: "cover",
-  // App-like on mobile: no page zoom (also stops iOS auto-zoom on input focus).
-  // Pinch/double-tap are additionally handled by touch-action and the gesture
-  // guard, since iOS Safari ignores these for accessibility.
-  maximumScale: 1,
-  userScalable: false,
 };
 
 const geistSans = Geist({
@@ -122,7 +120,6 @@ export default async function RootLayout({
             </div>
             <Toaster />
             <ServiceWorkerRegister />
-            <NoZoomGuard />
           </TooltipProvider>
         </ThemeProvider>
       </body>

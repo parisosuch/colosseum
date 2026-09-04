@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import { and, desc, eq, gt, isNull, lt, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
@@ -316,13 +317,15 @@ export async function createNotification(input: {
   }
 }
 
-export async function unreadNotificationCount(userId: string): Promise<number> {
+// Cached per request: the top nav and the mobile bottom bar each badge the
+// bell, and both render in the root layout on every route.
+export const unreadNotificationCount = cache(async (userId: string): Promise<number> => {
   const [row] = await db
     .select({ n: sql<number>`count(*)` })
     .from(notification)
     .where(and(eq(notification.recipient_id, userId), isNull(notification.read_at)));
   return Number(row?.n ?? 0);
-}
+});
 
 // One page of the recipient's notifications, newest first. `before` is a
 // created_at ISO cursor for load-more.

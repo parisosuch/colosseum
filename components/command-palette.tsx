@@ -122,10 +122,17 @@ export default function CommandPalette({ handle }: { handle: string }) {
         value={query}
         onValueChange={setQuery}
       />
-      <CommandList>
-        {/* Held back while a search is in flight, so a query that matches no
-            commands doesn't flash "No results." on its way to matching one. */}
-        {searching ? null : <CommandEmpty>No results.</CommandEmpty>}
+      {/* A fixed height rather than a max. The commands the palette opens with
+          already overflow 300px, so every narrower state — a one-character
+          query that filters them away, a search in flight with nothing yet to
+          show, results that fill half the box — shrank the modal around its
+          center point and slid the input up under the cursor mid-word. The
+          frame stays put now and only the contents move. */}
+      <CommandList className="h-[300px]">
+        {/* cmdk mounts this only when nothing else is rendered, which is also
+            the moment a search is most likely still out. Saying so beats
+            "No results." — that's a verdict this hasn't reached yet. */}
+        <CommandEmpty>{searching ? "Searching…" : "No results."}</CommandEmpty>
 
         {profiles.length > 0 ? (
           <CommandGroup heading="People">

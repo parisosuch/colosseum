@@ -4,8 +4,11 @@ import {
   desc,
   eq,
   getTableColumns,
+  gt,
   ilike,
   inArray,
+  isNotNull,
+  isNull,
   lte,
   ne,
   or,
@@ -15,6 +18,7 @@ import {
 
 import { db } from "@/lib/db";
 import { channel, channelMember, column, screenshot, userProfile } from "@/lib/db/schema";
+import { positionBetween, positionsAfter } from "@/lib/fractional-index";
 import { renderMarkdown } from "@/lib/markdown";
 import { sanitizeSearch } from "@/lib/utils";
 import { deleteMediaByUrl } from "./blob";
@@ -194,7 +198,10 @@ export async function getColumn(
   return enriched;
 }
 
-export type ColumnSort = "newest" | "oldest" | "title_az" | "title_za";
+// "manual" is the hand-arranged order held in `column.position`; the other four
+// are derived from the row's own content and ignore it. Only manual can be
+// dragged into — reordering under "Title A–Z" would be undone by the next read.
+export type ColumnSort = "manual" | "newest" | "oldest" | "title_az" | "title_za";
 export type ColumnFilter = "all" | "url" | "text" | "image" | "video" | "pdf" | "channel";
 
 // Which stored types each filter option keeps. A pasted URL is classified into
@@ -248,6 +255,13 @@ function columnFilters(channel_id: number, query: ColumnQuery): SQL[] {
 // twice.
 function columnOrder(sort: ColumnSort): SQL[] {
   switch (sort) {
+    case "manual":
+      // `nulls last` keeps a channel nobody has arranged yet readable rather
+      // than empty: unplaced blocks fall to the end of the positioned ones, and
+      // the id tiebreak is descending so an entirely unplaced channel shows
+      // newest-first — the same arrangement the default sort would have given
+      // it, which is what makes switching to manual look like nothing happened.
+      return [sql`${column.position} asc nulls last`, desc(column.id)];
     case "oldest":
       return [asc(column.created_at), asc(column.id)];
     case "title_az":
@@ -463,20 +477,156 @@ export async function searchColumns(
   return rows.map(({ col, handle }) => ({ ...toColumn(col), handle }));
 }
 
+// ---------------------------------------------------------------------------
+// Manual order. `column.position` is a fractional index (lib/fractional-index.ts)
+// scoped to a channel: keys are compared as plain text, so an ORDER BY needs no
+// parsing and a drag rewrites exactly one row.
+// ---------------------------------------------------------------------------
+
+// The key that puts a new block at the top of its channel's manual order, which
+// is where a newly added block belongs — manual starts out as newest-first, and
+// Are.na-style boards grow from the front.
+//
+// Two blocks added at the same instant can read the same current head and mint
+// the same key. Nothing breaks: the order stays total because every read breaks
+// ties on `id`, and the next drag of either one splits them apart. A unique
+// constraint would turn a harmless tie into a failed upload.
+async function headPosition(channel_id: number): Promise<string> {
+  const [first] = await db
+    .select({ position: column.position })
+    .from(column)
+    .where(and(eq(column.channel_id, channel_id), isNotNull(column.position)))
+    .orderBy(asc(column.position))
+    .limit(1);
+  return positionBetween(null, first?.position ?? null);
+}
+
+// The one insert every block-creating path goes through, so a block cannot be
+// created without a place in its channel's order. The alternative — assigning
+// positions lazily on the first drag — would mean a channel's arrangement
+// depended on when someone first touched it.
+async function insertColumn(values: typeof column.$inferInsert): Promise<ColumnRow> {
+  const [row] = await db
+    .insert(column)
+    .values({ ...values, position: await headPosition(values.channel_id) })
+    .returning();
+  return row;
+}
+
+// Give every unplaced block in a channel a key, below whatever the channel
+// already holds, in the order the default sort shows them (newest first). A
+// no-op once the channel is fully placed, which is what makes it safe to call
+// on the way into a reorder and again from the boot-time backfill.
+//
+// Rows that already have a key keep it. On an instance upgrading to this
+// schema, the only rows with keys are ones inserted after the upgrade — all
+// newer than the unplaced ones — so appending the rest beneath them reproduces
+// the arrangement the channel already had.
+export async function ensureChannelPositions(channel_id: number): Promise<number> {
+  const unplaced = await db
+    .select({ id: column.id })
+    .from(column)
+    .where(and(eq(column.channel_id, channel_id), isNull(column.position)))
+    .orderBy(desc(column.created_at), desc(column.id));
+  if (unplaced.length === 0) return 0;
+
+  const [last] = await db
+    .select({ position: column.position })
+    .from(column)
+    .where(and(eq(column.channel_id, channel_id), isNotNull(column.position)))
+    .orderBy(desc(column.position))
+    .limit(1);
+
+  // One statement per row, sequentially. A channel is small enough that this is
+  // cheap, and doing it row by row means an interrupted run leaves a partly
+  // placed channel that the next call finishes rather than a half-applied
+  // batch it has to reason about.
+  const keys = positionsAfter(last?.position ?? null, unplaced.length);
+  for (let i = 0; i < unplaced.length; i++) {
+    await db.update(column).set({ position: keys[i] }).where(eq(column.id, unplaced[i].id));
+  }
+  return unplaced.length;
+}
+
+// Place a block directly after `after_id` in its channel's manual order, or at
+// the head when that is null. Returns the moved block, or null when either the
+// block or the anchor is gone or they aren't in the same channel — a stale
+// board is a not-found, not an error. Authorization is the caller's job.
+//
+// The anchor is a block id rather than an index because an index only means
+// something on the board that produced it. A board showing 50 of 400 blocks
+// doesn't know what follows its last card, and by the time the request lands
+// someone else may have added or moved one. Naming the block in front lets this
+// resolve the block actually behind it, live, and mint a key between the two —
+// so dropping a card at the bottom of a partly-loaded channel puts it after
+// that card and before whatever really comes next, not at the end of the
+// channel.
+export async function reorderColumn(
+  column_id: number,
+  after_id: number | null,
+): Promise<Column | null> {
+  if (!Number.isFinite(column_id)) return null;
+  if (after_id !== null && !Number.isFinite(after_id)) return null;
+
+  const [row] = await db.select().from(column).where(eq(column.id, column_id)).limit(1);
+  if (!row) return null;
+  // Dropping a block onto itself is where it already is.
+  if (after_id === column_id) return toColumn(row);
+
+  // A key is only meaningful against other keys, so the channel has to be fully
+  // placed before anything can be positioned relative to a neighbour. Free once
+  // it is, which it will be after the first drag or the boot-time backfill.
+  await ensureChannelPositions(row.channel_id);
+
+  let previous: string | null = null;
+  if (after_id !== null) {
+    const [anchor] = await db
+      .select({ channel_id: column.channel_id, position: column.position })
+      .from(column)
+      .where(eq(column.id, after_id))
+      .limit(1);
+    if (!anchor || anchor.channel_id !== row.channel_id || anchor.position === null) {
+      return null;
+    }
+    previous = anchor.position;
+  }
+
+  // Whatever really sits after the anchor right now, the moved block excluded.
+  // Strictly greater, so a duplicate key left by two simultaneous adds can't
+  // produce an empty gap to split.
+  const [following] = await db
+    .select({ position: column.position })
+    .from(column)
+    .where(
+      and(
+        eq(column.channel_id, row.channel_id),
+        ne(column.id, column_id),
+        isNotNull(column.position),
+        previous === null ? undefined : gt(column.position, previous),
+      ),
+    )
+    .orderBy(asc(column.position))
+    .limit(1);
+
+  const [moved] = await db
+    .update(column)
+    .set({ position: positionBetween(previous, following?.position ?? null) })
+    .where(eq(column.id, column_id))
+    .returning();
+  return moved ? toColumn(moved) : null;
+}
+
 export async function uploadURLColumn(input: {
   created_by: string;
   channel_id: number;
   text: string;
 }): Promise<Column> {
-  const [row] = await db
-    .insert(column)
-    .values({
-      type: "url",
-      url: input.text,
-      channel_id: input.channel_id,
-      created_by: input.created_by,
-    })
-    .returning();
+  const row = await insertColumn({
+    type: "url",
+    url: input.text,
+    channel_id: input.channel_id,
+    created_by: input.created_by,
+  });
   return toColumn(row);
 }
 
@@ -488,15 +638,12 @@ export async function uploadTweetColumn(input: {
   channel_id: number;
   url: string;
 }): Promise<Column> {
-  const [row] = await db
-    .insert(column)
-    .values({
-      type: "tweet",
-      url: input.url,
-      channel_id: input.channel_id,
-      created_by: input.created_by,
-    })
-    .returning();
+  const row = await insertColumn({
+    type: "tweet",
+    url: input.url,
+    channel_id: input.channel_id,
+    created_by: input.created_by,
+  });
   return toColumn(row);
 }
 
@@ -510,16 +657,13 @@ export async function uploadYouTubeColumn(input: {
   url: string;
   title?: string;
 }): Promise<Column> {
-  const [row] = await db
-    .insert(column)
-    .values({
-      type: "youtube",
-      url: input.url,
-      title: input.title,
-      channel_id: input.channel_id,
-      created_by: input.created_by,
-    })
-    .returning();
+  const row = await insertColumn({
+    type: "youtube",
+    url: input.url,
+    title: input.title,
+    channel_id: input.channel_id,
+    created_by: input.created_by,
+  });
   return toColumn(row);
 }
 
@@ -535,18 +679,15 @@ export async function uploadYouTubeChannelColumn(input: {
   description?: string;
   image?: string;
 }): Promise<Column> {
-  const [row] = await db
-    .insert(column)
-    .values({
-      type: "youtube_channel",
-      url: input.url,
-      title: input.title,
-      description: input.description,
-      image: input.image,
-      channel_id: input.channel_id,
-      created_by: input.created_by,
-    })
-    .returning();
+  const row = await insertColumn({
+    type: "youtube_channel",
+    url: input.url,
+    title: input.title,
+    description: input.description,
+    image: input.image,
+    channel_id: input.channel_id,
+    created_by: input.created_by,
+  });
   return toColumn(row);
 }
 
@@ -565,19 +706,16 @@ export async function uploadGitHubColumn(input: {
   image?: string;
   language?: string;
 }): Promise<Column> {
-  const [row] = await db
-    .insert(column)
-    .values({
-      type: "github",
-      url: input.url,
-      title: input.title,
-      description: input.description,
-      image: input.image,
-      text: input.language,
-      channel_id: input.channel_id,
-      created_by: input.created_by,
-    })
-    .returning();
+  const row = await insertColumn({
+    type: "github",
+    url: input.url,
+    title: input.title,
+    description: input.description,
+    image: input.image,
+    text: input.language,
+    channel_id: input.channel_id,
+    created_by: input.created_by,
+  });
   return toColumn(row);
 }
 
@@ -596,18 +734,15 @@ export async function uploadInstagramColumn(input: {
   // Absent when Instagram refused the lookup; the card draws its mark instead.
   image?: string;
 }): Promise<Column> {
-  const [row] = await db
-    .insert(column)
-    .values({
-      type: "instagram",
-      url: input.url,
-      title: input.title,
-      description: input.description,
-      image: input.image,
-      channel_id: input.channel_id,
-      created_by: input.created_by,
-    })
-    .returning();
+  const row = await insertColumn({
+    type: "instagram",
+    url: input.url,
+    title: input.title,
+    description: input.description,
+    image: input.image,
+    channel_id: input.channel_id,
+    created_by: input.created_by,
+  });
   return toColumn(row);
 }
 
@@ -622,17 +757,14 @@ export async function uploadSpotifyColumn(input: {
   title?: string;
   image?: string;
 }): Promise<Column> {
-  const [row] = await db
-    .insert(column)
-    .values({
-      type: "spotify",
-      url: input.url,
-      title: input.title,
-      image: input.image,
-      channel_id: input.channel_id,
-      created_by: input.created_by,
-    })
-    .returning();
+  const row = await insertColumn({
+    type: "spotify",
+    url: input.url,
+    title: input.title,
+    image: input.image,
+    channel_id: input.channel_id,
+    created_by: input.created_by,
+  });
   return toColumn(row);
 }
 
@@ -641,15 +773,12 @@ export async function uploadTextColumn(input: {
   channel_id: number;
   text: string;
 }): Promise<Column> {
-  const [row] = await db
-    .insert(column)
-    .values({
-      type: "text",
-      text: input.text,
-      channel_id: input.channel_id,
-      created_by: input.created_by,
-    })
-    .returning();
+  const row = await insertColumn({
+    type: "text",
+    text: input.text,
+    channel_id: input.channel_id,
+    created_by: input.created_by,
+  });
   return toColumn(row);
 }
 
@@ -659,15 +788,12 @@ export async function uploadImageColumn(input: {
   // Public URL of the already-uploaded storage object.
   image: string;
 }): Promise<Column> {
-  const [row] = await db
-    .insert(column)
-    .values({
-      type: "image",
-      image: input.image,
-      channel_id: input.channel_id,
-      created_by: input.created_by,
-    })
-    .returning();
+  const row = await insertColumn({
+    type: "image",
+    image: input.image,
+    channel_id: input.channel_id,
+    created_by: input.created_by,
+  });
   return toColumn(row);
 }
 
@@ -677,15 +803,12 @@ export async function uploadPdfColumn(input: {
   // Media URL of the already-uploaded PDF blob (reuses the `image` field).
   image: string;
 }): Promise<Column> {
-  const [row] = await db
-    .insert(column)
-    .values({
-      type: "pdf",
-      image: input.image,
-      channel_id: input.channel_id,
-      created_by: input.created_by,
-    })
-    .returning();
+  const row = await insertColumn({
+    type: "pdf",
+    image: input.image,
+    channel_id: input.channel_id,
+    created_by: input.created_by,
+  });
   return toColumn(row);
 }
 
@@ -695,15 +818,12 @@ export async function uploadVideoColumn(input: {
   // Media URL of the already-uploaded video blob (reuses the `image` field).
   image: string;
 }): Promise<Column> {
-  const [row] = await db
-    .insert(column)
-    .values({
-      type: "video",
-      image: input.image,
-      channel_id: input.channel_id,
-      created_by: input.created_by,
-    })
-    .returning();
+  const row = await insertColumn({
+    type: "video",
+    image: input.image,
+    channel_id: input.channel_id,
+    created_by: input.created_by,
+  });
   return toColumn(row);
 }
 
@@ -715,15 +835,12 @@ export async function addChannelColumn(input: {
   channel_id: number;
   linked_channel_id: number;
 }): Promise<Column> {
-  const [row] = await db
-    .insert(column)
-    .values({
-      type: "channel",
-      channel_id: input.channel_id,
-      linked_channel_id: input.linked_channel_id,
-      created_by: input.created_by,
-    })
-    .returning();
+  const row = await insertColumn({
+    type: "channel",
+    channel_id: input.channel_id,
+    linked_channel_id: input.linked_channel_id,
+    created_by: input.created_by,
+  });
   return toColumn(row);
 }
 
@@ -742,15 +859,19 @@ export async function updateColumnTags(column_id: number, tags: string[]): Promi
   await db.update(column).set({ tags }).where(eq(column.id, column_id));
 }
 
-// Move a block to another channel. Only the channel_id changes, so the block
-// keeps its id, created_at, title, description, tags, and content — and, for a
-// url block, the screenshot cached against its URL. Returns the updated row, or
-// null when the block no longer exists. Authorization (owning both channels) is
-// enforced by the caller.
+// Move a block to another channel. The block keeps its id, created_at, title,
+// description, tags, and content — and, for a url block, the screenshot cached
+// against its URL. Returns the updated row, or null when the block no longer
+// exists. Authorization (owning both channels) is enforced by the caller.
+//
+// Its manual position doesn't come with it: a key only orders a block against
+// the other blocks of one channel, and carried across it would drop the block
+// at an arbitrary point in the destination. It arrives at the head instead,
+// like anything else newly added there.
 export async function moveColumn(column_id: number, channel_id: number): Promise<Column | null> {
   const [row] = await db
     .update(column)
-    .set({ channel_id })
+    .set({ channel_id, position: await headPosition(channel_id) })
     .where(eq(column.id, column_id))
     .returning();
   return row ? toColumn(row) : null;
@@ -770,21 +891,18 @@ export async function copyColumn(input: {
   image: string | null;
 }): Promise<Column> {
   const { source } = input;
-  const [row] = await db
-    .insert(column)
-    .values({
-      type: source.type,
-      title: source.title,
-      description: source.description,
-      url: source.url,
-      text: source.text,
-      image: input.image,
-      linked_channel_id: source.linked_channel_id,
-      tags: source.tags,
-      channel_id: input.channel_id,
-      created_by: input.created_by,
-    })
-    .returning();
+  const row = await insertColumn({
+    type: source.type,
+    title: source.title,
+    description: source.description,
+    url: source.url,
+    text: source.text,
+    image: input.image,
+    linked_channel_id: source.linked_channel_id,
+    tags: source.tags,
+    channel_id: input.channel_id,
+    created_by: input.created_by,
+  });
   return toColumn(row);
 }
 

@@ -104,10 +104,17 @@ export default async function ChannelPage({ params, searchParams }: ChannelPageP
 
   // Server-render the first page of blocks (plus channel-wide count for the
   // meta panel) so the grid paints at first load instead of after a hydrate +
-  // server-action round-trip. The client takes over for filtering/paging.
+  // server-action round-trip. The client takes over for filtering/paging, and
+  // starts on this same sort so the mount doesn't refetch what is already here.
+  //
+  // "manual" rather than "newest": an arrangement only its author can see is
+  // not an arrangement. For a channel nobody has rearranged the two orders are
+  // the same list — every block is placed at the head as it is added, and the
+  // backfill placed the pre-existing ones newest-first — so this changes what a
+  // visitor sees only once the owner has actually moved something.
   const [totalCount, initialColumns] = await Promise.all([
     getChannelColumnCount(id),
-    getChannelColumns(id, { sort: "newest", limit: PAGE_SIZE }, user?.id ?? null),
+    getChannelColumns(id, { sort: "manual", limit: PAGE_SIZE }, user?.id ?? null),
   ]);
 
   const createdOnLabel = new Date(channel.created_at).toLocaleString("default", {

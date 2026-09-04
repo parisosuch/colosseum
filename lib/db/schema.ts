@@ -258,10 +258,25 @@ export const column = pgTable(
       },
     ),
     tags: text("tags").array().notNull().default([]),
+    // Where the block sits in a hand-arranged channel: a fractional index (see
+    // lib/fractional-index.ts), compared as plain text. Only the "manual" sort
+    // reads it; the time and title sorts ignore it entirely.
+    //
+    // Nullable, and every read orders it `nulls last`, which is what lets the
+    // column be added to a live table without a rewrite and without inventing
+    // an order for the rows that predate it. The backfill in scripts/data/
+    // fills a deployment's existing rows, every insert assigns one, and a
+    // reorder fills in whatever channel it touches — so a null means "nobody
+    // has arranged this channel yet", never a broken row.
+    position: text("position"),
   },
   (t) => [
     // Explore feed orders newly added blocks by time.
     index("column_created_at_idx").on(t.created_at),
+    // The manual sort's `position asc nulls last`, and the head/neighbour
+    // lookups a reorder does inside one channel. Ascending btrees are nulls-last
+    // by default in Postgres, so this index serves that ordering as written.
+    index("column_channel_id_position_idx").on(t.channel_id, t.position),
     // getChannelColumns / getChannelColumnCount filtering and sorting on channel_id, created_at.
     index("column_channel_id_created_at_idx").on(t.channel_id, t.created_at.desc()),
     // The channel board's title_az / title_za sorts, and the block quota's

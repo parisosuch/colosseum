@@ -12,12 +12,82 @@ import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
   AlertDialogAction,
+  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+
+// Revoke is confirm-gated and names the code: it sits next to Copy and Link,
+// the row's routine actions, and it drops the code with nothing to undo.
+function RevokeInviteButton({ code, onRevoke }: { code: string; onRevoke: () => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await onRevoke();
+      setOpen(false);
+    } catch (e) {
+      console.error(e);
+      setError(e instanceof Error ? e.message : "Couldn't revoke that invite. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <AlertDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (busy) return;
+        setOpen(next);
+        if (!next) setError(null);
+      }}
+    >
+      <AlertDialogTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="text-destructive hover:text-destructive"
+        >
+          <Trash2Icon size={14} /> Revoke
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Revoke {code}?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Anyone holding this code can no longer sign up with it, and neither the code nor the
+            link you shared can be brought back. The capacity it reserved returns to your quota.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        {error ? <p className="text-sm text-red-500">{error}</p> : null}
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={busy}
+            onClick={(e) => {
+              // Keep the dialog open while the action runs / on error.
+              e.preventDefault();
+              void run();
+            }}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            {busy ? "Revoking..." : "Revoke"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
 
 export default function InviteManager({
   userId: _userId,
@@ -39,7 +109,8 @@ export default function InviteManager({
 
   // Invite quota. `limit` null = unlimited (no bar); 0 = disabled by admin.
   // `used` is capacity issued (sum of code max_uses) and moves as codes are
-  // created/revoked. The dialog message explains a server-side rejection.
+  // created/revoked. `limitMessage` carries a server-side rejection, shown
+  // inline under the meter that already states the cap.
   const { limit } = initialQuota;
   const [used, setUsed] = useState(initialQuota.used);
   const [limitMessage, setLimitMessage] = useState<string | null>(null);
@@ -51,6 +122,7 @@ export default function InviteManager({
   const handleCreate = async () => {
     setCreating(true);
     setError(null);
+    setLimitMessage(null);
     try {
       const result = await createInviteCodeAction({ max_uses: 1 });
       if (!result.ok) {
@@ -79,7 +151,8 @@ export default function InviteManager({
     } catch (e) {
       console.error(e);
       setCodes(prev);
-      setError("Couldn't revoke that invite. Please try again.");
+      // Rethrown so the confirmation dialog can report it in place.
+      throw new Error("Couldn't revoke that invite. Please try again.", { cause: e });
     }
   };
 
@@ -137,6 +210,12 @@ export default function InviteManager({
       </Button>
 
       {error ? <p className="text-sm text-red-500">{error}</p> : null}
+
+      {limitMessage ? (
+        <p className="text-sm text-muted-foreground">
+          {limitMessage} Ask {contact} to raise it if you need more.
+        </p>
+      ) : null}
 
       {codes.length === 0 ? (
         <p className="text-sm text-muted-foreground">
@@ -210,15 +289,10 @@ export default function InviteManager({
                     )}
                   </Button>
                   {invite.uses === 0 ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleRevoke(invite.code)}
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <Trash2Icon size={14} /> Revoke
-                    </Button>
+                    <RevokeInviteButton
+                      code={invite.code}
+                      onRevoke={() => handleRevoke(invite.code)}
+                    />
                   ) : null}
                 </div>
               </li>
@@ -226,20 +300,6 @@ export default function InviteManager({
           })}
         </ul>
       )}
-
-      <AlertDialog open={limitMessage !== null} onOpenChange={(o) => !o && setLimitMessage(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>You’ve reached your invite limit</AlertDialogTitle>
-            <AlertDialogDescription>
-              {limitMessage} Ask {contact} to raise it if you need more.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogAction onClick={() => setLimitMessage(null)}>Got it</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

@@ -34,6 +34,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 // "" ⇄ null; otherwise a non-negative integer. Anything invalid becomes null
 // (unlimited) rather than throwing — the field is a convenience, not a form gate.
@@ -45,6 +56,12 @@ function toLimit(value: string): number | null {
 }
 function fromLimit(value: number | null): string {
   return value === null ? "" : String(value);
+}
+
+// How an account is named in confirmation copy. Handles are optional, so fall
+// back to the email — the admin has to recognise who they're about to act on.
+function userLabel(u: AdminUser): string {
+  return u.handle ? `@${u.handle}` : u.email;
 }
 
 type SortKey = "handle" | "invites" | "columns";
@@ -83,6 +100,97 @@ function IconAction({
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
+  );
+}
+
+// Same dense icon button, but confirm-gated: the account-level actions change
+// who can sign in or who can moderate, and they sit inches from Save in the
+// row. Mirrors AdminDeleteButton — the dialog stays open while the action runs
+// and reports its own failure rather than the page-level banner.
+function ConfirmIconAction({
+  icon,
+  label,
+  title,
+  description,
+  confirmLabel,
+  onConfirm,
+  variant = "secondary",
+  className,
+  destructive = false,
+}: {
+  icon: ReactNode;
+  label: string;
+  title: string;
+  description: string;
+  confirmLabel: string;
+  onConfirm: () => Promise<void>;
+  variant?: "default" | "secondary" | "outline";
+  className?: string;
+  destructive?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await onConfirm();
+      setOpen(false);
+    } catch (e) {
+      console.error(e);
+      setError(e instanceof Error ? e.message : "Couldn't apply that change.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <AlertDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (busy) return;
+        setOpen(next);
+        if (!next) setError(null);
+      }}
+    >
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <AlertDialogTrigger asChild>
+            <Button variant={variant} size="icon" className={className} aria-label={label}>
+              {icon}
+            </Button>
+          </AlertDialogTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
+        </AlertDialogHeader>
+        {error ? <p className="text-sm text-red-500">{error}</p> : null}
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={busy}
+            onClick={(e) => {
+              // Keep the dialog open while the action runs / on error.
+              e.preventDefault();
+              void run();
+            }}
+            className={
+              destructive
+                ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                : undefined
+            }
+          >
+            {busy ? "Working..." : confirmLabel}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
@@ -262,17 +370,17 @@ export default function AdminManager({
     }
   };
 
-  const toggleBan = (u: AdminUser) =>
-    run(async () => {
-      await setUserBannedAction(u.user_id, !u.banned);
-      patchUser(u.user_id, { banned: !u.banned });
-    }, "Couldn't update ban status.");
+  // These two reject rather than swallow: their trigger is a confirm dialog
+  // that reports the failure in place, next to what the admin just confirmed.
+  const toggleBan = async (u: AdminUser) => {
+    await setUserBannedAction(u.user_id, !u.banned);
+    patchUser(u.user_id, { banned: !u.banned });
+  };
 
-  const toggleAdmin = (u: AdminUser) =>
-    run(async () => {
-      await setUserAdminAction(u.user_id, !u.is_admin);
-      patchUser(u.user_id, { is_admin: !u.is_admin });
-    }, "Couldn't update admin status.");
+  const toggleAdmin = async (u: AdminUser) => {
+    await setUserAdminAction(u.user_id, !u.is_admin);
+    patchUser(u.user_id, { is_admin: !u.is_admin });
+  };
 
   const saveLimits = (u: AdminUser) =>
     run(async () => {
@@ -545,20 +653,43 @@ export default function AdminManager({
                     disabled={!limitsDirty(u)}
                     onClick={() => saveLimits(u)}
                   />
-                  <IconAction
-                    icon={u.is_admin ? <ShieldOff /> : <Shield />}
-                    label={u.is_admin ? "Remove admin" : "Make admin"}
-                    onClick={() => toggleAdmin(u)}
-                  />
-                  {u.user_id === currentUserId ? null : (
-                    <IconAction
-                      icon={u.banned ? <Undo2 /> : <Ban />}
-                      label={u.banned ? "Unban" : "Ban"}
-                      variant="outline"
-                      className={u.banned ? "" : "text-destructive hover:text-destructive"}
-                      onClick={() => toggleBan(u)}
+                  {/* Account-level actions get their own group, set apart from
+                      Save so a slip along the cluster can't land on Ban. */}
+                  <div className="ml-2 flex items-end gap-2 border-l pl-4">
+                    <ConfirmIconAction
+                      icon={u.is_admin ? <ShieldOff /> : <Shield />}
+                      label={u.is_admin ? "Remove admin" : "Make admin"}
+                      title={
+                        u.is_admin
+                          ? `Remove admin from ${userLabel(u)}?`
+                          : `Make ${userLabel(u)} an admin?`
+                      }
+                      description={
+                        u.is_admin
+                          ? "They lose this settings panel and the ability to moderate other people's channels and blocks."
+                          : "Admins can change global limits, ban accounts, and delete anyone's channels and blocks."
+                      }
+                      confirmLabel={u.is_admin ? "Remove admin" : "Make admin"}
+                      onConfirm={() => toggleAdmin(u)}
                     />
-                  )}
+                    {u.user_id === currentUserId ? null : (
+                      <ConfirmIconAction
+                        icon={u.banned ? <Undo2 /> : <Ban />}
+                        label={u.banned ? "Unban" : "Ban"}
+                        variant="outline"
+                        className={u.banned ? "" : "text-destructive hover:text-destructive"}
+                        title={u.banned ? `Unban ${userLabel(u)}?` : `Ban ${userLabel(u)}?`}
+                        description={
+                          u.banned
+                            ? "They can sign in again and pick up where they left off."
+                            : "They're locked out of the account until you unban them. Their channels and blocks stay where they are."
+                        }
+                        confirmLabel={u.banned ? "Unban" : "Ban"}
+                        destructive={!u.banned}
+                        onConfirm={() => toggleBan(u)}
+                      />
+                    )}
+                  </div>
                 </div>
               </li>
             ))}

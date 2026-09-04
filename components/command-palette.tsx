@@ -71,7 +71,10 @@ export default function CommandPalette({ handle }: { handle: string }) {
 
   const navItems = useMemo(
     () => [
-      { label: "Home", icon: HomeIcon, run: () => router.push(`/${handle}`) },
+      // Home is where the nav logo and the bottom bar's home tab land — the
+      // user's own profile is reachable as Profile, the name the user menu uses.
+      { label: "Home", icon: HomeIcon, run: () => router.push("/explore") },
+      { label: "Profile", icon: UserIcon, run: () => router.push(`/${handle}`) },
       { label: "Settings", icon: SettingsIcon, run: () => router.push("/settings") },
       { label: "Invites", icon: MailIcon, run: () => router.push("/invites") },
     ],

@@ -226,6 +226,7 @@ export default function AdminManager({
       setColumnsGlobal(fromLimit(fresh.max_columns_per_user));
       setEmail(fresh.email);
       setSavedEmail(fresh.email);
+      toast.success("Settings saved.");
     } catch (e) {
       console.error(e);
       setError("Couldn't save settings.");
@@ -279,6 +280,7 @@ export default function AdminManager({
       const limits = { invite_limit: u.invite_limit, column_limit: u.column_limit };
       await setUserLimitsAction(u.user_id, limits);
       setSavedLimits((m) => new Map(m).set(u.user_id, limits));
+      toast.success(u.handle ? `Limits saved for @${u.handle}.` : "Limits saved.");
     }, "Couldn't save limits.");
 
   return (

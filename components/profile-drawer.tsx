@@ -25,6 +25,7 @@ import {
   DrawerTitle,
   DrawerTrigger,
 } from "@/components/ui/drawer";
+import { TAB, TabLabel } from "@/components/mobile-tab";
 
 // The mobile avatar opens a bottom drawer of nav links (Profile, Settings,
 // Invites, Developers, Changelog), a theme picker, and Logout — the mobile
@@ -56,14 +57,15 @@ export function ProfileDrawer({
 
   return (
     <Drawer open={open} onOpenChange={setOpen}>
-      <DrawerTrigger
-        aria-label="Profile menu"
-        className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <Avatar className="size-9">
+      {/* The trigger is one of the bottom bar's tabs, so it wears the same
+          shape as its siblings; the avatar sits inside it at roughly the size
+          of their icons rather than being the target itself. */}
+      <DrawerTrigger aria-label="Profile menu" className={TAB}>
+        <Avatar className="size-6">
           <AvatarImage src={avatarUrl} />
-          <AvatarFallback>{handle.charAt(0).toUpperCase()}</AvatarFallback>
+          <AvatarFallback className="text-[10px]">{handle.charAt(0).toUpperCase()}</AvatarFallback>
         </Avatar>
+        <TabLabel>Profile</TabLabel>
       </DrawerTrigger>
       <DrawerContent>
         <DrawerHeader>

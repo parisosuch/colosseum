@@ -197,7 +197,9 @@ export default function AdminManager({
   const [columnsGlobal, setColumnsGlobal] = useState(
     fromLimit(initialSettings.max_columns_per_user),
   );
-  const [savingSettings, setSavingSettings] = useState(false);
+  // Which section is mid-save, so only its own button says "Saving...".
+  const [savingScope, setSavingScope] = useState<"limits" | "email" | null>(null);
+  const savingSettings = savingScope !== null;
   const [testingEmail, setTestingEmail] = useState(false);
 
   // Email config. Secrets arrive blank (redacted); an edited field overwrites,
@@ -206,31 +208,43 @@ export default function AdminManager({
   const [savedEmail, setSavedEmail] = useState(initialSettings.email);
   const patchEmail = (patch: Partial<EmailSettings>) => setEmail((e) => ({ ...e, ...patch }));
 
-  const settingsDirty =
+  // Each section owns its own dirty flag so its Save enables on its own edits.
+  const globalLimitsDirty =
     toLimit(invitesGlobal) !== savedSettings.max_invites_per_user ||
-    toLimit(columnsGlobal) !== savedSettings.max_columns_per_user ||
-    JSON.stringify(email) !== JSON.stringify(savedEmail);
+    toLimit(columnsGlobal) !== savedSettings.max_columns_per_user;
+  const emailDirty = JSON.stringify(email) !== JSON.stringify(savedEmail);
 
-  const saveSettings = async () => {
-    setSavingSettings(true);
+  // One write for both sections (app_settings is a single row), but each Save
+  // commits only its own fields, so saving limits can't smuggle in a half-typed
+  // email config and saving email can't commit an in-progress limit.
+  const saveSettings = async (scope: "limits" | "email") => {
+    setSavingScope(scope);
     setError(null);
     try {
       await updateAppSettingsAction({
-        max_invites_per_user: toLimit(invitesGlobal),
-        max_columns_per_user: toLimit(columnsGlobal),
-        email,
+        max_invites_per_user:
+          scope === "limits" ? toLimit(invitesGlobal) : savedSettings.max_invites_per_user,
+        max_columns_per_user:
+          scope === "limits" ? toLimit(columnsGlobal) : savedSettings.max_columns_per_user,
+        // Omitted on a limits save, which leaves the stored email exactly as it
+        // is rather than writing a copy of it back over itself.
+        email: scope === "email" ? email : undefined,
       });
       const fresh = await getAppSettingsAction();
       setSavedSettings(fresh);
-      setInvitesGlobal(fromLimit(fresh.max_invites_per_user));
-      setColumnsGlobal(fromLimit(fresh.max_columns_per_user));
-      setEmail(fresh.email);
-      setSavedEmail(fresh.email);
+      // Only re-seed the section that was saved; the other keeps its edits.
+      if (scope === "limits") {
+        setInvitesGlobal(fromLimit(fresh.max_invites_per_user));
+        setColumnsGlobal(fromLimit(fresh.max_columns_per_user));
+      } else {
+        setEmail(fresh.email);
+        setSavedEmail(fresh.email);
+      }
     } catch (e) {
       console.error(e);
       setError("Couldn't save settings.");
     } finally {
-      setSavingSettings(false);
+      setSavingScope(null);
     }
   };
 
@@ -312,7 +326,15 @@ export default function AdminManager({
                 onChange={(e) => setColumnsGlobal(e.target.value)}
               />
             </div>
+            <Button
+              onClick={() => saveSettings("limits")}
+              disabled={savingSettings || !globalLimitsDirty}
+            >
+              <Check />
+              {savingScope === "limits" ? "Saving..." : "Save global limits"}
+            </Button>
           </div>
+          {globalLimitsDirty ? <p className="text-caption">Unsaved changes.</p> : null}
         </section>
 
         {/* Outbound email */}
@@ -418,18 +440,20 @@ export default function AdminManager({
             <div className="flex gap-2">
               <Button
                 className="flex-1"
-                onClick={saveSettings}
-                disabled={savingSettings || !settingsDirty}
+                onClick={() => saveSettings("email")}
+                disabled={savingSettings || !emailDirty}
               >
                 <Check />
-                {savingSettings ? "Saving..." : "Save settings"}
+                {savingScope === "email" ? "Saving..." : "Save email"}
               </Button>
               <Button
                 variant="outline"
                 onClick={sendTest}
-                disabled={testingEmail || settingsDirty || savedEmail.provider === null}
+                // The test uses what's persisted, so only unsaved *email* edits
+                // make it misleading — a dirty limits field is unrelated.
+                disabled={testingEmail || emailDirty || savedEmail.provider === null}
                 title={
-                  settingsDirty
+                  emailDirty
                     ? "Save your changes first"
                     : savedEmail.provider === null
                       ? "Turn on a provider first"

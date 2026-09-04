@@ -27,7 +27,8 @@ export default async function UsersPage() {
       <PageHeader crumbs={[{ label: "invites", href: "/invites" }, { label: "users" }]} />
       <p className="text-sm text-muted-foreground max-w-prose">
         The invite network. Each line connects a member to someone they invited — larger nodes have
-        invited more people. Hover to trace a member's connections, or click to visit their profile.
+        invited more people. Search by handle, or hover, focus or tap a node to name it and trace
+        its connections. A second tap — or a click — opens that member&apos;s profile.
       </p>
       <UserGraph graph={graph} />
     </div>

@@ -41,17 +41,23 @@ export default function NotificationSettings({ initial }: { initial: EmailNotifi
       <p className="text-caption max-w-prose">
         Choose which notifications also reach your inbox. They always show up in the app.
       </p>
-      <div className="space-y-2">
+      {/* The whole row is the hit area: a 16px checkbox is nowhere near a touch
+          target, so the Label wraps the row and carries the height. */}
+      <div className="max-w-prose">
         {TYPES.map(({ key, label }) => (
-          <div key={key} className="flex items-center gap-2">
+          <Label
+            key={key}
+            htmlFor={`notif-${key}`}
+            className="-mx-2 flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-2 py-2 hover:bg-muted/50"
+          >
             <Checkbox
               id={`notif-${key}`}
               checked={prefs[key]}
               disabled={saving === key}
               onCheckedChange={(c) => toggle(key, c === true)}
             />
-            <Label htmlFor={`notif-${key}`}>{label}</Label>
-          </div>
+            <span className="flex-1">{label}</span>
+          </Label>
         ))}
       </div>
     </section>

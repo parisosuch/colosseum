@@ -272,6 +272,7 @@ export default function ExploreView({
           <ExploreLoadMore
             initialCursor={activity[activity.length - 1].at}
             initialHasMore={activity.length >= ACTIVITY_PAGE}
+            signedIn={viewerId !== null}
           />
         </div>
       )}

@@ -20,6 +20,11 @@
     --accent-foreground: 0 0% 9%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
+    /* Two jobs, two reds. --destructive is a fill sized to carry white type on
+       top of it; --destructive-text is the red used *as* type on --background,
+       so it's picked for contrast against the page instead — 4.83:1 here,
+       7.19:1 in dark, where the fill managed 1.98:1. */
+    --destructive-text: 0 72.2% 50.6%;
     --border: 0 0% 89.8%;
     --input: 0 0% 89.8%;
     --ring: 0 0% 3.9%;
@@ -49,6 +54,7 @@
     --accent-foreground: 0 0% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
+    --destructive-text: 0 90.6% 70.9%;
     --border: 0 0% 14.9%;
     --input: 0 0% 14.9%;
     --ring: 0 0% 83.1%;
@@ -80,6 +86,18 @@
   [role="tab"],
   label:has(> input[type="checkbox"], > input[type="radio"]) {
     cursor: pointer;
+  }
+}
+
+/* One focus indicator for every interactive primitive. Button, Input, Textarea,
+   Checkbox, Badge and the dialog close each grew their own — 1px, 3px at half
+   alpha, 2px with an offset — and two of them fired on `focus:`, so a mouse
+   click flashed a ring the rest never showed. 2px is the floor WCAG 2.2 SC
+   2.4.11 asks for; the offset keeps the ring off the control's own border.
+   Sits in `components`, so a call site's utilities still override it. */
+@layer components {
+  .focus-ring {
+    @apply outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
   }
 }
 

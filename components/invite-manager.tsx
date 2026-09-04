@@ -215,7 +215,7 @@ export default function InviteManager({
                       variant="ghost"
                       size="sm"
                       onClick={() => handleRevoke(invite.code)}
-                      className="text-destructive hover:text-destructive"
+                      className="text-destructive-text hover:text-destructive-text"
                     >
                       <Trash2Icon size={14} /> Revoke
                     </Button>

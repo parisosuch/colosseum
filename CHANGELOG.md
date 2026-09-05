@@ -4,6 +4,16 @@ All notable changes to Colosseum are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.3] - 2026-09-05
+
+### Fixed
+
+- Sharing a channel shows what's in it. The card looked only for an image block
+  and fell back to the Colosseum card when it found none, so a channel built out
+  of links — which is most of them — never showed its own contents. It now uses
+  the newest picture among the channel's recent blocks, including the captured
+  screenshot on a link.
+
 ## [1.12.2] - 2026-09-05
 
 ### Fixed

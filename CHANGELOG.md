@@ -4,6 +4,16 @@ All notable changes to Colosseum are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.2] - 2026-09-05
+
+### Fixed
+
+- A shared Colosseum link no longer previews as the Next.js starter template.
+  The fallback share image had been the one the project was scaffolded with, so
+  any link without a picture of its own — a channel of links, a profile, the
+  home page — unfurled with someone else's branding in Slack, Discord and
+  iMessage.
+
 ## [1.12.1] - 2026-09-04
 
 ### Fixed

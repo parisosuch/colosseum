@@ -36,6 +36,12 @@ function deepLinkedBlockId(block: string | undefined): number | null {
   return Number.isNaN(id) ? null : id;
 }
 
+// How many of a channel's newest blocks the share card looks through for a
+// picture. Deep enough that a run of text blocks at the top doesn't cost the
+// channel its card, shallow enough to stay one small query on a crawler's
+// request.
+const CARD_IMAGE_SCAN = 12;
+
 // Rich link preview for a shared channel URL. Public channels only; the helper
 // returns generic metadata for private/missing ones so nothing leaks.
 export async function generateMetadata({
@@ -67,13 +73,26 @@ export async function generateMetadata({
   }
 
   const channel = Number.isNaN(id) ? null : await getChannel(id);
-  // Show what's in the channel: its most recent image block becomes the card's
-  // picture. Only asked for on a public channel — a private one gets generic
-  // metadata anyway, and this would be a query answering nothing.
+  // Show what's in the channel. A block's own picture comes first — an image,
+  // an Instagram post, a video's poster frame. A channel built out of links has
+  // none of those, so fall back to the newest cached screenshot among its URL
+  // blocks, which is the picture a visitor actually sees on those cards. Only
+  // when the newest few blocks offer neither does this fall through to the site
+  // card. Asked only on a public channel: a private one gets generic metadata
+  // anyway, so the queries would answer nothing.
   let imageUrl: string | null = null;
   if (channel && !channel.private) {
-    const [newestImage] = await getChannelColumns(channel.id, { type: "image", limit: 1 });
-    imageUrl = newestImage?.image ?? null;
+    const recent = await getChannelColumns(channel.id, { limit: CARD_IMAGE_SCAN });
+    imageUrl = recent.find((c) => c.image)?.image ?? null;
+
+    if (!imageUrl) {
+      const urls = recent.filter((c) => c.type === "url" && c.url).map((c) => c.url!);
+      const shots = await getScreenshotsForUrls(urls);
+      // Walk `urls`, not the map: it keeps the channel's own order, so the
+      // newest block with a captured screenshot wins rather than whichever the
+      // lookup happened to return first.
+      imageUrl = urls.map((u) => shots.get(u)?.image_url).find(Boolean) ?? null;
+    }
   }
   return channelPreviewMeta(channel, handle, imageUrl);
 }

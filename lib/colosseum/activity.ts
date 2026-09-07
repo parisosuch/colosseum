@@ -1,12 +1,12 @@
 import "server-only";
 
-import { and, desc, eq, lt, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, ne, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { db } from "@/lib/db";
 import { channel, channelMember, column, owner } from "@/lib/db/schema";
 
-import type { ViewerScope } from "./viewer";
+import { viewerOwnerIds, type ViewerScope } from "./viewer";
 import { toColumn, withLinkedChannels, type Column } from "./column";
 import { getScreenshotsForUrls, type ColumnScreenshot } from "./screenshot-data";
 
@@ -76,6 +76,7 @@ export async function getActivityFeed(
   before?: string,
 ): Promise<ActivityItem[]> {
   const cursor = before ? new Date(before) : null;
+  const ownerIds = viewerOwnerIds(viewer);
   // The block's creator is a person and the channel's owner is an owner row, so
   // the two handles come from the same table joined on different keys.
   const creator = alias(owner, "creator_owner");
@@ -100,7 +101,7 @@ export async function getActivityFeed(
           // outsiders, but a group sees its own members' additions.
           or(
             ne(channel.access, "private"),
-            viewer.ownerId ? eq(channel.owned_by, viewer.ownerId) : undefined,
+            ownerIds.length > 0 ? inArray(channel.owned_by, ownerIds) : undefined,
             viewer.userId
               ? sql`exists (select 1 from ${channelMember} where ${channelMember.channel_id} = ${channel.id} and ${channelMember.user_id} = ${viewer.userId})`
               : undefined,

@@ -1,6 +1,6 @@
 import { cache } from "react";
 
-import { and, desc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, ne, notInArray, or, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { cached, cacheKeys, cacheTtl, invalidate } from "@/lib/cache";
@@ -8,10 +8,11 @@ import { channel, channelMember, column, owner } from "@/lib/db/schema";
 import { sanitizeSearch } from "@/lib/utils";
 import { deleteMediaByUrl, mediaUrl, setMediaVisibilityByUrls } from "./blob";
 import { deleteScreenshotIfUnreferenced } from "./column";
+import { roleCanManage } from "./group";
 import { isChannelMember } from "./member";
-import { SIGNED_OUT, viewerScope, type ViewerScope } from "./viewer";
+import { SIGNED_OUT, viewerOwnerIds, viewerRoleFor, viewerScope, type ViewerScope } from "./viewer";
 
-export { SIGNED_OUT, viewerScope, type ViewerScope };
+export { SIGNED_OUT, viewerOwnerIds, viewerRoleFor, viewerScope, type ViewerScope };
 
 // A channel's access mode. `public`: everyone reads, only the owner adds.
 // `open`: everyone reads, any signed-in user adds. `private`: only the owner and
@@ -59,31 +60,38 @@ function isMemberSql(user_id: string | null) {
 }
 
 // SQL predicate: is this channel visible to `viewer`? The same three branches
-// canReadChannel uses — not private, owned by the viewer, or the viewer holds a
-// member row — kept here so the list queries and the row predicate can't drift.
+// canReadChannel uses — not private, owned by someone the viewer acts for, or
+// the viewer holds a member row — kept here so the list queries and the row
+// predicate can't drift.
+//
+// The middle branch is where a group's private channels come from: a member's
+// owner ids include every group they are in, so nothing group-specific is
+// needed here or in any of the five queries that call this.
 function isVisibleSql(viewer: ViewerScope) {
+  const ownerIds = viewerOwnerIds(viewer);
   return or(
     ne(channel.access, "private"),
-    viewer.ownerId ? eq(channel.owned_by, viewer.ownerId) : undefined,
+    ownerIds.length > 0 ? inArray(channel.owned_by, ownerIds) : undefined,
     isMemberSql(viewer.userId),
   );
-}
-
-// Whether the viewer acts as the channel's owner. Null-guarded, so a signed-out
-// viewer's absent owner id never reads as ownership of anything.
-function isOwnedByViewer(ch: Channel, viewer: ViewerScope): boolean {
-  return !!viewer.ownerId && viewer.ownerId === ch.owned_by;
 }
 
 // ---------------------------------------------------------------------------
 // Access predicates — the single source of the authorization matrix. Callers
 // resolve a ChannelViewer (above) and pass it in; public/open reads ignore it.
+//
+// Each one asks the viewer's role in the channel's *owner*. For a personal
+// channel that role is "owner" and the group tiers never come up; for a group's
+// channel it is whatever the roster says, which is what makes an admin able to
+// manage a channel they did not create and a member able only to add to it.
 // ---------------------------------------------------------------------------
 
-// Read: public/open are visible to anyone; private only to the owner or a member.
+// Read: public/open are visible to anyone; private only to someone who acts for
+// the owner (its author, or any member of the owning group) or holds a
+// per-channel member row.
 export function canReadChannel(ch: Channel, viewer: ChannelViewer): boolean {
   if (ch.access !== "private") return true;
-  return isOwnedByViewer(ch, viewer) || viewer.isChannelMember;
+  return !!viewerRoleFor(viewer, ch.owned_by) || viewer.isChannelMember;
 }
 
 // Which of these users may read the channel, order preserved and duplicates
@@ -98,18 +106,22 @@ export async function channelReaders(ch: Channel, userIds: string[]): Promise<st
   return userIds.filter((_, i) => readable[i]);
 }
 
-// Add blocks: open → any signed-in user; public and private → the owner or an
-// invited member. (A public channel with no members is therefore owner-only; add
-// members to make it a publicly-readable, members-only-writable channel.)
+// Add blocks: open → any signed-in user; public and private → anyone who acts
+// for the owner (including a group's `member` tier) or an invited member. (A
+// public channel with no members is therefore owner-only; add members to make it
+// a publicly-readable, members-only-writable channel.)
 export function canContributeChannel(ch: Channel, viewer: ChannelViewer): boolean {
   if (!viewer.userId) return false;
   if (ch.access === "open") return true;
-  return isOwnedByViewer(ch, viewer) || viewer.isChannelMember;
+  return !!viewerRoleFor(viewer, ch.owned_by) || viewer.isChannelMember;
 }
 
-// Manage (settings, delete, members): owner only, whatever the access mode.
+// Manage (settings, delete, members): the owner, whatever the access mode. For a
+// group's channel that means its owner and admins — a `member` may add blocks
+// but not rename or delete the channel they were added to, which is the one
+// place the roles differ from plain membership.
 export function canManageChannel(ch: Channel, viewer: ViewerScope): boolean {
-  return isOwnedByViewer(ch, viewer);
+  return roleCanManage(viewerRoleFor(viewer, ch.owned_by));
 }
 
 // May this user view the bytes behind a media id? True when they can read any
@@ -197,6 +209,7 @@ export async function getMemberChannels(
   viewer: ViewerScope,
 ): Promise<(Channel & { handle: string })[]> {
   if (!viewer.userId) return [];
+  const ownerIds = viewerOwnerIds(viewer);
   const rows = await db
     .select({ ch: channel, handle: owner.handle })
     .from(channelMember)
@@ -205,7 +218,9 @@ export async function getMemberChannels(
     .where(
       and(
         eq(channelMember.user_id, viewer.userId),
-        viewer.ownerId ? ne(channel.owned_by, viewer.ownerId) : undefined,
+        // Never a channel the viewer already reaches as its owner — their own,
+        // or one belonging to a group they are in. Those are not "invited to".
+        ownerIds.length > 0 ? notInArray(channel.owned_by, ownerIds) : undefined,
       ),
     )
     .orderBy(desc(lastBlockAddedAt));

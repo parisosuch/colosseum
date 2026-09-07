@@ -17,6 +17,8 @@ import {
   channelMember,
   column,
   comment,
+  group,
+  groupMember,
   inviteCode,
   inviteRedemption,
   owner,
@@ -53,6 +55,24 @@ export const USERS: Record<"alice" | "bob", SeedUser> = {
     handle: "bob",
     about: "Takes photos.",
   },
+};
+
+// A group fixture: alice owns it, bob is a plain member, and carol-the-outsider
+// is nobody. Deterministic ids so tests can name it without a lookup, in a 5000…
+// range clear of the user (1000…/2000…) and owner (3000…/4000…) ids.
+export const GROUPS = {
+  studio: {
+    id: "50000000-0000-4000-8000-000000000001",
+    handle: "studio",
+    name: "Studio",
+  },
+};
+
+// Channels the studio group owns, one of each visibility, so tests can check
+// that a member reads the private one and an outsider does not.
+export const GROUP_CHANNELS = {
+  studioPublic: { title: "Studio Shelf", tags: ["studio"] },
+  studioPrivate: { title: "Studio Backroom", tags: [] as string[] },
 };
 
 export const CHANNELS = {
@@ -197,6 +217,14 @@ export async function seed(): Promise<void> {
   // cascades their redemptions).
   await db.delete(inviteCode).where(inArray(inviteCode.created_by, userIds));
   await db.delete(user).where(inArray(user.id, userIds));
+  // A group's owner row hangs off no user, so the cascade above never reaches
+  // it. Delete it by id, which takes the group, its roster and its channels.
+  await db.delete(owner).where(
+    inArray(
+      owner.id,
+      Object.values(GROUPS).map((g) => g.id),
+    ),
+  );
 
   await db.insert(user).values(
     [...Object.values(USERS), ...bulk].map((u) => ({
@@ -341,6 +369,36 @@ export async function seed(): Promise<void> {
     .returning();
   // Alice is an invited member of bob's private group.
   await db.insert(channelMember).values({ channel_id: bobGroup.id, user_id: USERS.alice.id });
+
+  // A group: alice owns it, bob is a plain member. Its two channels belong to
+  // the group's owner row, not to either of them, which is what the group tests
+  // read — a member contributing to a channel nobody personally owns.
+  await db.insert(owner).values({
+    id: GROUPS.studio.id,
+    kind: "group",
+    handle: GROUPS.studio.handle,
+  });
+  await db
+    .insert(group)
+    .values({ owner_id: GROUPS.studio.id, name: GROUPS.studio.name, created_by: USERS.alice.id });
+  await db.insert(groupMember).values([
+    { group_id: GROUPS.studio.id, user_id: USERS.alice.id, role: "owner" },
+    { group_id: GROUPS.studio.id, user_id: USERS.bob.id, role: "member" },
+  ]);
+  await db.insert(channel).values([
+    {
+      title: GROUP_CHANNELS.studioPublic.title,
+      owned_by: GROUPS.studio.id,
+      access: "public",
+      tags: GROUP_CHANNELS.studioPublic.tags,
+    },
+    {
+      title: GROUP_CHANNELS.studioPrivate.title,
+      owned_by: GROUPS.studio.id,
+      access: "private",
+      tags: GROUP_CHANNELS.studioPrivate.tags,
+    },
+  ]);
 
   // Blocks in Alice's public channel, plus one in her private channel so tests
   // can assert cross-user search never surfaces private blocks. The titles use

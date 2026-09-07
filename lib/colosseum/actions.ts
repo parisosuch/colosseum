@@ -25,6 +25,23 @@ import {
 } from "./channel";
 import { ownerIdForUser, ownerRecipients } from "./owner";
 import {
+  addGroupMemberByHandle,
+  createGroup,
+  deleteGroup,
+  getGroup,
+  Group,
+  GroupMember,
+  GroupRole,
+  groupRole,
+  listGroupMembers,
+  listUserGroups,
+  removeGroupMember,
+  roleCanManage,
+  setGroupRole,
+  transferGroupOwnership,
+  updateGroup,
+} from "./group";
+import {
   ChannelMember,
   addChannelMemberByHandle,
   isChannelMember,
@@ -327,6 +344,140 @@ export async function removeChannelMemberAction(
   const userId = await requireUserId();
   await requireOwnedChannel(channelId, userId);
   await removeChannelMember(channelId, memberUserId);
+}
+
+// ---------------------------------------------------------------------------
+// Groups — a shared handle, and the roster that says who may do what with the
+// channels it owns. Roster changes are owner/admin-gated; role changes and
+// removals additionally refuse to touch the owner, which is what keeps a group
+// from ending up with nobody able to administer it (see ./group).
+//
+// Adding someone sends no notification yet: `notification.channel_id` is not
+// null and there is no group column, so a "you were added to a group" row has
+// nowhere to point until the group pages exist to link to.
+// ---------------------------------------------------------------------------
+
+// A group the caller may administer, or "Not found." — the same shape the
+// channel guards use, so a group they can't manage never confirms it exists.
+async function requireManagedGroup(groupId: string, userId: string): Promise<Group> {
+  const group = await getGroup(groupId);
+  if (!group || !roleCanManage(await groupRole(groupId, userId))) {
+    throw new Error("Not found.");
+  }
+  return group;
+}
+
+async function requireOwnedGroup(groupId: string, userId: string): Promise<Group> {
+  const group = await getGroup(groupId);
+  if (!group || (await groupRole(groupId, userId)) !== "owner") {
+    throw new Error("Not found.");
+  }
+  return group;
+}
+
+export type GroupResult =
+  | { ok: true; group: Group }
+  | { ok: false; handleTaken?: boolean; message: string };
+
+// Handles are shared with people, so a taken one comes back as data the form can
+// show rather than a thrown error that production would sanitize away.
+export async function createGroupAction(input: {
+  handle: string;
+  name: string;
+}): Promise<GroupResult> {
+  const userId = await requireUserId();
+  try {
+    return { ok: true, group: await createGroup({ ...input, created_by: userId }) };
+  } catch (e) {
+    if (e instanceof HandleTakenError) {
+      return { ok: false, handleTaken: true, message: "That handle is already taken." };
+    }
+    return { ok: false, message: e instanceof Error ? e.message : "Could not create the group." };
+  }
+}
+
+export async function listMyGroupsAction(): Promise<(Group & { role: GroupRole })[]> {
+  const userId = await currentUserId();
+  return userId ? listUserGroups(userId) : [];
+}
+
+export async function listGroupMembersAction(groupId: string): Promise<GroupMember[]> {
+  const userId = await requireUserId();
+  // Any member may see who else is in the group; only managers change it.
+  if (!(await groupRole(groupId, userId))) {
+    throw new Error("Not found.");
+  }
+  return listGroupMembers(groupId);
+}
+
+export async function addGroupMemberAction(
+  groupId: string,
+  handle: string,
+  role: Exclude<GroupRole, "owner"> = "member",
+): Promise<GroupMember> {
+  const userId = await requireUserId();
+  await requireManagedGroup(groupId, userId);
+  return addGroupMemberByHandle(groupId, handle, role);
+}
+
+export async function setGroupRoleAction(
+  groupId: string,
+  memberUserId: string,
+  role: Exclude<GroupRole, "owner">,
+): Promise<void> {
+  const userId = await requireUserId();
+  await requireManagedGroup(groupId, userId);
+  await setGroupRole(groupId, memberUserId, role);
+}
+
+export async function removeGroupMemberAction(
+  groupId: string,
+  memberUserId: string,
+): Promise<void> {
+  const userId = await requireUserId();
+  // Leaving is your own business; removing someone else needs a manager.
+  if (memberUserId !== userId) {
+    await requireManagedGroup(groupId, userId);
+  } else if (!(await groupRole(groupId, userId))) {
+    throw new Error("Not found.");
+  }
+  await removeGroupMember(groupId, memberUserId);
+}
+
+export async function transferGroupOwnershipAction(
+  groupId: string,
+  toUserId: string,
+): Promise<void> {
+  const userId = await requireUserId();
+  await requireOwnedGroup(groupId, userId);
+  await transferGroupOwnership(groupId, userId, toUserId);
+}
+
+export async function updateGroupAction(
+  groupId: string,
+  updates: { name?: string; about?: string; avatar_url?: string },
+): Promise<Group> {
+  const userId = await requireUserId();
+  await requireManagedGroup(groupId, userId);
+  return updateGroup(groupId, updates);
+}
+
+// Deleting a group takes its channels with it, so it is the owner's call alone.
+export async function deleteGroupAction(groupId: string): Promise<void> {
+  const userId = await requireUserId();
+  await requireOwnedGroup(groupId, userId);
+  await deleteGroup(groupId);
+}
+
+// Create a channel the group owns rather than you. Gated on the same
+// owner/admin tier that may manage the group's existing channels.
+export async function createGroupChannelAction(
+  groupId: string,
+  input: { title: string; description?: string; access: ChannelAccess },
+): Promise<Channel> {
+  const userId = await requireUserId();
+  await requireManagedGroup(groupId, userId);
+  return createChannel({ ...input, owned_by: groupId });
 }
 
 // Leave a channel you're a member of — a self-service remove, so it needs no

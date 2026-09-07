@@ -23,7 +23,7 @@ import { renderMarkdown } from "@/lib/markdown";
 import { sanitizeSearch } from "@/lib/utils";
 import { deleteMediaByUrl } from "./blob";
 import { deleteTweetIfUnreferenced } from "./tweet";
-import { SIGNED_OUT, type ViewerScope } from "./viewer";
+import { SIGNED_OUT, viewerOwnerIds, type ViewerScope } from "./viewer";
 import { tweetIdFromUrl } from "@/lib/utils";
 
 export type Column = {
@@ -118,6 +118,7 @@ export function toColumn(row: ColumnRow, render: ColumnRender = {}): Column {
 // since gone private resolves no display data for anyone but its owner — the
 // column then renders as a removed link.
 export async function withLinkedChannels(cols: Column[], viewer: ViewerScope): Promise<Column[]> {
+  const ownerIds = viewerOwnerIds(viewer);
   const linkedIds = [
     ...new Set(cols.map((c) => c.linked_channel_id).filter((id): id is number => id != null)),
   ];
@@ -138,7 +139,7 @@ export async function withLinkedChannels(cols: Column[], viewer: ViewerScope): P
           inArray(channel.id, linkedIds),
           or(
             ne(channel.access, "private"),
-            viewer.ownerId ? eq(channel.owned_by, viewer.ownerId) : undefined,
+            ownerIds.length > 0 ? inArray(channel.owned_by, ownerIds) : undefined,
           ),
         ),
       ),
@@ -436,6 +437,7 @@ export async function searchColumns(
   if (!term) {
     return [];
   }
+  const ownerIds = viewerOwnerIds(viewer);
 
   const pattern = `%${term}%`;
   const tag = term.replace(/["\\]/g, "");
@@ -461,7 +463,7 @@ export async function searchColumns(
       and(
         or(
           ne(channel.access, "private"),
-          viewer.ownerId ? eq(channel.owned_by, viewer.ownerId) : undefined,
+          ownerIds.length > 0 ? inArray(channel.owned_by, ownerIds) : undefined,
           viewer.userId
             ? sql`exists (select 1 from ${channelMember} where ${channelMember.channel_id} = ${channel.id} and ${channelMember.user_id} = ${viewer.userId})`
             : undefined,

@@ -4,12 +4,12 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { owner } from "@/lib/db/schema";
+import { groupRecipients } from "./group";
 
 // The `owner` table's data layer: everything that holds a handle and can own
-// channels. Today every row is `kind = "user"`, one per person, created at
-// onboarding beside their user_profile. Groups are the second kind and land in
-// a later change; the read helpers here already treat kind as data rather than
-// assuming it, so they keep working when they arrive.
+// channels. A row is either a person (`kind = "user"`, one per account, created
+// at onboarding beside their user_profile) or a group (see ./group). The reads
+// here treat kind as data, so they answer for both.
 //
 // Per-person reads (handle, avatar, bio for a signed-in user) go through
 // ./user, which joins this table to user_profile and filters to kind "user".
@@ -57,10 +57,9 @@ export const getOwnerByHandle = cache(async (handle: string): Promise<Owner | nu
 // here means they haven't finished it — the same condition ./user reports by
 // returning a null profile, and callers treat it the same way.
 //
-// Singular today because a person owns exactly one thing. When a user can also
-// act for the groups they belong to, this becomes the list of owner ids they may
-// act for, and the visibility predicates that call it move from an equality to a
-// membership test.
+// Singular: this is the person's *own* owner row, which is what a channel they
+// create belongs to. The wider question — every owner they may act for, groups
+// included — is a ViewerScope, see ./viewer.
 export const ownerIdForUser = cache(async (user_id: string): Promise<string | null> => {
   const [row] = await db
     .select({ id: owner.id })
@@ -87,13 +86,16 @@ export async function requireOwnerId(user_id: string): Promise<string> {
 // carry an unread count — so anything addressed to "the owner" has to resolve
 // through here rather than using an owner id directly.
 //
-// One person today. For a group this becomes its admins, which is why it
-// returns a list and why callers fan out over it instead of taking [0].
+// One person for a personal owner; a group's owner and admins, since a
+// notification is something someone has to act on and a twenty-person group
+// should not all receive the same one.
 export async function ownerRecipients(owner_id: string): Promise<string[]> {
   const [row] = await db
-    .select({ user_id: owner.user_id })
+    .select({ user_id: owner.user_id, kind: owner.kind })
     .from(owner)
     .where(eq(owner.id, owner_id))
     .limit(1);
-  return row?.user_id ? [row.user_id] : [];
+  if (!row) return [];
+  if (row.kind === "group") return groupRecipients(owner_id);
+  return row.user_id ? [row.user_id] : [];
 }

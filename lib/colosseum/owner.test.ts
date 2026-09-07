@@ -1,7 +1,7 @@
 import { beforeAll, expect, test } from "bun:test";
 
 import { seed, USERS } from "@/scripts/seed";
-import { canManageChannel, createChannel, deleteChannel, viewerScope } from "./channel";
+import { canManageChannel, createChannel, deleteChannel, SIGNED_OUT, viewerScope } from "./channel";
 import {
   getOwner,
   getOwnerByHandle,
@@ -63,11 +63,17 @@ test("canManageChannel denies a viewer carrying a user id in place of an owner i
   });
   try {
     expect(canManageChannel(ch, await viewerScope(USERS.alice.id))).toBe(true);
-    // The same person, described wrongly.
-    expect(canManageChannel(ch, { userId: USERS.alice.id, ownerId: USERS.alice.id })).toBe(false);
-    // Someone else, and a signed-out viewer whose null owner id must not match.
+    // The same person, described wrongly: a user id where an owner id belongs.
+    expect(
+      canManageChannel(ch, {
+        userId: USERS.alice.id,
+        ownerId: USERS.alice.id,
+        roles: new Map([[USERS.alice.id, "owner" as const]]),
+      }),
+    ).toBe(false);
+    // Someone else, and a signed-out viewer who acts for nobody.
     expect(canManageChannel(ch, await viewerScope(USERS.bob.id))).toBe(false);
-    expect(canManageChannel(ch, { userId: null, ownerId: null })).toBe(false);
+    expect(canManageChannel(ch, SIGNED_OUT)).toBe(false);
   } finally {
     await deleteChannel(ch.id);
   }

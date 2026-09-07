@@ -21,6 +21,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -176,6 +177,60 @@ export const owner = pgTable(
     // searchable and mentionable by sitting in this table.
     index("owner_handle_trgm_idx").using("gin", sql`${t.handle} gin_trgm_ops`),
     index("owner_about_trgm_idx").using("gin", sql`${t.about} gin_trgm_ops`),
+  ],
+);
+
+// The group half of `owner`: a handle several people share and collect into.
+// Keyed by the owner row rather than carrying an id of its own, so
+// `group_member.group_id` compares directly against `channel.owned_by` with no
+// table in between, and deleting the owner takes the group with it.
+export const group = pgTable("group", {
+  owner_id: uuid("owner_id")
+    .primaryKey()
+    .references(() => owner.id, { onDelete: "cascade" }),
+  // Display name. The handle lives on `owner` with everyone else's.
+  name: text("name").notNull(),
+  // Who made it, kept for provenance only — they hold no standing privilege,
+  // and the group outlives their account (hence set null rather than cascade).
+  created_by: uuid("created_by").references(() => user.id, { onDelete: "set null" }),
+  created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// What a member may do with the group's channels:
+//   owner  — everything an admin may, plus deleting the group and handing the
+//            owner role to someone else. Exactly one per group.
+//   admin  — manage the group's channels (settings, delete) and its roster.
+//   member — contribute blocks to the group's channels, and read the private
+//            ones (which is what replaces a per-channel roster for them).
+export const GROUP_ROLES = ["owner", "admin", "member"] as const;
+export type GroupRole = (typeof GROUP_ROLES)[number];
+
+export const groupMember = pgTable(
+  "group_member",
+  {
+    group_id: uuid("group_id")
+      .notNull()
+      .references(() => group.owner_id, { onDelete: "cascade" }),
+    user_id: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    role: text("role", { enum: GROUP_ROLES }).notNull(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.group_id, t.user_id] }),
+    // The enum on the column above is TypeScript's alone. This role decides who
+    // may delete a channel, so the database gets to refuse a bad one too.
+    check("group_member_role_valid", sql`${t.role} in ('owner', 'admin', 'member')`),
+    // At most one owner per group, enforced where it can't be raced. The "at
+    // least one" half can't be an index — removing the last owner is a delete,
+    // and no constraint fires on the rows that stay — so lib/colosseum/group.ts
+    // guards that end.
+    uniqueIndex("group_one_owner_idx")
+      .on(t.group_id)
+      .where(sql`${t.role} = 'owner'`),
+    // Resolving which groups a viewer acts for, on every authorized read.
+    index("group_member_user_id_idx").on(t.user_id),
   ],
 );
 

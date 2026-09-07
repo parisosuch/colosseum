@@ -15,6 +15,7 @@ import type { ProfileSearchResult } from "@/lib/colosseum/user";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { Select } from "./ui/select";
 import { UserProfilePicture } from "./user-profile-picture";
 import {
   AlertDialog,
@@ -133,7 +134,7 @@ export default function GroupMembers({
   return (
     <div className="border-t pt-4 flex flex-col gap-2">
       <Label>Members</Label>
-      <p className="text-xs text-muted-foreground">
+      <p className="text-caption">
         Everyone here can add to the group&apos;s channels and read its private ones.
       </p>
       <div className="relative">
@@ -188,10 +189,10 @@ export default function GroupMembers({
                 {isOwner ? (
                   // The owner's role is not a dropdown: it moves only by
                   // transferring, which demotes whoever does it.
-                  <span className="text-xs text-muted-foreground px-2">Owner</span>
+                  <span className="text-caption px-2">Owner</span>
                 ) : (
-                  <select
-                    className="rounded-md border bg-background px-2 py-1 text-xs"
+                  <Select
+                    className="h-8 w-auto text-xs"
                     aria-label={`Role for @${m.handle}`}
                     value={m.role}
                     disabled={busy}
@@ -201,7 +202,7 @@ export default function GroupMembers({
                   >
                     <option value="member">Member</option>
                     <option value="admin">Admin</option>
-                  </select>
+                  </Select>
                 )}
                 {/* Only the current owner can hand the group on, and only to
                     someone already in it. */}
@@ -233,7 +234,7 @@ export default function GroupMembers({
           );
         })}
       </ul>
-      <p className="text-xs text-muted-foreground">
+      <p className="text-caption">
         An admin can also rename and delete the group&apos;s channels, and change who is in it.
       </p>
 

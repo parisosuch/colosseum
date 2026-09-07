@@ -72,6 +72,12 @@ layout widths (`w-[350px]`) should not — use the scale or a responsive width.
     `<Link className="underline underline-offset-4">`: every button size carries
     a fixed height and horizontal padding, which mid-paragraph puts a button's
     box in the middle of the text.
+- **Selects:** `components/ui/select.tsx` — a native `<select>` styled to match
+  `Input`, for picking from a short fixed list (a group's role, a channel's
+  owner). Native because the platform control already handles the keyboard, the
+  mobile sheet and the screen-reader semantics. Don't hand-roll
+  `rounded-md border bg-background px-3 py-2`: it drifts off `Input`'s
+  `focus-ring` and `coarse:min-h-11`, leaving no focus state and a small target.
 - **Panels:** one recipe — `rounded-lg border` with `p-3`–`p-6`. For a surface
   that floats over the page rather than sitting in it, use
   `components/ui/card.tsx`, which is that recipe plus a shadow; its `p-6`

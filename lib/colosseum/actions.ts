@@ -459,8 +459,19 @@ export async function updateGroupAction(
   updates: { name?: string; about?: string; avatar_url?: string },
 ): Promise<Group> {
   const userId = await requireUserId();
-  await requireManagedGroup(groupId, userId);
-  return updateGroup(groupId, updates);
+  const group = await requireManagedGroup(groupId, userId);
+  const updated = await updateGroup(groupId, updates);
+  // A new avatar orphans the old one's media reference; drop it after the write
+  // lands so the blob is GC'd once nothing else points at it. Same as the
+  // profile editor does — without it, every avatar change leaks a blob.
+  if (
+    updates.avatar_url !== undefined &&
+    group.avatar_url &&
+    group.avatar_url !== updates.avatar_url
+  ) {
+    await deleteMediaByUrl(group.avatar_url);
+  }
+  return updated;
 }
 
 // Deleting a group takes its channels with it, so it is the owner's call alone.

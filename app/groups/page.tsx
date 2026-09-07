@@ -45,14 +45,14 @@ export default async function GroupsPage() {
             <li key={g.id}>
               <Link
                 href={`/${g.handle}`}
-                className="flex items-center gap-3 rounded-md border p-3 hover:bg-accent"
+                className="flex items-center gap-3 rounded-lg border p-3 hover:bg-accent"
               >
                 <UserProfilePicture avatarUrl={g.avatar_url} handle={g.handle} size="sm" />
                 <span className="flex min-w-0 flex-col">
                   <span className="truncate text-sm font-medium">{g.name}</span>
-                  <span className="truncate text-xs text-muted-foreground">@{g.handle}</span>
+                  <span className="truncate text-caption">@{g.handle}</span>
                 </span>
-                <span className="ml-auto text-xs text-muted-foreground">{g.role}</span>
+                <span className="ml-auto text-caption">{g.role}</span>
               </Link>
             </li>
           ))}

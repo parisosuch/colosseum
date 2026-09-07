@@ -429,12 +429,16 @@ export const notification = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     type: text("type", { enum: ["comment", "mention", "connect", "member"] }).notNull(),
-    // Every notification is about a channel (or a block within one), so this is
-    // always set. For `connect` it is the *host* channel — the one the recipient's
-    // channel was added to — which is where the link should land.
-    channel_id: bigint("channel_id", { mode: "number" })
-      .notNull()
-      .references(() => channel.id, { onDelete: "cascade" }),
+    // What the notification is about: a channel (or a block within one), or a
+    // group. Exactly one is set — see the check below. For `connect` the channel
+    // is the *host* — the one the recipient's channel was added to — which is
+    // where the link should land.
+    channel_id: bigint("channel_id", { mode: "number" }).references(() => channel.id, {
+      onDelete: "cascade",
+    }),
+    // Set instead of `channel_id` when someone is added to a group. A group's
+    // owner row is its id, so this points there and cascades with it.
+    group_id: uuid("group_id").references(() => owner.id, { onDelete: "cascade" }),
     // Set for comment/mention (the block) and for `connect` (the channel column
     // created inside the host, whose linked_channel_id names the subject).
     column_id: bigint("column_id", { mode: "number" }).references(() => column.id, {
@@ -456,9 +460,15 @@ export const notification = pgTable(
     email_sent_at: timestamp("email_sent_at", { withTimezone: true }),
     read_at: timestamp("read_at", { withTimezone: true }),
   },
-  // The bell feed and unread count both scan one recipient's rows, newest first.
   (t) => [
+    // The bell feed and unread count both scan one recipient's rows, newest first.
     index("notification_recipient_id_created_at_idx").on(t.recipient_id, t.created_at.desc()),
+    // A notification points at exactly one subject; the render path picks its
+    // message and its link off whichever one is set.
+    check(
+      "notification_one_subject",
+      sql`(${t.channel_id} is not null) <> (${t.group_id} is not null)`,
+    ),
   ],
 );
 

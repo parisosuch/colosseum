@@ -352,10 +352,6 @@ export async function removeChannelMemberAction(
 // channels it owns. Roster changes are owner/admin-gated; role changes and
 // removals additionally refuse to touch the owner, which is what keeps a group
 // from ending up with nobody able to administer it (see ./group).
-//
-// Adding someone sends no notification yet: `notification.channel_id` is not
-// null and there is no group column, so a "you were added to a group" row has
-// nowhere to point until the group pages exist to link to.
 // ---------------------------------------------------------------------------
 
 // A group the caller may administer, or "Not found." — the same shape the
@@ -418,7 +414,21 @@ export async function addGroupMemberAction(
 ): Promise<GroupMember> {
   const userId = await requireUserId();
   await requireManagedGroup(groupId, userId);
-  return addGroupMemberByHandle(groupId, handle, role);
+  // Only notify on a genuine add — re-adding an existing member is a no-op, and
+  // a role change is not something they need telling about. An unknown handle
+  // is left for addGroupMemberByHandle to reject.
+  const profile = await getPublicUserProfile(normalizeHandle(handle));
+  const alreadyMember = profile ? await groupRole(groupId, profile.user_id) : null;
+  const member = await addGroupMemberByHandle(groupId, handle, role);
+  if (!alreadyMember) {
+    await createNotification({
+      recipient_id: member.user_id,
+      actor_id: userId,
+      type: "member",
+      group_id: groupId,
+    });
+  }
+  return member;
 }
 
 export async function setGroupRoleAction(

@@ -2,7 +2,7 @@ import { afterEach, beforeAll, expect, test } from "bun:test";
 
 import { desc, eq } from "drizzle-orm";
 
-import { BLOCKS, CHANNELS, seed, USERS } from "@/scripts/seed";
+import { BLOCKS, CHANNELS, GROUPS, seed, USERS } from "@/scripts/seed";
 import { db } from "@/lib/db";
 import { notification } from "@/lib/db/schema";
 import { createChannel, deleteChannel, getOwnerChannels, viewerScope } from "./channel";
@@ -96,6 +96,18 @@ test("listNotifications resolves actor, message, and a deep link", async () => {
   expect(items[0].message).toContain(`added you to "${CHANNELS.aliceDesign.title}"`);
   expect(items[0].href).toBe(`/${USERS.alice.handle}/${channelId}`);
   expect(items[0].read).toBe(false);
+});
+
+test("a group membership notification names the group and links to it", async () => {
+  await createNotification({
+    recipient_id: USERS.bob.id,
+    actor_id: USERS.alice.id,
+    type: "member",
+    group_id: GROUPS.studio.id,
+  });
+  const [item] = await listNotifications(USERS.bob.id);
+  expect(item.message).toContain(`added you to the group @${GROUPS.studio.handle}`);
+  expect(item.href).toBe(`/${GROUPS.studio.handle}`);
 });
 
 test("a connect links to the host channel and names both channels", async () => {

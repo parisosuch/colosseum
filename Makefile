@@ -72,7 +72,10 @@ check: format lint typecheck
 
 test:
 	@echo "Running tests..."
-	bun run test
+# bun test runs with NODE_ENV=test, and bun skips .env.local in test mode, so the
+# suite's DATABASE_URL has to be handed to it explicitly. Empty in CI, which sets
+# the variable in the environment already.
+	env $$(grep -E '^DATABASE_URL=' .env.local 2>/dev/null | xargs) bun run test
 	@echo "✓ Tests passed"
 
 start-db:

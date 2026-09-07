@@ -6,6 +6,17 @@ All notable changes to Colosseum are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Groups. A group has a handle of its own, and the channels made in it belong to
+  the group rather than to whoever created them, so they outlive any one
+  account. Everyone in a group can add to its channels and read its private
+  ones; admins can also rename and delete them and manage who's in the group;
+  the single owner can hand the group on or delete it. New groups are made from
+  Groups in the account menu, existing channels can be moved into or out of a
+  group from the channel's manage dialog, and a group's page is /{its handle},
+  the same place a person's is.
+
 ### Changed
 
 - Handles moved to a new `owner` table, which is what a channel now belongs to.

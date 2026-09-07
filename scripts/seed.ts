@@ -68,6 +68,12 @@ export const GROUPS = {
   },
 };
 
+// Handles the group tests create and delete themselves. Listed here so the seed
+// can clear them too: a group's owner row hangs off no user, so the cascade that
+// removes the fixture people never reaches one, and a test that failed before
+// its cleanup would otherwise fail every later run on the taken handle.
+export const SCRATCH_GROUP_HANDLES = ["kiln-test", "kiln-doomed"];
+
 // Channels the studio group owns, one of each visibility, so tests can check
 // that a member reads the private one and an outsider does not.
 export const GROUP_CHANNELS = {
@@ -225,6 +231,7 @@ export async function seed(): Promise<void> {
       Object.values(GROUPS).map((g) => g.id),
     ),
   );
+  await db.delete(owner).where(inArray(owner.handle, SCRATCH_GROUP_HANDLES));
 
   await db.insert(user).values(
     [...Object.values(USERS), ...bulk].map((u) => ({

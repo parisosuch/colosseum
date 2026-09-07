@@ -413,6 +413,30 @@ export async function updateChannel(
   return toChannel(row);
 }
 
+// Move a channel to a different owner. Callers authorize both ends first (see
+// transferChannelAction). Both owners' channel lists are invalidated, since the
+// channel leaves one and joins the other, and the channel's own cached row goes
+// too — `owned_by` is on it.
+//
+// The channel's images follow its access mode, not its owner, so nothing about
+// media visibility changes here: a private channel's images stay private and a
+// public one's stay public, whoever holds it.
+export async function transferChannel(channel_id: number, to_owner_id: string): Promise<Channel> {
+  const previous = await channelOwnedBy(channel_id);
+  const [row] = await db
+    .update(channel)
+    .set({ owned_by: to_owner_id, updated_at: new Date() })
+    .where(eq(channel.id, channel_id))
+    .returning();
+  if (!row) {
+    throw new Error("Channel not found.");
+  }
+  await invalidate(cacheKeys.channel(channel_id));
+  if (previous) await invalidateOwnerChannelLists(previous);
+  await invalidateOwnerChannelLists(to_owner_id);
+  return toChannel(row);
+}
+
 // Handles for a set of owner ids, for callers holding channels but not the
 // owners their `/{handle}/{id}` links need.
 export async function ownerHandles(ownerIds: string[]): Promise<Map<string, string>> {

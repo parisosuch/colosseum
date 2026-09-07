@@ -19,11 +19,12 @@ import {
   deleteChannel,
   getChannel,
   resolveChannelViewer,
+  transferChannel,
   searchChannels,
   updateChannel,
   viewerScope,
 } from "./channel";
-import { ownerIdForUser, ownerRecipients } from "./owner";
+import { getOwner, ownerIdForUser, ownerRecipients } from "./owner";
 import {
   addGroupMemberByHandle,
   createGroup,
@@ -467,6 +468,36 @@ export async function deleteGroupAction(groupId: string): Promise<void> {
   const userId = await requireUserId();
   await requireOwnedGroup(groupId, userId);
   await deleteGroup(groupId);
+}
+
+// Move a channel to another owner: from you to a group you manage, or back.
+// Both ends are checked — you must be able to manage the channel now, and to
+// manage whatever it is going to — so this can neither give a channel away to a
+// group you are not in nor take one out of a group you only belong to.
+//
+// Ownership is what grants access, so this changes who can read a private
+// channel. The per-channel `channel_member` roster is left alone: those are
+// people invited to this channel specifically, and they keep their invitation.
+export async function transferChannelAction(
+  channelId: number,
+  toOwnerId: string,
+): Promise<Channel> {
+  const userId = await requireUserId();
+  const channel = await requireOwnedChannel(channelId, userId);
+  if (channel.owned_by === toOwnerId) return channel;
+
+  const viewer = await viewerScope(userId);
+  const target = await getOwner(toOwnerId);
+  if (!target) {
+    throw new Error("Not found.");
+  }
+  // Moving it to yourself needs no role beyond it being your own owner row;
+  // moving it into a group needs the manage tier there.
+  const allowed = target.id === viewer.ownerId || roleCanManage(await groupRole(toOwnerId, userId));
+  if (!allowed) {
+    throw new Error("You do not have permission to move this channel there.");
+  }
+  return transferChannel(channelId, toOwnerId);
 }
 
 // Create a channel the group owns rather than you. Gated on the same

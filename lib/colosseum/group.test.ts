@@ -1,6 +1,6 @@
 import { beforeAll, expect, test } from "bun:test";
 
-import { GROUP_CHANNELS, GROUPS, seed, USERS } from "@/scripts/seed";
+import { GROUP_CHANNELS, GROUPS, SCRATCH_GROUP_HANDLES, seed, USERS } from "@/scripts/seed";
 import {
   canContributeChannel,
   canManageChannel,
@@ -240,7 +240,11 @@ test("listUserGroups reports each membership with its role", async () => {
 });
 
 test("creating a group makes its creator the owner", async () => {
-  const g = await createGroup({ handle: "kiln-test", name: "Kiln", created_by: USERS.bob.id });
+  const g = await createGroup({
+    handle: SCRATCH_GROUP_HANDLES[0],
+    name: "Kiln",
+    created_by: USERS.bob.id,
+  });
   try {
     expect(await groupRole(g.id, USERS.bob.id)).toBe("owner");
     expect(await listGroupMembers(g.id)).toHaveLength(1);
@@ -251,7 +255,11 @@ test("creating a group makes its creator the owner", async () => {
 
 // Deleting a group must take its channels, the way deleting a person does.
 test("deleting a group deletes the channels it owned", async () => {
-  const g = await createGroup({ handle: "kiln-doomed", name: "Doomed", created_by: USERS.bob.id });
+  const g = await createGroup({
+    handle: SCRATCH_GROUP_HANDLES[1],
+    name: "Doomed",
+    created_by: USERS.bob.id,
+  });
   const ch = await createChannel({ title: "Group's own", access: "public", owned_by: g.id });
   await deleteGroup(g.id);
   expect(await getGroup(g.id)).toBeNull();

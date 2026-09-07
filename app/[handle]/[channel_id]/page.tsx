@@ -12,7 +12,7 @@ import {
   resolveChannelViewer,
 } from "@/lib/colosseum/channel";
 import { listChannelMembers } from "@/lib/colosseum/member";
-import { getPublicUserProfile } from "@/lib/colosseum/user";
+import { getOwnerByHandle } from "@/lib/colosseum/owner";
 import { channelPreviewMeta } from "@/lib/colosseum/channel-meta";
 import { blockPreviewMeta } from "@/lib/colosseum/block-meta";
 import { loadVisibleBlock } from "@/lib/colosseum/block-access";
@@ -167,7 +167,7 @@ export default async function ChannelPage({ params, searchParams }: ChannelPageP
     // handle alone — so it joins the batch rather than waiting on `members` to
     // find out whether it was needed. One query on a solo channel beats a whole
     // serialized round-trip on every channel that has members.
-    getPublicUserProfile(handle),
+    getOwnerByHandle(handle),
   ]);
 
   // Shown beside the roster, so there's nothing to show without one.

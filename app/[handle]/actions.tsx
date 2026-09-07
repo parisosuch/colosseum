@@ -5,7 +5,7 @@ import { CHANNELS_PAGE } from "@/components/channel-filter";
 import { getSessionUser } from "@/lib/auth";
 import { getProfileChannels, viewerScope } from "@/lib/colosseum/channel";
 import { getChannelColumnCounts } from "@/lib/colosseum/column";
-import { getPublicUserProfile } from "@/lib/colosseum/user";
+import { getOwnerByHandle } from "@/lib/colosseum/owner";
 
 // Next page of a profile's channel grid, already rendered as server components
 // so previews and URL screenshots come out exactly as they do on first paint —
@@ -18,11 +18,12 @@ import { getPublicUserProfile } from "@/lib/colosseum/user";
 export async function loadChannelCards(handle: string, ids: number[]): Promise<ChannelCard[]> {
   if (ids.length === 0) return [];
 
-  const [user, profile] = await Promise.all([getSessionUser(), getPublicUserProfile(handle)]);
-  if (!profile) return [];
+  // By owner, not by user: a group's profile paginates through here too.
+  const [user, owner] = await Promise.all([getSessionUser(), getOwnerByHandle(handle)]);
+  if (!owner) return [];
 
   const viewer = await viewerScope(user?.id ?? null);
-  const entries = await getProfileChannels(profile.owner_id, handle, viewer);
+  const entries = await getProfileChannels(owner.id, handle, viewer);
   const wanted = new Set(ids.slice(0, CHANNELS_PAGE));
   const slice = entries.filter((e) => wanted.has(e.channel.id));
 

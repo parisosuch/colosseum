@@ -131,9 +131,7 @@ export default async function OwnerPage({ params }: { params: Promise<{ handle: 
                   >
                     <UserProfilePicture avatarUrl={m.avatar_url} handle={m.handle} size="sm" />
                     <span>@{m.handle}</span>
-                    {m.role !== "member" ? (
-                      <span className="text-xs text-muted-foreground">{m.role}</span>
-                    ) : null}
+                    {m.role !== "member" ? <span className="text-caption">{m.role}</span> : null}
                   </Link>
                 </li>
               ))}

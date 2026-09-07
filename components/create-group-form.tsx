@@ -74,7 +74,7 @@ export default function CreateGroupForm() {
               setHandle(sanitizeHandleInput(e.target.value));
             }}
           />
-          <p className="text-xs text-muted-foreground">
+          <p className="text-caption">
             The group lives at /{effectiveHandle || "handle"}. Handles are shared with people, so
             this one has to be free.
           </p>

@@ -11,6 +11,7 @@ import {
 import type { Channel } from "@/lib/colosseum/channel";
 import type { Group, GroupRole } from "@/lib/colosseum/group";
 import { Label } from "./ui/label";
+import { Select } from "./ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -88,12 +89,11 @@ export default function ChannelOwnerTransfer({ channel }: { channel: Channel }) 
   return (
     <div className="border-t pt-4 flex flex-col gap-2">
       <Label htmlFor="channel-owner">Belongs to</Label>
-      <p className="text-xs text-muted-foreground">
+      <p className="text-caption">
         Whoever owns this channel decides who can read and manage it. Currently {currentLabel}.
       </p>
-      <select
+      <Select
         id="channel-owner"
-        className="rounded-md border bg-background px-3 py-2 text-sm"
         value={channel.owned_by}
         disabled={busy}
         onChange={(e) => {
@@ -105,7 +105,7 @@ export default function ChannelOwnerTransfer({ channel }: { channel: Channel }) 
             {o.label}
           </option>
         ))}
-      </select>
+      </Select>
       {error && <p className="text-sm text-destructive-text">{error}</p>}
 
       <AlertDialog open={!!target} onOpenChange={(o) => !o && setTarget(null)}>

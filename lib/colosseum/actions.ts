@@ -12,14 +12,36 @@ import {
   ChannelAccess,
   ChannelSearchResult,
   canContributeChannel,
+  canManageChannel,
   canReadChannel,
   channelReaders,
   createChannel,
   deleteChannel,
   getChannel,
+  resolveChannelViewer,
+  transferChannel,
   searchChannels,
   updateChannel,
+  viewerScope,
 } from "./channel";
+import { getOwner, ownerIdForUser, ownerRecipients } from "./owner";
+import {
+  addGroupMemberByHandle,
+  createGroup,
+  deleteGroup,
+  getGroup,
+  Group,
+  GroupMember,
+  GroupRole,
+  groupRole,
+  listGroupMembers,
+  listUserGroups,
+  removeGroupMember,
+  roleCanManage,
+  setGroupRole,
+  transferGroupOwnership,
+  updateGroup,
+} from "./group";
 import {
   ChannelMember,
   addChannelMemberByHandle,
@@ -149,7 +171,7 @@ async function requireUserId(): Promise<string> {
 // Throws "Not found." otherwise so a private channel's existence never leaks.
 async function requireOwnedChannel(channelId: number, userId: string): Promise<Channel> {
   const channel = await getChannel(channelId);
-  if (!channel || channel.owner_id !== userId) {
+  if (!channel || !canManageChannel(channel, await viewerScope(userId))) {
     throw new Error("Not found.");
   }
   return channel;
@@ -163,11 +185,11 @@ async function requireContributableChannel(channelId: number, userId: string): P
   if (!channel) {
     throw new Error("Not found.");
   }
-  const isMember = channel.access === "open" ? false : await isChannelMember(channelId, userId);
-  if (!canReadChannel(channel, userId, isMember)) {
+  const viewer = await resolveChannelViewer(channel, userId);
+  if (!canReadChannel(channel, viewer)) {
     throw new Error("Not found.");
   }
-  if (!canContributeChannel(channel, userId, isMember)) {
+  if (!canContributeChannel(channel, viewer)) {
     throw new Error("You do not have permission to add to this channel.");
   }
   // Every content upload routes through here, so the per-user block quota is
@@ -186,7 +208,8 @@ async function requireWritableBlock(columnId: number, userId: string): Promise<C
     throw new Error("Not found.");
   }
   const channel = await requireReadableChannel(column.channel_id);
-  if (channel.owner_id !== userId && column.created_by !== userId) {
+  const viewer = await viewerScope(userId);
+  if (!canManageChannel(channel, viewer) && column.created_by !== userId) {
     throw new Error("You do not have permission to modify this block.");
   }
   return column;
@@ -200,9 +223,7 @@ async function requireReadableChannel(channelId: number): Promise<Channel> {
     throw new Error("Not found.");
   }
   const userId = await currentUserId();
-  const isMember =
-    channel.access === "private" && userId ? await isChannelMember(channelId, userId) : false;
-  if (!canReadChannel(channel, userId, isMember)) {
+  if (!canReadChannel(channel, await resolveChannelViewer(channel, userId))) {
     throw new Error("Not found.");
   }
   return channel;
@@ -233,10 +254,11 @@ export async function searchAction(query: string): Promise<{
   if (!userId) {
     return { profiles: [], channels: [], columns: [] };
   }
+  const viewer = await viewerScope(userId);
   const [profiles, channels, columns] = await Promise.all([
     searchProfiles(query),
-    searchChannels(userId, query),
-    searchColumns(userId, query),
+    searchChannels(viewer, query),
+    searchColumns(viewer, query),
   ]);
   return { profiles, channels, columns };
 }
@@ -258,7 +280,11 @@ export async function createChannelAction(input: {
   access: ChannelAccess;
 }): Promise<Channel> {
   const userId = await requireUserId();
-  return createChannel({ ...input, owner_id: userId });
+  const ownerId = await ownerIdForUser(userId);
+  if (!ownerId) {
+    throw new Error("Finish setting up your profile first.");
+  }
+  return createChannel({ ...input, owned_by: ownerId });
 }
 
 export async function updateChannelAction(
@@ -295,7 +321,7 @@ export async function addChannelMemberAction(
   if (!profile) {
     throw new Error("No user with that handle.");
   }
-  if (profile.user_id === channel.owner_id) {
+  if (profile.owner_id === channel.owned_by) {
     throw new Error("You're already the owner of this channel.");
   }
   // Only notify on a genuine add — re-adding an existing member is a no-op.
@@ -321,6 +347,170 @@ export async function removeChannelMemberAction(
   await removeChannelMember(channelId, memberUserId);
 }
 
+// ---------------------------------------------------------------------------
+// Groups — a shared handle, and the roster that says who may do what with the
+// channels it owns. Roster changes are owner/admin-gated; role changes and
+// removals additionally refuse to touch the owner, which is what keeps a group
+// from ending up with nobody able to administer it (see ./group).
+//
+// Adding someone sends no notification yet: `notification.channel_id` is not
+// null and there is no group column, so a "you were added to a group" row has
+// nowhere to point until the group pages exist to link to.
+// ---------------------------------------------------------------------------
+
+// A group the caller may administer, or "Not found." — the same shape the
+// channel guards use, so a group they can't manage never confirms it exists.
+async function requireManagedGroup(groupId: string, userId: string): Promise<Group> {
+  const group = await getGroup(groupId);
+  if (!group || !roleCanManage(await groupRole(groupId, userId))) {
+    throw new Error("Not found.");
+  }
+  return group;
+}
+
+async function requireOwnedGroup(groupId: string, userId: string): Promise<Group> {
+  const group = await getGroup(groupId);
+  if (!group || (await groupRole(groupId, userId)) !== "owner") {
+    throw new Error("Not found.");
+  }
+  return group;
+}
+
+export type GroupResult =
+  | { ok: true; group: Group }
+  | { ok: false; handleTaken?: boolean; message: string };
+
+// Handles are shared with people, so a taken one comes back as data the form can
+// show rather than a thrown error that production would sanitize away.
+export async function createGroupAction(input: {
+  handle: string;
+  name: string;
+}): Promise<GroupResult> {
+  const userId = await requireUserId();
+  try {
+    return { ok: true, group: await createGroup({ ...input, created_by: userId }) };
+  } catch (e) {
+    if (e instanceof HandleTakenError) {
+      return { ok: false, handleTaken: true, message: "That handle is already taken." };
+    }
+    return { ok: false, message: e instanceof Error ? e.message : "Could not create the group." };
+  }
+}
+
+export async function listMyGroupsAction(): Promise<(Group & { role: GroupRole })[]> {
+  const userId = await currentUserId();
+  return userId ? listUserGroups(userId) : [];
+}
+
+export async function listGroupMembersAction(groupId: string): Promise<GroupMember[]> {
+  const userId = await requireUserId();
+  // Any member may see who else is in the group; only managers change it.
+  if (!(await groupRole(groupId, userId))) {
+    throw new Error("Not found.");
+  }
+  return listGroupMembers(groupId);
+}
+
+export async function addGroupMemberAction(
+  groupId: string,
+  handle: string,
+  role: Exclude<GroupRole, "owner"> = "member",
+): Promise<GroupMember> {
+  const userId = await requireUserId();
+  await requireManagedGroup(groupId, userId);
+  return addGroupMemberByHandle(groupId, handle, role);
+}
+
+export async function setGroupRoleAction(
+  groupId: string,
+  memberUserId: string,
+  role: Exclude<GroupRole, "owner">,
+): Promise<void> {
+  const userId = await requireUserId();
+  await requireManagedGroup(groupId, userId);
+  await setGroupRole(groupId, memberUserId, role);
+}
+
+export async function removeGroupMemberAction(
+  groupId: string,
+  memberUserId: string,
+): Promise<void> {
+  const userId = await requireUserId();
+  // Leaving is your own business; removing someone else needs a manager.
+  if (memberUserId !== userId) {
+    await requireManagedGroup(groupId, userId);
+  } else if (!(await groupRole(groupId, userId))) {
+    throw new Error("Not found.");
+  }
+  await removeGroupMember(groupId, memberUserId);
+}
+
+export async function transferGroupOwnershipAction(
+  groupId: string,
+  toUserId: string,
+): Promise<void> {
+  const userId = await requireUserId();
+  await requireOwnedGroup(groupId, userId);
+  await transferGroupOwnership(groupId, userId, toUserId);
+}
+
+export async function updateGroupAction(
+  groupId: string,
+  updates: { name?: string; about?: string; avatar_url?: string },
+): Promise<Group> {
+  const userId = await requireUserId();
+  await requireManagedGroup(groupId, userId);
+  return updateGroup(groupId, updates);
+}
+
+// Deleting a group takes its channels with it, so it is the owner's call alone.
+export async function deleteGroupAction(groupId: string): Promise<void> {
+  const userId = await requireUserId();
+  await requireOwnedGroup(groupId, userId);
+  await deleteGroup(groupId);
+}
+
+// Move a channel to another owner: from you to a group you manage, or back.
+// Both ends are checked — you must be able to manage the channel now, and to
+// manage whatever it is going to — so this can neither give a channel away to a
+// group you are not in nor take one out of a group you only belong to.
+//
+// Ownership is what grants access, so this changes who can read a private
+// channel. The per-channel `channel_member` roster is left alone: those are
+// people invited to this channel specifically, and they keep their invitation.
+export async function transferChannelAction(
+  channelId: number,
+  toOwnerId: string,
+): Promise<Channel> {
+  const userId = await requireUserId();
+  const channel = await requireOwnedChannel(channelId, userId);
+  if (channel.owned_by === toOwnerId) return channel;
+
+  const viewer = await viewerScope(userId);
+  const target = await getOwner(toOwnerId);
+  if (!target) {
+    throw new Error("Not found.");
+  }
+  // Moving it to yourself needs no role beyond it being your own owner row;
+  // moving it into a group needs the manage tier there.
+  const allowed = target.id === viewer.ownerId || roleCanManage(await groupRole(toOwnerId, userId));
+  if (!allowed) {
+    throw new Error("You do not have permission to move this channel there.");
+  }
+  return transferChannel(channelId, toOwnerId);
+}
+
+// Create a channel the group owns rather than you. Gated on the same
+// owner/admin tier that may manage the group's existing channels.
+export async function createGroupChannelAction(
+  groupId: string,
+  input: { title: string; description?: string; access: ChannelAccess },
+): Promise<Channel> {
+  const userId = await requireUserId();
+  await requireManagedGroup(groupId, userId);
+  return createChannel({ ...input, owned_by: groupId });
+}
+
 // Leave a channel you're a member of — a self-service remove, so it needs no
 // ownership check (you're only ever removing your own membership row). A no-op
 // if you weren't a member.
@@ -337,7 +527,7 @@ export async function getChannelColumnsAction(
   query: ColumnQuery = {},
 ): Promise<Column[]> {
   await requireReadableChannel(channelId);
-  return getChannelColumns(channelId, query, await currentUserId());
+  return getChannelColumns(channelId, query, await viewerScope(await currentUserId()));
 }
 
 // How many blocks match the board's current search/type filter, for the result
@@ -360,7 +550,12 @@ export async function getColumnNeighboursAction(
   query: ColumnQuery = {},
 ): Promise<{ prev: Column | null; next: Column | null }> {
   await requireReadableChannel(channelId);
-  return getChannelColumnNeighbours(channelId, columnId, query, await currentUserId());
+  return getChannelColumnNeighbours(
+    channelId,
+    columnId,
+    query,
+    await viewerScope(await currentUserId()),
+  );
 }
 
 // Add a link block. A URL that points straight at an image file becomes an
@@ -853,14 +1048,19 @@ export async function addChannelColumnAction(
   // Nothing is sent when the host is private: what someone collects into a
   // private channel is their own business, and the recipient couldn't open it
   // to see anyway. Privacy runs both ways here.
+  //
+  // Addressed through ownerRecipients rather than the owner id itself: a
+  // notification's recipient is a person, and an owner is not necessarily one.
   if (!host.private) {
-    await createNotification({
-      recipient_id: linked.owner_id,
-      actor_id: userId,
-      type: "connect",
-      channel_id: hostChannelId,
-      column_id: added.id,
-    });
+    for (const recipientId of await ownerRecipients(linked.owned_by)) {
+      await createNotification({
+        recipient_id: recipientId,
+        actor_id: userId,
+        type: "connect",
+        channel_id: hostChannelId,
+        column_id: added.id,
+      });
+    }
   }
 }
 

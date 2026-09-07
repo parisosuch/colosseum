@@ -1,7 +1,7 @@
 import { beforeAll, expect, test } from "bun:test";
 
 import { seed, USERS } from "@/scripts/seed";
-import { createChannel, getMemberChannels } from "./channel";
+import { createChannel, getMemberChannels, viewerScope } from "./channel";
 import {
   addChannelMemberByHandle,
   isChannelMember,
@@ -14,7 +14,11 @@ beforeAll(async () => {
 });
 
 test("add by handle, then isChannelMember and listChannelMembers reflect it", async () => {
-  const ch = await createChannel({ title: "Group", access: "private", owner_id: USERS.bob.id });
+  const ch = await createChannel({
+    title: "Group",
+    access: "private",
+    owned_by: USERS.bob.ownerId,
+  });
 
   expect(await isChannelMember(ch.id, USERS.alice.id)).toBe(false);
 
@@ -27,14 +31,22 @@ test("add by handle, then isChannelMember and listChannelMembers reflect it", as
 });
 
 test("adding an existing member is idempotent (no duplicate row)", async () => {
-  const ch = await createChannel({ title: "Group2", access: "private", owner_id: USERS.bob.id });
+  const ch = await createChannel({
+    title: "Group2",
+    access: "private",
+    owned_by: USERS.bob.ownerId,
+  });
   await addChannelMemberByHandle(ch.id, USERS.alice.handle);
   await addChannelMemberByHandle(ch.id, USERS.alice.handle);
   expect(await listChannelMembers(ch.id)).toHaveLength(1);
 });
 
 test("removeChannelMember revokes access", async () => {
-  const ch = await createChannel({ title: "Group3", access: "private", owner_id: USERS.bob.id });
+  const ch = await createChannel({
+    title: "Group3",
+    access: "private",
+    owned_by: USERS.bob.ownerId,
+  });
   await addChannelMemberByHandle(ch.id, USERS.alice.handle);
   await removeChannelMember(ch.id, USERS.alice.id);
   expect(await isChannelMember(ch.id, USERS.alice.id)).toBe(false);
@@ -45,16 +57,16 @@ test("getMemberChannels lists joined channels (with owner handle), not owned one
   const bobs = await createChannel({
     title: "Bob's Group",
     access: "private",
-    owner_id: USERS.bob.id,
+    owned_by: USERS.bob.ownerId,
   });
   const alices = await createChannel({
     title: "Alice Own",
     access: "private",
-    owner_id: USERS.alice.id,
+    owned_by: USERS.alice.ownerId,
   });
   await addChannelMemberByHandle(bobs.id, USERS.alice.handle);
 
-  const before = await getMemberChannels(USERS.alice.id);
+  const before = await getMemberChannels(await viewerScope(USERS.alice.id));
   const joined = before.find((c) => c.id === bobs.id);
   expect(joined).toBeDefined();
   expect(joined!.handle).toBe(USERS.bob.handle); // owner's handle, for the link
@@ -63,11 +75,17 @@ test("getMemberChannels lists joined channels (with owner handle), not owned one
 
   // Leaving removes it from the list.
   await removeChannelMember(bobs.id, USERS.alice.id);
-  expect((await getMemberChannels(USERS.alice.id)).some((c) => c.id === bobs.id)).toBe(false);
+  expect(
+    (await getMemberChannels(await viewerScope(USERS.alice.id))).some((c) => c.id === bobs.id),
+  ).toBe(false);
 });
 
 test("adding an unknown handle throws", async () => {
-  const ch = await createChannel({ title: "Group4", access: "private", owner_id: USERS.bob.id });
+  const ch = await createChannel({
+    title: "Group4",
+    access: "private",
+    owned_by: USERS.bob.ownerId,
+  });
   expect(addChannelMemberByHandle(ch.id, "nobody-here")).rejects.toThrow(
     "No user with that handle.",
   );

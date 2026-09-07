@@ -5,12 +5,14 @@ import ChannelBoard from "@/components/channel-board";
 import { PAGE_SIZE } from "@/lib/pagination";
 import {
   canContributeChannel,
+  canManageChannel,
   canReadChannel,
   getChannel,
-  getUserChannels,
+  getOwnerChannels,
+  resolveChannelViewer,
 } from "@/lib/colosseum/channel";
-import { isChannelMember, listChannelMembers } from "@/lib/colosseum/member";
-import { getPublicUserProfile } from "@/lib/colosseum/user";
+import { listChannelMembers } from "@/lib/colosseum/member";
+import { getOwnerByHandle } from "@/lib/colosseum/owner";
 import { channelPreviewMeta } from "@/lib/colosseum/channel-meta";
 import { blockPreviewMeta } from "@/lib/colosseum/block-meta";
 import { loadVisibleBlock } from "@/lib/colosseum/block-access";
@@ -108,18 +110,17 @@ export default async function ChannelPage({ params, searchParams }: ChannelPageP
   const [channel, user] = await Promise.all([getChannel(id), getSessionUser()]);
   if (!channel) redirect("/");
 
-  // Membership matters for reading a private channel and for adding to a public
-  // or private one; open channels never gate on it. Resolve it once for both the
-  // read gate and canContribute below.
-  const isMember =
-    channel.access !== "open" && user ? await isChannelMember(channel.id, user.id) : false;
+  // Ownership and membership both matter here — for reading a private channel
+  // and for adding to a public or private one; open channels never gate on
+  // membership. Resolved once for the read gate, canContribute and isOwner.
+  const viewer = await resolveChannelViewer(channel, user?.id ?? null);
   // Private channels are visible only to the owner or a member; hide the rest
   // (redirect, don't leak existence). Public/open are visible to all.
-  if (!canReadChannel(channel, user?.id ?? null, isMember)) redirect("/");
+  if (!canReadChannel(channel, viewer)) redirect("/");
 
-  const isOwner = !!user && channel.owner_id === user.id;
+  const isOwner = canManageChannel(channel, viewer);
   const isAdmin = !!user?.is_admin;
-  const canContribute = canContributeChannel(channel, user?.id ?? null, isMember);
+  const canContribute = canContributeChannel(channel, viewer);
 
   // Server-render the first page of blocks (plus channel-wide count for the
   // meta panel) so the grid paints at first load instead of after a hydrate +
@@ -133,7 +134,7 @@ export default async function ChannelPage({ params, searchParams }: ChannelPageP
   // visitor sees only once the owner has actually moved something.
   const [totalCount, initialColumns] = await Promise.all([
     getChannelColumnCount(id),
-    getChannelColumns(id, { sort: "manual", limit: PAGE_SIZE }, user?.id ?? null),
+    getChannelColumns(id, { sort: "manual", limit: PAGE_SIZE }, viewer),
   ]);
 
   const createdOnLabel = new Date(channel.created_at).toLocaleString("default", {
@@ -154,8 +155,8 @@ export default async function ChannelPage({ params, searchParams }: ChannelPageP
     // The logged-in user's own channels back two pickers: the block modal's
     // "Move" (owner only) and "Connect to channel" (any viewer can nest this channel
     // into one of theirs). Skip the query when signed out.
-    user
-      ? getUserChannels(user.id).then((cs) =>
+    viewer.ownerId
+      ? getOwnerChannels(viewer.ownerId).then((cs) =>
           cs.map((c) => ({ id: c.id, title: c.title, private: c.private })),
         )
       : Promise.resolve([] as { id: number; title: string; private: boolean }[]),
@@ -166,7 +167,7 @@ export default async function ChannelPage({ params, searchParams }: ChannelPageP
     // handle alone — so it joins the batch rather than waiting on `members` to
     // find out whether it was needed. One query on a solo channel beats a whole
     // serialized round-trip on every channel that has members.
-    getPublicUserProfile(handle),
+    getOwnerByHandle(handle),
   ]);
 
   // Shown beside the roster, so there's nothing to show without one.
@@ -200,7 +201,7 @@ export default async function ChannelPage({ params, searchParams }: ChannelPageP
       channel={channel}
       handle={handle}
       isOwner={isOwner}
-      isMember={isMember}
+      isMember={viewer.isChannelMember}
       isAdmin={isAdmin}
       canContribute={canContribute}
       user={user}

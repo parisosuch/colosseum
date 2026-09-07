@@ -2,7 +2,7 @@ import { and, desc, eq, lt, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { db } from "@/lib/db";
-import { inviteCode, inviteRedemption, user, userProfile } from "@/lib/db/schema";
+import { inviteCode, inviteRedemption, owner, user, userProfile } from "@/lib/db/schema";
 
 export type InviteCode = {
   code: string;
@@ -76,10 +76,10 @@ export async function getMyInviteCodes(userId: string): Promise<InviteCode[]> {
   // the handles it created. An unredeemed code yields a single row with a null
   // handle; a code used N times yields N rows.
   const rows = await db
-    .select({ invite: inviteCode, handle: userProfile.handle })
+    .select({ invite: inviteCode, handle: owner.handle })
     .from(inviteCode)
     .leftJoin(inviteRedemption, eq(inviteRedemption.code, inviteCode.code))
-    .leftJoin(userProfile, eq(userProfile.user_id, inviteRedemption.user_id))
+    .leftJoin(owner, eq(owner.user_id, inviteRedemption.user_id))
     .where(eq(inviteCode.created_by, userId))
     .orderBy(desc(inviteCode.created_at));
 
@@ -136,22 +136,29 @@ export type InviteGraph = { nodes: InviteGraphNode[]; edges: InviteGraphEdge[] }
 // — or a code whose creator has since been deleted (created_by set null) — just
 // contributes no edge. Profiles are public, so the graph is unscoped.
 export async function getInviteGraph(): Promise<InviteGraph> {
+  // Joined to user_profile rather than filtered on kind, so `user_id` stays
+  // non-null in the row type — an owner's user_id is nullable because a group
+  // has none, and this graph is only ever about people.
   const profiles = await db
     .select({
       user_id: userProfile.user_id,
-      handle: userProfile.handle,
-      avatar_url: userProfile.avatar_url,
+      handle: owner.handle,
+      avatar_url: owner.avatar_url,
     })
-    .from(userProfile);
+    .from(owner)
+    .innerJoin(userProfile, eq(userProfile.user_id, owner.user_id));
 
   const nodes = new Map<string, InviteGraphNode>(
     profiles.map((p) => [p.user_id, { ...p, invited_count: 0 }]),
   );
 
-  const inviter = alias(userProfile, "inviter_profile");
-  const invitee = alias(userProfile, "invitee_profile");
+  const inviter = alias(owner, "inviter_owner");
+  const invitee = alias(owner, "invitee_owner");
+  // The ids come from the redemption and the code rather than the joined owner
+  // rows, so they carry the non-null types those columns already have; the two
+  // joins are here purely as the "has finished onboarding" filter.
   const rows = await db
-    .select({ fromId: inviter.user_id, toId: invitee.user_id })
+    .select({ fromId: inviteCode.created_by, toId: inviteRedemption.user_id })
     .from(inviteRedemption)
     .innerJoin(inviteCode, eq(inviteCode.code, inviteRedemption.code))
     .innerJoin(inviter, eq(inviter.user_id, inviteCode.created_by))
@@ -159,6 +166,9 @@ export async function getInviteGraph(): Promise<InviteGraph> {
 
   const edges: InviteGraphEdge[] = [];
   for (const row of rows) {
+    // created_by is nullable (a deleted inviter sets it null), but the inner
+    // join above can't match a null, so this only narrows the type.
+    if (!row.fromId) continue;
     const from = nodes.get(row.fromId);
     if (from) from.invited_count += 1;
     edges.push({ from: row.fromId, to: row.toId });

@@ -1,7 +1,7 @@
 import { and, asc, eq } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { channelMember, userProfile } from "@/lib/db/schema";
+import { channelMember, owner } from "@/lib/db/schema";
 import { getPublicUserProfile } from "./user";
 
 // A member of a private channel, carrying the profile fields the manage dialog
@@ -31,11 +31,11 @@ export async function listChannelMembers(channel_id: number): Promise<ChannelMem
     .select({
       user_id: channelMember.user_id,
       created_at: channelMember.created_at,
-      handle: userProfile.handle,
-      avatar_url: userProfile.avatar_url,
+      handle: owner.handle,
+      avatar_url: owner.avatar_url,
     })
     .from(channelMember)
-    .innerJoin(userProfile, eq(userProfile.user_id, channelMember.user_id))
+    .innerJoin(owner, eq(owner.user_id, channelMember.user_id))
     .where(eq(channelMember.channel_id, channel_id))
     .orderBy(asc(channelMember.created_at));
   return rows.map((r) => ({

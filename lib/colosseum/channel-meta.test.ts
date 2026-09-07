@@ -10,7 +10,7 @@ const channel = (over: Partial<Channel>): Channel => ({
   description: "moodboards and type",
   access: "public",
   private: false,
-  owner_id: "u1",
+  owned_by: "o1",
   tags: [],
   ...over,
 });

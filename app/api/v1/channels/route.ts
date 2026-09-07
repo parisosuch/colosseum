@@ -1,18 +1,21 @@
 import { NextResponse } from "next/server";
 
 import { authenticateApiToken, apiError, json, parseAccess } from "@/lib/colosseum/api-auth";
-import { createChannel, getUserChannels } from "@/lib/colosseum/channel";
+import { createChannel, getViewerChannels, viewerScope } from "@/lib/colosseum/channel";
+import { resolveCreateOwner } from "@/lib/colosseum/owner";
 import { logError, logInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
 
-// GET /api/v1/channels — the token owner's channels.
+// GET /api/v1/channels — every channel the token's user holds as an owner:
+// their own, plus those of each group they belong to. Each carries the `handle`
+// its link needs, which for a group's channel is the group's, not the user's.
 export async function GET(req: Request) {
   const auth = await authenticateApiToken(req);
   if (auth instanceof NextResponse) return auth;
 
   try {
-    const channels = await getUserChannels(auth.userId);
+    const channels = await getViewerChannels(await viewerScope(auth.userId));
     return json({ channels });
   } catch (e) {
     logError("channels.GET", `failed to list channels for user ${auth.userId}`, e);
@@ -20,7 +23,8 @@ export async function GET(req: Request) {
   }
 }
 
-// POST /api/v1/channels — create a channel owned by the token user.
+// POST /api/v1/channels — create a channel. Owned by the token's user unless
+// `owner` names a group they manage.
 export async function POST(req: Request) {
   const auth = await authenticateApiToken(req);
   if (auth instanceof NextResponse) return auth;
@@ -38,15 +42,19 @@ export async function POST(req: Request) {
   }
   const description = typeof body.description === "string" ? body.description : undefined;
   const access = parseAccess(body, "public");
+  const ownerHandle = typeof body.owner === "string" ? body.owner : undefined;
+
+  // Resolved before the try below so a bad or unpermitted owner comes back as a
+  // 403 naming the reason, rather than a 500 that says only "failed to create".
+  let ownedBy: string;
+  try {
+    ownedBy = await resolveCreateOwner(auth.userId, ownerHandle);
+  } catch (e) {
+    return apiError(e instanceof Error ? e.message : "Invalid owner.", 403);
+  }
 
   try {
-    const channel = await createChannel({
-      title,
-      description,
-      access,
-      // owner is always the token user; any client-supplied owner is ignored.
-      owner_id: auth.userId,
-    });
+    const channel = await createChannel({ title, description, access, owned_by: ownedBy });
     logInfo("channels.POST", `created channel ${channel.id} for user ${auth.userId}`);
     return json({ channel }, 201);
   } catch (e) {

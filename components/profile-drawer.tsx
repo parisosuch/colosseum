@@ -7,6 +7,7 @@ import {
   Laptop,
   LogOutIcon,
   MailIcon,
+  UsersIcon,
   Moon,
   SettingsIcon,
   ShieldIcon,
@@ -73,6 +74,7 @@ export function ProfileDrawer({
 
         <div className="flex flex-col px-2 pb-6">
           <NavRow icon={<UserIcon size={18} />} label="Profile" onClick={() => go(`/${handle}`)} />
+          <NavRow icon={<UsersIcon size={18} />} label="Groups" onClick={() => go("/groups")} />
           <NavRow
             icon={<SettingsIcon size={18} />}
             label="Settings"

@@ -47,19 +47,21 @@ For local development, use `http://localhost:3000/api/mcp`.
 
 Same token, same rules as the [REST API](api.md): `Authorization: Bearer
 clsm_...`. A token grants the same access its owner has — it can read public
-channels and anything it owns, and write only what it owns. An invalid or
-missing token gets a `401` before any tool runs.
+channels and anything it owns, and write only what it owns. "Owns" includes the
+groups you belong to, up to the role you hold in each. An invalid or missing
+token gets a `401` before any tool runs.
 
 ## Tools
 
 One tool per REST endpoint, plus `move_block`, which has no REST equivalent.
 Reads are visible if a channel is public or you own it; writes require
-ownership.
+ownership. A group's channels count as yours on both counts.
 
 | Tool             | Equivalent                         | Notes                                                            |
 | ---------------- | ---------------------------------- | ---------------------------------------------------------------- |
-| `list_channels`  | `GET /api/v1/channels`             | Your channels.                                                   |
-| `create_channel` | `POST /api/v1/channels`            | `title`, optional `description`, `private`.                      |
+| `list_channels`  | `GET /api/v1/channels`             | Yours and your groups', each with the `handle` it lives under.   |
+| `list_groups`    | `GET /api/v1/groups`               | The groups you're in, with your `role` in each.                  |
+| `create_channel` | `POST /api/v1/channels`            | `title`, optional `description`, `private`, `owner`.             |
 | `get_channel`    | `GET /api/v1/channels/:id`         | `id`.                                                            |
 | `update_channel` | `PATCH /api/v1/channels/:id`       | `id` + any of `title`/`description`/`private`.                   |
 | `delete_channel` | `DELETE /api/v1/channels/:id`      | `id`. Cascades to the channel's blocks.                          |

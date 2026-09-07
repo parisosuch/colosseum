@@ -2,7 +2,7 @@ import { beforeAll, expect, test } from "bun:test";
 
 import { seed, USERS } from "@/scripts/seed";
 import { createMedia, getMedia, mediaIdFromUrl, putBlob } from "./blob";
-import { createChannel, updateChannel } from "./channel";
+import { createChannel, updateChannel, viewerScope } from "./channel";
 import {
   addChannelColumn,
   copyColumn,
@@ -28,8 +28,12 @@ beforeAll(async () => {
 
 test("copyColumn duplicates another user's block into your channel; the copy owns its media", async () => {
   // Bob owns the source block; Alice copies it into a channel of hers.
-  const src = await createChannel({ title: "Src", access: "public", owner_id: USERS.bob.id });
-  const dst = await createChannel({ title: "Dst", access: "public", owner_id: USERS.alice.id });
+  const src = await createChannel({ title: "Src", access: "public", owned_by: USERS.bob.ownerId });
+  const dst = await createChannel({
+    title: "Dst",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
 
   // An image block backed by a real blob + media reference.
   const sha = await putBlob(Buffer.from("copy-test-bytes"), "image/png", USERS.bob.id);
@@ -71,16 +75,22 @@ test("withLinkedChannels re-checks privacy: a linked channel gone private hides 
   const target = await createChannel({
     title: "Linkable",
     access: "public",
-    owner_id: USERS.bob.id,
+    owned_by: USERS.bob.ownerId,
   });
-  const host = await createChannel({ title: "Host", access: "public", owner_id: USERS.alice.id });
+  const host = await createChannel({
+    title: "Host",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
   const link = await addChannelColumn({
     created_by: USERS.alice.id,
     channel_id: host.id,
     linked_channel_id: target.id,
   });
   const linked = async (viewerId: string | null) =>
-    (await getChannelColumns(host.id, {}, viewerId)).find((c) => c.id === link.id)?.linked_channel;
+    (await getChannelColumns(host.id, {}, await viewerScope(viewerId))).find(
+      (c) => c.id === link.id,
+    )?.linked_channel;
 
   // While public, the preview resolves for any viewer.
   expect((await linked(USERS.alice.id))?.title).toBe("Linkable");
@@ -96,7 +106,11 @@ test("withLinkedChannels re-checks privacy: a linked channel gone private hides 
 });
 
 test("deleting the last column for a URL GCs its cached screenshot; a shared one survives", async () => {
-  const host = await createChannel({ title: "Links", access: "public", owner_id: USERS.alice.id });
+  const host = await createChannel({
+    title: "Links",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
   const url = "https://ponytail.example/gc-test";
 
   const a = await uploadURLColumn({ created_by: USERS.alice.id, channel_id: host.id, text: url });
@@ -116,7 +130,11 @@ test("deleting the last column for a URL GCs its cached screenshot; a shared one
 });
 
 test("a text block carries its markdown rendered to sanitized HTML", async () => {
-  const ch = await createChannel({ title: "Notes", access: "public", owner_id: USERS.alice.id });
+  const ch = await createChannel({
+    title: "Notes",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
   const created = await uploadTextColumn({
     created_by: USERS.alice.id,
     channel_id: ch.id,
@@ -138,7 +156,11 @@ test("a text block carries its markdown rendered to sanitized HTML", async () =>
 });
 
 test("only text blocks get html; other types leave it unset", async () => {
-  const ch = await createChannel({ title: "Mixed", access: "public", owner_id: USERS.alice.id });
+  const ch = await createChannel({
+    title: "Mixed",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
   await uploadURLColumn({
     created_by: USERS.alice.id,
     channel_id: ch.id,
@@ -153,7 +175,11 @@ test("only text blocks get html; other types leave it unset", async () => {
 });
 
 test("paged fetches fill html too, so load-more blocks render like the first page", async () => {
-  const ch = await createChannel({ title: "Paged", access: "public", owner_id: USERS.alice.id });
+  const ch = await createChannel({
+    title: "Paged",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
   for (const body of ["*first*", "*second*", "*third*"]) {
     await uploadTextColumn({ created_by: USERS.alice.id, channel_id: ch.id, text: body });
   }
@@ -167,7 +193,11 @@ test("paged fetches fill html too, so load-more blocks render like the first pag
 });
 
 test("updateColumnText returns the block with its html re-rendered from the new source", async () => {
-  const ch = await createChannel({ title: "Edits", access: "public", owner_id: USERS.alice.id });
+  const ch = await createChannel({
+    title: "Edits",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
   const created = await uploadTextColumn({
     created_by: USERS.alice.id,
     channel_id: ch.id,
@@ -185,7 +215,11 @@ test("updateColumnText returns the block with its html re-rendered from the new 
 });
 
 test("html: false hands back the markdown source with nothing rendered", async () => {
-  const ch = await createChannel({ title: "Source", access: "public", owner_id: USERS.alice.id });
+  const ch = await createChannel({
+    title: "Source",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
   const created = await uploadTextColumn({
     created_by: USERS.alice.id,
     channel_id: ch.id,
@@ -209,7 +243,7 @@ test("searchColumns ranks title over tag over description over text over url", a
   const ch = await createChannel({
     title: "Ranking",
     access: "public",
-    owner_id: USERS.alice.id,
+    owned_by: USERS.alice.ownerId,
   });
   const mk = (text: string) =>
     uploadTextColumn({ created_by: USERS.alice.id, channel_id: ch.id, text });
@@ -230,7 +264,7 @@ test("searchColumns ranks title over tag over description over text over url", a
   const titled = await mk("yet more filler");
   await updateColumnTitle(titled.id, "Ceramics");
 
-  const hits = await searchColumns(USERS.alice.id, "ceramics");
+  const hits = await searchColumns(await viewerScope(USERS.alice.id), "ceramics");
   expect(hits.map((c) => c.id)).toEqual([titled.id, tagged.id, described.id, texted.id, urled.id]);
 });
 
@@ -239,7 +273,11 @@ test("searchColumns ranks title over tag over description over text over url", a
 // ---------------------------------------------------------------------------
 
 test("a new block is added at the top of the channel's manual order", async () => {
-  const ch = await createChannel({ title: "Manual", access: "public", owner_id: USERS.alice.id });
+  const ch = await createChannel({
+    title: "Manual",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
   const mk = (text: string) =>
     uploadTextColumn({ created_by: USERS.alice.id, channel_id: ch.id, text });
 
@@ -257,7 +295,11 @@ test("a new block is added at the top of the channel's manual order", async () =
 });
 
 test("reorderColumn places a block after the one it names, and only moves that row", async () => {
-  const ch = await createChannel({ title: "Drag", access: "public", owner_id: USERS.alice.id });
+  const ch = await createChannel({
+    title: "Drag",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
   const mk = (text: string) =>
     uploadTextColumn({ created_by: USERS.alice.id, channel_id: ch.id, text });
 
@@ -295,8 +337,16 @@ test("reorderColumn places a block after the one it names, and only moves that r
 });
 
 test("a reorder that names a stale or foreign anchor is a not-found, not a throw", async () => {
-  const mine = await createChannel({ title: "Mine", access: "public", owner_id: USERS.alice.id });
-  const other = await createChannel({ title: "Other", access: "public", owner_id: USERS.bob.id });
+  const mine = await createChannel({
+    title: "Mine",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
+  const other = await createChannel({
+    title: "Other",
+    access: "public",
+    owned_by: USERS.bob.ownerId,
+  });
   const block = await uploadTextColumn({
     created_by: USERS.alice.id,
     channel_id: mine.id,
@@ -318,7 +368,11 @@ test("a reorder that names a stale or foreign anchor is a not-found, not a throw
 });
 
 test("repeatedly dropping a block into the same gap keeps the order intact", async () => {
-  const ch = await createChannel({ title: "Split", access: "public", owner_id: USERS.alice.id });
+  const ch = await createChannel({
+    title: "Split",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
   const mk = (text: string) =>
     uploadTextColumn({ created_by: USERS.alice.id, channel_id: ch.id, text });
 
@@ -346,8 +400,12 @@ test("repeatedly dropping a block into the same gap keeps the order intact", asy
 });
 
 test("a block moved to another channel is placed in the new channel, not the old one", async () => {
-  const from = await createChannel({ title: "From", access: "public", owner_id: USERS.alice.id });
-  const to = await createChannel({ title: "To", access: "public", owner_id: USERS.alice.id });
+  const from = await createChannel({
+    title: "From",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
+  const to = await createChannel({ title: "To", access: "public", owned_by: USERS.alice.ownerId });
   const mk = (channel_id: number, text: string) =>
     uploadTextColumn({ created_by: USERS.alice.id, channel_id, text });
 

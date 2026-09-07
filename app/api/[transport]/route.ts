@@ -24,9 +24,12 @@ import {
   createChannel,
   deleteChannel,
   getChannel,
-  getUserChannels,
+  getViewerChannels,
   updateChannel,
+  viewerScope,
 } from "@/lib/colosseum/channel";
+import { resolveCreateOwner } from "@/lib/colosseum/owner";
+import { listUserGroups } from "@/lib/colosseum/group";
 import {
   Column,
   deleteColumn,
@@ -122,9 +125,33 @@ const handler = createMcpHandler(
   (server) => {
     server.registerTool(
       "list_channels",
-      { description: "List your Colosseum channels.", inputSchema: {} },
+      {
+        description:
+          "List your Colosseum channels, including those owned by groups you're " +
+          "in. Each carries the `handle` its link lives under.",
+        inputSchema: {},
+      },
       asTool(async (_args: Record<string, never>, { userId }) => ({
-        channels: await getUserChannels(userId),
+        channels: await getViewerChannels(await viewerScope(userId)),
+      })),
+    );
+
+    server.registerTool(
+      "list_groups",
+      {
+        description:
+          "List the groups you're in, with your role in each. Use a group's " +
+          "`handle` as `owner` on create_channel to make a channel it owns; " +
+          "only the owner and admin roles may do that.",
+        inputSchema: {},
+      },
+      asTool(async (_args: Record<string, never>, { userId }) => ({
+        groups: (await listUserGroups(userId)).map((g) => ({
+          handle: g.handle,
+          name: g.name,
+          about: g.about,
+          role: g.role,
+        })),
       })),
     );
 
@@ -134,12 +161,14 @@ const handler = createMcpHandler(
         description:
           "Create a Colosseum channel. `access`: public (all read; you and " +
           "invited members add), open (all read, anyone adds), private (only you " +
-          "and invited members read/add).",
+          "and invited members read/add). `owner`: a group handle from " +
+          "list_groups to make a channel that group owns; omit for your own.",
         inputSchema: {
           title: z.string(),
           description: z.string().optional(),
           access: z.enum(["public", "open", "private"]).optional(),
           private: z.boolean().optional(),
+          owner: z.string().optional(),
         },
       },
       asTool(
@@ -149,6 +178,7 @@ const handler = createMcpHandler(
             description?: string;
             access?: "public" | "open" | "private";
             private?: boolean;
+            owner?: string;
           },
           { userId },
         ) => {
@@ -159,7 +189,7 @@ const handler = createMcpHandler(
               title,
               description: args.description,
               access: parseAccess(args, "public"),
-              owner_id: userId,
+              owned_by: await resolveCreateOwner(userId, args.owner),
             }),
           };
         },
@@ -235,7 +265,11 @@ const handler = createMcpHandler(
       },
       asTool(async ({ channelId, limit }: { channelId: number; limit?: number }, { userId }) => {
         await requireChannel(userId, channelId, "read");
-        const blocks = await getChannelColumns(channelId, { limit, html: false }, userId);
+        const blocks = await getChannelColumns(
+          channelId,
+          { limit, html: false },
+          await viewerScope(userId),
+        );
         return { blocks: blocks.map(toApiBlock) };
       }),
     );

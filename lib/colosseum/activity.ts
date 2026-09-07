@@ -1,11 +1,12 @@
 import "server-only";
 
-import { and, desc, eq, lt, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, ne, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { db } from "@/lib/db";
-import { channel, channelMember, column, userProfile } from "@/lib/db/schema";
+import { channel, channelMember, column, owner } from "@/lib/db/schema";
 
+import { viewerOwnerIds, type ViewerScope } from "./viewer";
 import { toColumn, withLinkedChannels, type Column } from "./column";
 import { getScreenshotsForUrls, type ColumnScreenshot } from "./screenshot-data";
 
@@ -70,15 +71,16 @@ export function blockLabel(b: {
 // cursor — the `at` of the last item seen — so each source returns only older
 // rows for the next page.
 export async function getActivityFeed(
-  viewerId: string | null,
+  viewer: ViewerScope,
   limit = ACTIVITY_PAGE,
   before?: string,
 ): Promise<ActivityItem[]> {
   const cursor = before ? new Date(before) : null;
-  // The block's creator and the channel's owner are different people whenever a
-  // member adds to someone else's channel, so resolve both handles.
-  const creator = alias(userProfile, "creator_profile");
-  const owner = alias(userProfile, "owner_profile");
+  const ownerIds = viewerOwnerIds(viewer);
+  // The block's creator is a person and the channel's owner is an owner row, so
+  // the two handles come from the same table joined on different keys.
+  const creator = alias(owner, "creator_owner");
+  const channelOwner = alias(owner, "channel_owner");
   const [blocks, channels, joins] = await Promise.all([
     db
       .select({
@@ -86,12 +88,12 @@ export async function getActivityFeed(
         handle: creator.handle,
         avatar: creator.avatar_url,
         channelTitle: channel.title,
-        channelHandle: owner.handle,
+        channelHandle: channelOwner.handle,
       })
       .from(column)
       .innerJoin(channel, eq(channel.id, column.channel_id))
       .innerJoin(creator, eq(creator.user_id, column.created_by))
-      .innerJoin(owner, eq(owner.user_id, channel.owner_id))
+      .innerJoin(channelOwner, eq(channelOwner.id, channel.owned_by))
       .where(
         and(
           // Non-private channels are visible to everyone; a private channel's
@@ -99,9 +101,9 @@ export async function getActivityFeed(
           // outsiders, but a group sees its own members' additions.
           or(
             ne(channel.access, "private"),
-            viewerId ? eq(channel.owner_id, viewerId) : undefined,
-            viewerId
-              ? sql`exists (select 1 from ${channelMember} where ${channelMember.channel_id} = ${channel.id} and ${channelMember.user_id} = ${viewerId})`
+            ownerIds.length > 0 ? inArray(channel.owned_by, ownerIds) : undefined,
+            viewer.userId
+              ? sql`exists (select 1 from ${channelMember} where ${channelMember.channel_id} = ${channel.id} and ${channelMember.user_id} = ${viewer.userId})`
               : undefined,
           ),
           cursor ? lt(column.created_at, cursor) : undefined,
@@ -112,29 +114,30 @@ export async function getActivityFeed(
     db
       .select({
         at: channel.created_at,
-        handle: userProfile.handle,
-        avatar: userProfile.avatar_url,
+        handle: owner.handle,
+        avatar: owner.avatar_url,
         channelId: channel.id,
         channelTitle: channel.title,
         channelDescription: channel.description,
       })
       .from(channel)
-      .innerJoin(userProfile, eq(userProfile.user_id, channel.owner_id))
+      .innerJoin(owner, eq(owner.id, channel.owned_by))
       .where(
         and(ne(channel.access, "private"), cursor ? lt(channel.created_at, cursor) : undefined),
       )
       .orderBy(desc(channel.created_at))
       .limit(limit),
-    // A member "joins" the network when they get a handle (onboard).
+    // A member "joins" the network when they get a handle (onboard). Filtered to
+    // people — a new group is not a new member of the network.
     db
       .select({
-        at: userProfile.created_at,
-        handle: userProfile.handle,
-        avatar: userProfile.avatar_url,
+        at: owner.created_at,
+        handle: owner.handle,
+        avatar: owner.avatar_url,
       })
-      .from(userProfile)
-      .where(cursor ? lt(userProfile.created_at, cursor) : undefined)
-      .orderBy(desc(userProfile.created_at))
+      .from(owner)
+      .where(and(eq(owner.kind, "user"), cursor ? lt(owner.created_at, cursor) : undefined))
+      .orderBy(desc(owner.created_at))
       .limit(limit),
   ]);
 
@@ -146,7 +149,7 @@ export async function getActivityFeed(
     // attach it directly rather than re-querying via withCreators.
     withLinkedChannels(
       blocks.map((b) => ({ ...toColumn(b.col), created_by_handle: b.handle })),
-      viewerId,
+      viewer,
     ),
     // Cached screenshots for the url blocks, so their modals show the capture.
     urls.length
@@ -174,7 +177,7 @@ export async function getActivityFeed(
       avatarUrl: c.avatar ?? undefined,
       channelId: c.channelId,
       channelTitle: c.channelTitle,
-      // Joined on owner_id, so the actor is the owner here.
+      // Joined on the channel's owner, so the actor is the owner here.
       channelHandle: c.handle,
       channelDescription: c.channelDescription ?? undefined,
     })),

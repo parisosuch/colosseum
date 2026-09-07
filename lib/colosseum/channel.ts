@@ -1,14 +1,18 @@
 import { cache } from "react";
 
-import { and, desc, eq, ilike, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, ne, notInArray, or, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { cached, cacheKeys, cacheTtl, invalidate } from "@/lib/cache";
-import { channel, channelMember, column, userProfile } from "@/lib/db/schema";
+import { channel, channelMember, column, owner } from "@/lib/db/schema";
 import { sanitizeSearch } from "@/lib/utils";
 import { deleteMediaByUrl, mediaUrl, setMediaVisibilityByUrls } from "./blob";
 import { deleteScreenshotIfUnreferenced } from "./column";
+import { roleCanManage } from "./group";
 import { isChannelMember } from "./member";
+import { SIGNED_OUT, viewerOwnerIds, viewerRoleFor, viewerScope, type ViewerScope } from "./viewer";
+
+export { SIGNED_OUT, viewerOwnerIds, viewerRoleFor, viewerScope, type ViewerScope };
 
 // A channel's access mode. `public`: everyone reads, only the owner adds.
 // `open`: everyone reads, any signed-in user adds. `private`: only the owner and
@@ -24,10 +28,29 @@ export type Channel = {
   // ponytail: derived display shim (access === "private"). `access` is the
   // source of truth; this keeps read-only "is it hidden?" call sites unchanged.
   private: boolean;
-  owner_id: string;
+  // The `owner` row that owns this channel, never a user id. The two are
+  // different values for the same person, so comparing this against a session's
+  // user id is always false and always a bug — resolve a ViewerScope instead.
+  owned_by: string;
   updated_at?: string;
   tags: string[];
 };
+
+// A viewer resolved against one specific channel: their scope plus whether they
+// hold a channel_member row for it. The predicates below take this rather than a
+// bare user id so that adding another way to be authorized (a group role)
+// changes one resolver instead of every call site.
+export type ChannelViewer = ViewerScope & { isChannelMember: boolean };
+
+export async function resolveChannelViewer(
+  ch: Channel,
+  userId: string | null,
+): Promise<ChannelViewer> {
+  const scope = await viewerScope(userId);
+  // Open channels never gate on membership, so don't pay for the lookup.
+  const isMember = ch.access !== "open" && userId ? await isChannelMember(ch.id, userId) : false;
+  return { ...scope, isChannelMember: isMember };
+}
 
 // SQL predicate: does `user_id` have a channel_member row for `channel.id`?
 // Signed-out viewers (null) never match.
@@ -36,15 +59,39 @@ function isMemberSql(user_id: string | null) {
   return sql`exists (select 1 from ${channelMember} where ${channelMember.channel_id} = ${channel.id} and ${channelMember.user_id} = ${user_id})`;
 }
 
+// SQL predicate: is this channel visible to `viewer`? The same three branches
+// canReadChannel uses — not private, owned by someone the viewer acts for, or
+// the viewer holds a member row — kept here so the list queries and the row
+// predicate can't drift.
+//
+// The middle branch is where a group's private channels come from: a member's
+// owner ids include every group they are in, so nothing group-specific is
+// needed here or in any of the five queries that call this.
+function isVisibleSql(viewer: ViewerScope) {
+  const ownerIds = viewerOwnerIds(viewer);
+  return or(
+    ne(channel.access, "private"),
+    ownerIds.length > 0 ? inArray(channel.owned_by, ownerIds) : undefined,
+    isMemberSql(viewer.userId),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Access predicates — the single source of the authorization matrix. Callers
-// resolve `isMember` (see member.ts) and pass it in; public/open reads ignore it.
+// resolve a ChannelViewer (above) and pass it in; public/open reads ignore it.
+//
+// Each one asks the viewer's role in the channel's *owner*. For a personal
+// channel that role is "owner" and the group tiers never come up; for a group's
+// channel it is whatever the roster says, which is what makes an admin able to
+// manage a channel they did not create and a member able only to add to it.
 // ---------------------------------------------------------------------------
 
-// Read: public/open are visible to anyone; private only to the owner or a member.
-export function canReadChannel(ch: Channel, userId: string | null, isMember: boolean): boolean {
+// Read: public/open are visible to anyone; private only to someone who acts for
+// the owner (its author, or any member of the owning group) or holds a
+// per-channel member row.
+export function canReadChannel(ch: Channel, viewer: ChannelViewer): boolean {
   if (ch.access !== "private") return true;
-  return userId === ch.owner_id || isMember;
+  return !!viewerRoleFor(viewer, ch.owned_by) || viewer.isChannelMember;
 }
 
 // Which of these users may read the channel, order preserved and duplicates
@@ -53,28 +100,28 @@ export function canReadChannel(ch: Channel, userId: string | null, isMember: boo
 // where the rest of the matrix is.
 export async function channelReaders(ch: Channel, userIds: string[]): Promise<string[]> {
   if (ch.access !== "private") return userIds;
-  const members = await Promise.all(
-    userIds.map(async (id) => canReadChannel(ch, id, await isChannelMember(ch.id, id))),
+  const readable = await Promise.all(
+    userIds.map(async (id) => canReadChannel(ch, await resolveChannelViewer(ch, id))),
   );
-  return userIds.filter((_, i) => members[i]);
+  return userIds.filter((_, i) => readable[i]);
 }
 
-// Add blocks: open → any signed-in user; public and private → the owner or an
-// invited member. (A public channel with no members is therefore owner-only; add
-// members to make it a publicly-readable, members-only-writable channel.)
-export function canContributeChannel(
-  ch: Channel,
-  userId: string | null,
-  isMember: boolean,
-): boolean {
-  if (!userId) return false;
+// Add blocks: open → any signed-in user; public and private → anyone who acts
+// for the owner (including a group's `member` tier) or an invited member. (A
+// public channel with no members is therefore owner-only; add members to make it
+// a publicly-readable, members-only-writable channel.)
+export function canContributeChannel(ch: Channel, viewer: ChannelViewer): boolean {
+  if (!viewer.userId) return false;
   if (ch.access === "open") return true;
-  return userId === ch.owner_id || isMember;
+  return !!viewerRoleFor(viewer, ch.owned_by) || viewer.isChannelMember;
 }
 
-// Manage (settings, delete, members): owner only, whatever the access mode.
-export function canManageChannel(ch: Channel, userId: string | null): boolean {
-  return !!userId && userId === ch.owner_id;
+// Manage (settings, delete, members): the owner, whatever the access mode. For a
+// group's channel that means its owner and admins — a `member` may add blocks
+// but not rename or delete the channel they were added to, which is the one
+// place the roles differ from plain membership.
+export function canManageChannel(ch: Channel, viewer: ViewerScope): boolean {
+  return roleCanManage(viewerRoleFor(viewer, ch.owned_by));
 }
 
 // May this user view the bytes behind a media id? True when they can read any
@@ -91,8 +138,7 @@ export async function canReadMedia(mediaId: string, userId: string | null): Prom
   for (const id of channelIds) {
     const ch = await getChannel(id);
     if (!ch) continue;
-    const member = ch.access === "private" && userId ? await isChannelMember(id, userId) : false;
-    if (canReadChannel(ch, userId, member)) return true;
+    if (canReadChannel(ch, await resolveChannelViewer(ch, userId))) return true;
   }
   return false;
 }
@@ -109,7 +155,7 @@ function toChannel(row: ChannelRow): Channel {
     description: row.description ?? undefined,
     access: row.access,
     private: row.access === "private",
-    owner_id: row.owner_id,
+    owned_by: row.owned_by,
     updated_at: row.updated_at?.toISOString() ?? undefined,
     tags: row.tags,
   };
@@ -120,12 +166,12 @@ function toChannel(row: ChannelRow): Channel {
 // back to their own creation time.
 const lastBlockAddedAt = sql`coalesce((select max(${column.created_at}) from ${column} where ${column.channel_id} = ${channel.id}), ${channel.created_at})`;
 
-export async function getUserPublicChannels(user_id: string): Promise<Channel[]> {
-  return cached(cacheKeys.userPublicChannels(user_id), cacheTtl.userChannels, async () => {
+export async function getOwnerPublicChannels(owner_id: string): Promise<Channel[]> {
+  return cached(cacheKeys.ownerPublicChannels(owner_id), cacheTtl.ownerChannels, async () => {
     const rows = await db
       .select()
       .from(channel)
-      .where(and(eq(channel.owner_id, user_id), ne(channel.access, "private")))
+      .where(and(eq(channel.owned_by, owner_id), ne(channel.access, "private")))
       .orderBy(desc(lastBlockAddedAt));
     return rows.map(toChannel);
   });
@@ -135,64 +181,84 @@ export async function getUserPublicChannels(user_id: string): Promise<Channel[]>
 // asks for this three times over — the nav bar, the mobile bottom nav, and the
 // page's own Move/Connect pickers — all for the same viewer. The Redis layer
 // below spans requests when REDIS_URL is set, but it's off by default and a hit
-// is still a round trip; cache() keys on the user id and dedupes within the
+// is still a round trip; cache() keys on the owner id and dedupes within the
 // request. Safe to memoize because every caller is a read on the render path:
 // the mutations that change this list invalidate through
-// invalidateUserChannelLists and re-read in a later request.
-export const getUserChannels = cache(async (user_id: string): Promise<Channel[]> => {
-  return cached(cacheKeys.userChannels(user_id), cacheTtl.userChannels, async () => {
+// invalidateOwnerChannelLists and re-read in a later request.
+export const getOwnerChannels = cache(async (owner_id: string): Promise<Channel[]> => {
+  return cached(cacheKeys.ownerChannels(owner_id), cacheTtl.ownerChannels, async () => {
     const rows = await db
       .select()
       .from(channel)
-      .where(eq(channel.owner_id, user_id))
+      .where(eq(channel.owned_by, owner_id))
       .orderBy(desc(lastBlockAddedAt));
     return rows.map(toChannel);
   });
 });
 
-// Invalidate the per-user channel-list caches for one owner. Called whenever a
-// channel they own is created, updated, or deleted.
-async function invalidateUserChannelLists(owner_id: string): Promise<void> {
-  await invalidate(cacheKeys.userPublicChannels(owner_id), cacheKeys.userChannels(owner_id));
-}
-
-// Channels the user is an explicit member of (never ones they own — the owner
-// is an implicit member with no row). Joined to the owner's handle so the
-// profile can link each to /handle/id. Newest activity first.
-export async function getMemberChannels(
-  user_id: string,
+// Every channel the viewer holds as an owner — their own plus each group they
+// belong to — each carrying the handle its `/{handle}/{id}` link needs, since
+// for a group's channel that is not the viewer's own handle.
+//
+// Uncached, unlike getOwnerChannels: the key would have to be the viewer's whole
+// owner set, which changes whenever anyone's group membership does, and the two
+// API callers are not on a render path.
+export async function getViewerChannels(
+  viewer: ViewerScope,
 ): Promise<(Channel & { handle: string })[]> {
+  const ownerIds = viewerOwnerIds(viewer);
+  if (ownerIds.length === 0) return [];
   const rows = await db
-    .select({ ch: channel, handle: userProfile.handle })
-    .from(channelMember)
-    .innerJoin(channel, eq(channel.id, channelMember.channel_id))
-    .innerJoin(userProfile, eq(userProfile.user_id, channel.owner_id))
-    .where(and(eq(channelMember.user_id, user_id), ne(channel.owner_id, user_id)))
+    .select({ ch: channel, handle: owner.handle })
+    .from(channel)
+    .innerJoin(owner, eq(owner.id, channel.owned_by))
+    .where(inArray(channel.owned_by, ownerIds))
     .orderBy(desc(lastBlockAddedAt));
   return rows.map(({ ch, handle }) => ({ ...toChannel(ch), handle }));
 }
 
-// The owner's channels as visible to `viewer_id`: every public/open one, plus
+// Invalidate the per-owner channel-list caches. Called whenever a channel that
+// owner holds is created, updated, or deleted.
+async function invalidateOwnerChannelLists(owner_id: string): Promise<void> {
+  await invalidate(cacheKeys.ownerPublicChannels(owner_id), cacheKeys.ownerChannels(owner_id));
+}
+
+// Channels the viewer is an explicit member of (never ones they own — the owner
+// is an implicit member with no row). Joined to the owner's handle so the
+// profile can link each to /handle/id. Newest activity first.
+export async function getMemberChannels(
+  viewer: ViewerScope,
+): Promise<(Channel & { handle: string })[]> {
+  if (!viewer.userId) return [];
+  const ownerIds = viewerOwnerIds(viewer);
+  const rows = await db
+    .select({ ch: channel, handle: owner.handle })
+    .from(channelMember)
+    .innerJoin(channel, eq(channel.id, channelMember.channel_id))
+    .innerJoin(owner, eq(owner.id, channel.owned_by))
+    .where(
+      and(
+        eq(channelMember.user_id, viewer.userId),
+        // Never a channel the viewer already reaches as its owner — their own,
+        // or one belonging to a group they are in. Those are not "invited to".
+        ownerIds.length > 0 ? notInArray(channel.owned_by, ownerIds) : undefined,
+      ),
+    )
+    .orderBy(desc(lastBlockAddedAt));
+  return rows.map(({ ch, handle }) => ({ ...toChannel(ch), handle }));
+}
+
+// The owner's channels as visible to `viewer`: every public/open one, plus
 // private ones the viewer owns or is a member of. Backs the profile grid so an
 // invited member sees the private group channels they belong to.
-export async function getVisibleUserChannels(
+export async function getVisibleOwnerChannels(
   owner_id: string,
-  viewer_id: string | null,
+  viewer: ViewerScope,
 ): Promise<Channel[]> {
   const rows = await db
     .select()
     .from(channel)
-    .where(
-      and(
-        eq(channel.owner_id, owner_id),
-        or(
-          ne(channel.access, "private"),
-          // The owner sees their own private channels; members see theirs.
-          viewer_id ? eq(channel.owner_id, viewer_id) : undefined,
-          isMemberSql(viewer_id),
-        ),
-      ),
-    )
+    .where(and(eq(channel.owned_by, owner_id), isVisibleSql(viewer)))
     .orderBy(desc(lastBlockAddedAt));
   return rows.map(toChannel);
 }
@@ -213,12 +279,12 @@ export type ProfileChannelEntry = { channel: Channel; handle: string; memberOf: 
 export async function getProfileChannels(
   owner_id: string,
   owner_handle: string,
-  viewer_id: string | null,
+  viewer: ViewerScope,
 ): Promise<ProfileChannelEntry[]> {
-  const own = !!viewer_id && owner_id === viewer_id;
+  const own = !!viewer.ownerId && owner_id === viewer.ownerId;
   const [channels, memberChannels] = await Promise.all([
-    own ? getUserChannels(viewer_id) : getVisibleUserChannels(owner_id, viewer_id),
-    own ? getMemberChannels(viewer_id) : Promise.resolve([]),
+    own ? getOwnerChannels(owner_id) : getVisibleOwnerChannels(owner_id, viewer),
+    own ? getMemberChannels(viewer) : Promise.resolve([]),
   ]);
   return [
     ...channels.map((ch) => ({ channel: ch, handle: owner_handle, memberOf: false })),
@@ -235,7 +301,7 @@ export type ChannelSearchResult = Channel & { handle: string };
 // and private group channels the viewer belongs to. Used by the nav search box,
 // so capped to a handful of results. Returns [] for an empty/whitespace query.
 export async function searchChannels(
-  viewer_id: string,
+  viewer: ViewerScope,
   query: string,
 ): Promise<ChannelSearchResult[]> {
   const term = sanitizeSearch(query);
@@ -256,12 +322,12 @@ export async function searchChannels(
     else 2
   end`;
   const rows = await db
-    .select({ ch: channel, handle: userProfile.handle })
+    .select({ ch: channel, handle: owner.handle })
     .from(channel)
-    .innerJoin(userProfile, eq(userProfile.user_id, channel.owner_id))
+    .innerJoin(owner, eq(owner.id, channel.owned_by))
     .where(
       and(
-        or(ne(channel.access, "private"), eq(channel.owner_id, viewer_id), isMemberSql(viewer_id)),
+        isVisibleSql(viewer),
         or(
           ilike(channel.title, pattern),
           ilike(channel.description, pattern),
@@ -278,10 +344,10 @@ export async function createChannel(input: {
   title: string;
   description?: string;
   access: ChannelAccess;
-  owner_id: string;
+  owned_by: string;
 }): Promise<Channel> {
   const [row] = await db.insert(channel).values(input).returning();
-  await invalidateUserChannelLists(input.owner_id);
+  await invalidateOwnerChannelLists(input.owned_by);
   return toChannel(row);
 }
 
@@ -290,13 +356,13 @@ export async function createChannel(input: {
 // foreign key.
 export async function deleteChannel(channel_id: number): Promise<void> {
   // Resolve the owner before the row is gone, so we can invalidate their lists.
-  const owner_id = await channelOwnerId(channel_id);
+  const ownedBy = await channelOwnedBy(channel_id);
   // Collect referenced media/URLs before the cascade removes the columns.
   const images = await channelImageUrls(channel_id);
   const linkUrls = await channelLinkUrls(channel_id);
   await db.delete(channel).where(eq(channel.id, channel_id));
   await invalidate(cacheKeys.channel(channel_id));
-  if (owner_id) await invalidateUserChannelLists(owner_id);
+  if (ownedBy) await invalidateOwnerChannelLists(ownedBy);
   // Drop image-block media references (blobs GC when the last reference goes).
   for (const url of images) {
     await deleteMediaByUrl(url);
@@ -324,14 +390,14 @@ async function channelImageUrls(channel_id: number): Promise<string[]> {
 }
 
 // The owner of a channel, or null if it no longer exists. Used to target cache
-// invalidation at the affected user's channel lists.
-async function channelOwnerId(channel_id: number): Promise<string | null> {
+// invalidation at the affected owner's channel lists.
+async function channelOwnedBy(channel_id: number): Promise<string | null> {
   const [row] = await db
-    .select({ owner_id: channel.owner_id })
+    .select({ owned_by: channel.owned_by })
     .from(channel)
     .where(eq(channel.id, channel_id))
     .limit(1);
-  return row?.owner_id ?? null;
+  return row?.owned_by ?? null;
 }
 
 async function channelLinkUrls(channel_id: number): Promise<string[]> {
@@ -357,7 +423,7 @@ export async function updateChannel(
     throw new Error("Channel not found.");
   }
   await invalidate(cacheKeys.channel(channel_id));
-  await invalidateUserChannelLists(row.owner_id);
+  await invalidateOwnerChannelLists(row.owned_by);
   // Keep image-block media in sync with the channel's privacy so a flipped
   // channel's images follow it (idempotent, so no need to diff the old value).
   // Only `private` channels hide their images; open channels read publicly.
@@ -366,6 +432,42 @@ export async function updateChannel(
     row.access === "private" ? "private" : "public",
   );
   return toChannel(row);
+}
+
+// Move a channel to a different owner. Callers authorize both ends first (see
+// transferChannelAction). Both owners' channel lists are invalidated, since the
+// channel leaves one and joins the other, and the channel's own cached row goes
+// too — `owned_by` is on it.
+//
+// The channel's images follow its access mode, not its owner, so nothing about
+// media visibility changes here: a private channel's images stay private and a
+// public one's stay public, whoever holds it.
+export async function transferChannel(channel_id: number, to_owner_id: string): Promise<Channel> {
+  const previous = await channelOwnedBy(channel_id);
+  const [row] = await db
+    .update(channel)
+    .set({ owned_by: to_owner_id, updated_at: new Date() })
+    .where(eq(channel.id, channel_id))
+    .returning();
+  if (!row) {
+    throw new Error("Channel not found.");
+  }
+  await invalidate(cacheKeys.channel(channel_id));
+  if (previous) await invalidateOwnerChannelLists(previous);
+  await invalidateOwnerChannelLists(to_owner_id);
+  return toChannel(row);
+}
+
+// Handles for a set of owner ids, for callers holding channels but not the
+// owners their `/{handle}/{id}` links need.
+export async function ownerHandles(ownerIds: string[]): Promise<Map<string, string>> {
+  const ids = [...new Set(ownerIds)];
+  if (ids.length === 0) return new Map();
+  const rows = await db
+    .select({ id: owner.id, handle: owner.handle })
+    .from(owner)
+    .where(inArray(owner.id, ids));
+  return new Map(rows.map((r) => [r.id, r.handle]));
 }
 
 // Returns the channel row, or null when it doesn't exist. Visibility is NOT

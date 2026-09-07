@@ -1,5 +1,5 @@
 import { getSessionUser } from "@/lib/auth";
-import { getUserChannels } from "@/lib/colosseum/channel";
+import { getOwnerChannels } from "@/lib/colosseum/channel";
 import { unreadNotificationCount } from "@/lib/colosseum/notification";
 import { getUserProfile } from "@/lib/colosseum/user";
 import { MobileBottomBar } from "./mobile-bottom-bar";
@@ -17,7 +17,7 @@ export default async function MobileBottomNav() {
   // Neither needs the other, and this renders in the root layout, so
   // serializing them adds latency to every route.
   const [channels, unread] = await Promise.all([
-    getUserChannels(user.id),
+    getOwnerChannels(profile.owner_id),
     unreadNotificationCount(user.id),
   ]);
 

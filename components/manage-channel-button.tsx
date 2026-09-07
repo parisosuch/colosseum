@@ -18,6 +18,7 @@ import type { Channel, ChannelAccess } from "@/lib/colosseum/channel";
 import type { ChannelMember } from "@/lib/colosseum/member";
 import AccessSelect from "./access-select";
 import ChannelMembers from "./channel-members";
+import ChannelOwnerTransfer from "./channel-owner-transfer";
 import TagInput from "./tag-input";
 import { Settings, Trash2 } from "lucide-react";
 import type { Dispatch, SetStateAction } from "react";
@@ -156,6 +157,8 @@ export default function ManageChannelButton({
                 setMembers={setMembers}
               />
             ) : null}
+
+            <ChannelOwnerTransfer channel={channel} />
 
             <div className="border-t pt-4">
               <Button

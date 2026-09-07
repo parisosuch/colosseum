@@ -1,7 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { comment, userProfile } from "@/lib/db/schema";
+import { comment, owner } from "@/lib/db/schema";
 
 // Longest comment we accept. Generous for a note; a hard cap so the column
 // can't be used to store arbitrarily large blobs.
@@ -39,9 +39,9 @@ export async function getColumnComments(column_id: number): Promise<Comment[]> {
     return [];
   }
   const rows = await db
-    .select({ c: comment, handle: userProfile.handle, avatar_url: userProfile.avatar_url })
+    .select({ c: comment, handle: owner.handle, avatar_url: owner.avatar_url })
     .from(comment)
-    .innerJoin(userProfile, eq(userProfile.user_id, comment.author_id))
+    .innerJoin(owner, eq(owner.user_id, comment.author_id))
     .where(eq(comment.column_id, column_id))
     .orderBy(asc(comment.created_at));
   return rows.map(({ c, handle, avatar_url }) => toComment(c, handle, avatar_url));
@@ -56,9 +56,9 @@ export async function createComment(input: {
 }): Promise<Comment> {
   const [row] = await db.insert(comment).values(input).returning();
   const [profile] = await db
-    .select({ handle: userProfile.handle, avatar_url: userProfile.avatar_url })
-    .from(userProfile)
-    .where(eq(userProfile.user_id, input.author_id))
+    .select({ handle: owner.handle, avatar_url: owner.avatar_url })
+    .from(owner)
+    .where(eq(owner.user_id, input.author_id))
     .limit(1);
   return toComment(row, profile.handle, profile.avatar_url);
 }

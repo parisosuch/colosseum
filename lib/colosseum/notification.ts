@@ -10,6 +10,7 @@ import {
   column,
   comment,
   notification,
+  owner,
   user,
   userProfile,
   type EmailNotificationPrefs,
@@ -85,11 +86,13 @@ async function joinNotifications(
   where: SQL | undefined,
   limit: number,
 ): Promise<JoinedNotification[]> {
-  const actor = alias(userProfile, "actor_profile");
+  // The actor is always a person, so their handle comes from their own owner
+  // row; the channel owners are owner rows outright and may be groups.
+  const actor = alias(owner, "actor_owner");
   const recipient = alias(userProfile, "recipient_profile");
-  const owner = alias(userProfile, "owner_profile");
+  const channelOwner = alias(owner, "channel_owner");
   const linkedChannel = alias(channel, "linked_channel");
-  const linkedOwner = alias(userProfile, "linked_owner_profile");
+  const linkedOwner = alias(owner, "linked_channel_owner");
   return db
     .select({
       n: notification,
@@ -99,7 +102,7 @@ async function joinNotifications(
       recipient_prefs: recipient.email_notifications,
       channel_title: channel.title,
       channel_access: channel.access,
-      owner_handle: owner.handle,
+      owner_handle: channelOwner.handle,
       block_type: column.type,
       block_title: column.title,
       block_url: column.url,
@@ -115,10 +118,10 @@ async function joinNotifications(
     .leftJoin(user, eq(user.id, notification.recipient_id))
     .leftJoin(recipient, eq(recipient.user_id, notification.recipient_id))
     .leftJoin(channel, eq(channel.id, notification.channel_id))
-    .leftJoin(owner, eq(owner.user_id, channel.owner_id))
+    .leftJoin(channelOwner, eq(channelOwner.id, channel.owned_by))
     .leftJoin(column, eq(column.id, notification.column_id))
     .leftJoin(linkedChannel, eq(linkedChannel.id, column.linked_channel_id))
-    .leftJoin(linkedOwner, eq(linkedOwner.user_id, linkedChannel.owner_id))
+    .leftJoin(linkedOwner, eq(linkedOwner.id, linkedChannel.owned_by))
     .leftJoin(comment, eq(comment.id, notification.comment_id))
     .where(where)
     .orderBy(desc(notification.created_at))

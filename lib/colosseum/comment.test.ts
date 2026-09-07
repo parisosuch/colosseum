@@ -1,6 +1,7 @@
 import { beforeAll, expect, test } from "bun:test";
 
 import { BLOCKS, COMMENTS, seed, USERS } from "@/scripts/seed";
+import { viewerScope } from "./channel";
 import { searchColumns } from "./column";
 import {
   createComment,
@@ -12,7 +13,7 @@ import {
 // The seed puts BLOCKS.alicePublic in a public channel; searchColumns is the
 // exported way to resolve its id without threading block ids through the seed.
 async function alicePublicBlockId(): Promise<number> {
-  const [hit] = await searchColumns(USERS.alice.id, BLOCKS.alicePublic);
+  const [hit] = await searchColumns(await viewerScope(USERS.alice.id), BLOCKS.alicePublic);
   return hit.id;
 }
 

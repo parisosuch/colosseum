@@ -23,8 +23,16 @@ async function denial(result: Column | NextResponse): Promise<{ status: number; 
 }
 
 test("moveBlock reassigns the block, keeping its id, created_at, and screenshot", async () => {
-  const src = await createChannel({ title: "From", access: "public", owner_id: USERS.alice.id });
-  const dst = await createChannel({ title: "To", access: "private", owner_id: USERS.alice.id });
+  const src = await createChannel({
+    title: "From",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
+  const dst = await createChannel({
+    title: "To",
+    access: "private",
+    owned_by: USERS.alice.ownerId,
+  });
 
   const url = "https://ponytail.example/move-test";
   const block = await uploadURLColumn({
@@ -55,7 +63,11 @@ test("moveBlock reassigns the block, keeping its id, created_at, and screenshot"
 });
 
 test("moveBlock into the block's current channel is a no-op that returns it unchanged", async () => {
-  const ch = await createChannel({ title: "Stay", access: "public", owner_id: USERS.alice.id });
+  const ch = await createChannel({
+    title: "Stay",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
   const block = await uploadTextColumn({
     created_by: USERS.alice.id,
     channel_id: ch.id,
@@ -69,8 +81,16 @@ test("moveBlock into the block's current channel is a no-op that returns it unch
 
 test("moveBlock refuses a source channel the caller does not own", async () => {
   // Bob's channel is public, so Alice can read it — but not move things out.
-  const src = await createChannel({ title: "Bob's", access: "public", owner_id: USERS.bob.id });
-  const dst = await createChannel({ title: "Alice's", access: "public", owner_id: USERS.alice.id });
+  const src = await createChannel({
+    title: "Bob's",
+    access: "public",
+    owned_by: USERS.bob.ownerId,
+  });
+  const dst = await createChannel({
+    title: "Alice's",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
   const block = await uploadTextColumn({
     created_by: USERS.bob.id,
     channel_id: src.id,
@@ -84,8 +104,16 @@ test("moveBlock refuses a source channel the caller does not own", async () => {
 });
 
 test("moveBlock refuses a destination the caller does not own", async () => {
-  const src = await createChannel({ title: "Mine", access: "public", owner_id: USERS.alice.id });
-  const dst = await createChannel({ title: "Theirs", access: "public", owner_id: USERS.bob.id });
+  const src = await createChannel({
+    title: "Mine",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
+  const dst = await createChannel({
+    title: "Theirs",
+    access: "public",
+    owned_by: USERS.bob.ownerId,
+  });
   const block = await uploadTextColumn({
     created_by: USERS.alice.id,
     channel_id: src.id,
@@ -99,8 +127,16 @@ test("moveBlock refuses a destination the caller does not own", async () => {
 });
 
 test("moveBlock 404s on a private destination, so it never confirms one exists", async () => {
-  const src = await createChannel({ title: "Src", access: "public", owner_id: USERS.alice.id });
-  const dst = await createChannel({ title: "Hidden", access: "private", owner_id: USERS.bob.id });
+  const src = await createChannel({
+    title: "Src",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
+  const dst = await createChannel({
+    title: "Hidden",
+    access: "private",
+    owned_by: USERS.bob.ownerId,
+  });
   const block = await uploadTextColumn({
     created_by: USERS.alice.id,
     channel_id: src.id,
@@ -114,7 +150,11 @@ test("moveBlock 404s on a private destination, so it never confirms one exists",
 });
 
 test("moveBlock 404s on a missing block or a missing destination channel", async () => {
-  const src = await createChannel({ title: "Src", access: "public", owner_id: USERS.alice.id });
+  const src = await createChannel({
+    title: "Src",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
   const block = await uploadTextColumn({
     created_by: USERS.alice.id,
     channel_id: src.id,
@@ -132,7 +172,7 @@ test("moveBlock 404s on a missing block or a missing destination channel", async
 });
 
 test("API block payloads carry the markdown source, not the rendered HTML", async () => {
-  const ch = await createChannel({ title: "Api", access: "public", owner_id: USERS.alice.id });
+  const ch = await createChannel({ title: "Api", access: "public", owned_by: USERS.alice.ownerId });
   const block = await uploadTextColumn({
     created_by: USERS.alice.id,
     channel_id: ch.id,

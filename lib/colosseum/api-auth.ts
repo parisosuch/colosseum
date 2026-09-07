@@ -11,9 +11,11 @@ import { apiToken } from "@/lib/db/schema";
 import {
   Channel,
   ChannelAccess,
+  ChannelViewer,
   canContributeChannel,
   canManageChannel,
   canReadChannel,
+  viewerScope,
 } from "./channel";
 import { getChannel } from "./channel";
 import { isChannelMember } from "./member";
@@ -174,12 +176,16 @@ export async function createApiToken(params: {
 // skip the query there. Read only needs it for private channels; contribute
 // needs it for public ones too (members can add to a public channel), so callers
 // pass which modes matter.
-async function memberOf(
+async function viewerFor(
   channel: Channel,
   userId: string,
   modes: readonly ChannelAccess[],
-): Promise<boolean> {
-  return modes.includes(channel.access) ? isChannelMember(channel.id, userId) : false;
+): Promise<ChannelViewer> {
+  const scope = await viewerScope(userId);
+  const isMember = modes.includes(channel.access)
+    ? await isChannelMember(channel.id, userId)
+    : false;
+  return { ...scope, isChannelMember: isMember };
 }
 
 // Read authorization: public/open channels are visible to anyone; a private one
@@ -189,7 +195,7 @@ export async function authorizeChannelRead(
   channel: Channel | null,
   userId: string,
 ): Promise<NextResponse | null> {
-  if (!channel || !canReadChannel(channel, userId, await memberOf(channel, userId, ["private"]))) {
+  if (!channel || !canReadChannel(channel, await viewerFor(channel, userId, ["private"]))) {
     return apiError("Not found.", 404);
   }
   return null;
@@ -203,10 +209,10 @@ export async function authorizeChannelManage(
 ): Promise<NextResponse | null> {
   const denied = await authorizeChannelRead(channel, userId);
   if (denied) return denied;
-  if (!canManageChannel(channel!, userId)) {
+  if (!canManageChannel(channel!, await viewerScope(userId))) {
     logInfo(
       "api-auth",
-      `user ${userId} denied manage on channel ${channel!.id} (owned by ${channel!.owner_id})`,
+      `user ${userId} denied manage on channel ${channel!.id} (owned by ${channel!.owned_by})`,
     );
     return apiError("You do not have permission to modify this resource.", 403);
   }
@@ -221,9 +227,9 @@ export async function authorizeChannelContribute(
   userId: string,
 ): Promise<NextResponse | null> {
   if (!channel) return apiError("Not found.", 404);
-  const isMember = await memberOf(channel, userId, ["public", "private"]);
-  if (!canReadChannel(channel, userId, isMember)) return apiError("Not found.", 404);
-  if (!canContributeChannel(channel, userId, isMember)) {
+  const viewer = await viewerFor(channel, userId, ["public", "private"]);
+  if (!canReadChannel(channel, viewer)) return apiError("Not found.", 404);
+  if (!canContributeChannel(channel, viewer)) {
     return apiError("You do not have permission to modify this resource.", 403);
   }
   return null;
@@ -238,7 +244,8 @@ export async function authorizeBlockWrite(
 ): Promise<NextResponse | null> {
   const denied = await authorizeChannelRead(channel, userId);
   if (denied) return denied;
-  if (channel!.owner_id !== userId && block.created_by !== userId) {
+  const viewer = await viewerScope(userId);
+  if (channel!.owned_by !== viewer.ownerId && block.created_by !== userId) {
     return apiError("You do not have permission to modify this resource.", 403);
   }
   return null;

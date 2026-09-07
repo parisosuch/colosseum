@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 import ColumnPreview from "@/components/column-preview";
 import { Badge } from "@/components/ui/badge";
-import type { Channel, ProfileChannelEntry } from "@/lib/colosseum/channel";
+import type { Channel, ProfileChannelEntry, ViewerScope } from "@/lib/colosseum/channel";
 import { Column, getTopColumnsByChannel } from "@/lib/colosseum/column";
 import { getScreenshotsForUrls, type ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 
@@ -87,7 +87,7 @@ export type ChannelCard = { id: number; node: ReactNode };
 // slow, so the page renders `CHANNELS_PAGE` at a time.
 export async function buildChannelCards(
   entries: ProfileChannelEntry[],
-  viewerId: string | null,
+  viewer: ViewerScope,
   countById: Map<number, number>,
   priorityFirst = false,
 ): Promise<ChannelCard[]> {
@@ -96,7 +96,7 @@ export async function buildChannelCards(
   const previewsById = await getTopColumnsByChannel(
     entries.map((e) => e.channel.id),
     PREVIEWS_PER_CHANNEL,
-    viewerId,
+    viewer,
   );
   const previewUrls = [...previewsById.values()]
     .flat()

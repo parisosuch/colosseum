@@ -17,12 +17,13 @@ import {
 } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { channel, channelMember, column, screenshot, userProfile } from "@/lib/db/schema";
+import { channel, channelMember, column, owner, screenshot } from "@/lib/db/schema";
 import { positionBetween, positionsAfter } from "@/lib/fractional-index";
 import { renderMarkdown } from "@/lib/markdown";
 import { sanitizeSearch } from "@/lib/utils";
 import { deleteMediaByUrl } from "./blob";
 import { deleteTweetIfUnreferenced } from "./tweet";
+import { SIGNED_OUT, type ViewerScope } from "./viewer";
 import { tweetIdFromUrl } from "@/lib/utils";
 
 export type Column = {
@@ -112,14 +113,11 @@ export function toColumn(row: ColumnRow, render: ColumnRender = {}): Column {
 // Resolve display info for `channel` columns: the linked channel's title, its
 // owner's handle (the link target is /handle/id), and its block count. Batched
 // so a board with several channel columns still runs two queries, not 2N.
-// `viewerId` (the current user, or null when signed out) gates privacy:
-// privacy is re-checked live here, not just at link creation, so a linked
-// channel that has since gone private resolves no display data for anyone but
-// its owner — the column then renders as a removed link.
-export async function withLinkedChannels(
-  cols: Column[],
-  viewerId: string | null,
-): Promise<Column[]> {
+// `viewer` (SIGNED_OUT when there is no session) gates privacy: privacy is
+// re-checked live here, not just at link creation, so a linked channel that has
+// since gone private resolves no display data for anyone but its owner — the
+// column then renders as a removed link.
+export async function withLinkedChannels(cols: Column[], viewer: ViewerScope): Promise<Column[]> {
   const linkedIds = [
     ...new Set(cols.map((c) => c.linked_channel_id).filter((id): id is number => id != null)),
   ];
@@ -131,14 +129,17 @@ export async function withLinkedChannels(
         id: channel.id,
         title: channel.title,
         description: channel.description,
-        handle: userProfile.handle,
+        handle: owner.handle,
       })
       .from(channel)
-      .innerJoin(userProfile, eq(userProfile.user_id, channel.owner_id))
+      .innerJoin(owner, eq(owner.id, channel.owned_by))
       .where(
         and(
           inArray(channel.id, linkedIds),
-          or(ne(channel.access, "private"), viewerId ? eq(channel.owner_id, viewerId) : undefined),
+          or(
+            ne(channel.access, "private"),
+            viewer.ownerId ? eq(channel.owned_by, viewer.ownerId) : undefined,
+          ),
         ),
       ),
     db
@@ -174,9 +175,9 @@ export async function withCreators(cols: Column[]): Promise<Column[]> {
   const ids = [...new Set(cols.map((c) => c.created_by))];
   if (ids.length === 0) return cols;
   const rows = await db
-    .select({ user_id: userProfile.user_id, handle: userProfile.handle })
-    .from(userProfile)
-    .where(inArray(userProfile.user_id, ids));
+    .select({ user_id: owner.user_id, handle: owner.handle })
+    .from(owner)
+    .where(inArray(owner.user_id, ids));
   const handleById = new Map(rows.map((r) => [r.user_id, r.handle]));
   return cols.map((c) => ({ ...c, created_by_handle: handleById.get(c.created_by) }));
 }
@@ -300,7 +301,7 @@ export type ColumnQuery = {
 export async function getChannelColumns(
   channel_id: number,
   query: ColumnQuery = {},
-  viewerId: string | null = null,
+  viewer: ViewerScope = SIGNED_OUT,
 ): Promise<Column[]> {
   const { sort = "newest", limit, offset = 0, html } = query;
 
@@ -315,7 +316,7 @@ export async function getChannelColumns(
   return withCreators(
     await withLinkedChannels(
       rows.map((row) => toColumn(row, { html })),
-      viewerId,
+      viewer,
     ),
   );
 }
@@ -336,7 +337,7 @@ export async function getChannelColumnNeighbours(
   channel_id: number,
   column_id: number,
   query: ColumnQuery = {},
-  viewerId: string | null = null,
+  viewer: ViewerScope = SIGNED_OUT,
 ): Promise<{ prev: Column | null; next: Column | null }> {
   const none = { prev: null, next: null };
   if (!Number.isFinite(column_id)) return none;
@@ -370,7 +371,7 @@ export async function getChannelColumnNeighbours(
   const enriched = await withCreators(
     await withLinkedChannels(
       rows.map((row) => toColumn(row, { html: query.html })),
-      viewerId,
+      viewer,
     ),
   );
   const byRank = new Map(enriched.map((c, i) => [rows[i].rn, c]));
@@ -385,7 +386,7 @@ export async function getChannelColumnNeighbours(
 export async function getTopColumnsByChannel(
   channelIds: number[],
   perChannel: number,
-  viewerId: string | null = null,
+  viewer: ViewerScope = SIGNED_OUT,
 ): Promise<Map<number, Column[]>> {
   const byChannel = new Map<number, Column[]>();
   if (channelIds.length === 0) return byChannel;
@@ -409,7 +410,7 @@ export async function getTopColumnsByChannel(
 
   const enriched = await withLinkedChannels(
     rows.map((r) => toColumn(r)),
-    viewerId,
+    viewer,
   );
   for (const col of enriched) {
     const list = byChannel.get(col.channel_id);
@@ -428,7 +429,7 @@ export type ColumnSearchResult = Column & { handle: string };
 // channels (including private ones). Used by the nav search box, so capped to a
 // handful of results. Returns [] for an empty/whitespace-only query.
 export async function searchColumns(
-  viewer_id: string,
+  viewer: ViewerScope,
   query: string,
 ): Promise<ColumnSearchResult[]> {
   const term = sanitizeSearch(query);
@@ -452,16 +453,18 @@ export async function searchColumns(
     else 4
   end`;
   const rows = await db
-    .select({ col: column, handle: userProfile.handle })
+    .select({ col: column, handle: owner.handle })
     .from(column)
     .innerJoin(channel, eq(channel.id, column.channel_id))
-    .innerJoin(userProfile, eq(userProfile.user_id, channel.owner_id))
+    .innerJoin(owner, eq(owner.id, channel.owned_by))
     .where(
       and(
         or(
           ne(channel.access, "private"),
-          eq(channel.owner_id, viewer_id),
-          sql`exists (select 1 from ${channelMember} where ${channelMember.channel_id} = ${channel.id} and ${channelMember.user_id} = ${viewer_id})`,
+          viewer.ownerId ? eq(channel.owned_by, viewer.ownerId) : undefined,
+          viewer.userId
+            ? sql`exists (select 1 from ${channelMember} where ${channelMember.channel_id} = ${channel.id} and ${channelMember.user_id} = ${viewer.userId})`
+            : undefined,
         ),
         or(
           ilike(column.title, pattern),

@@ -113,10 +113,17 @@ export async function invalidate(...keys: string[]): Promise<void> {
 }
 
 // Central key schema so reads and their invalidations can't drift apart.
+//
+// The channel-list keys are cut by owner id, which used to be a user id and is
+// now an `owner` row id — the same key space holding values keyed on something
+// else. Redis is off unless REDIS_URL is set, but an instance that has it on
+// would serve one person's cached list to whoever inherited their old key, so
+// the names carry an `o1` generation marker. Bump it again if the key's meaning
+// changes rather than reusing a name.
 export const cacheKeys = {
   channel: (id: number) => `channel:${id}`,
-  userPublicChannels: (userId: string) => `user-public-channels:${userId}`,
-  userChannels: (userId: string) => `user-channels:${userId}`,
+  ownerPublicChannels: (ownerId: string) => `o1:owner-public-channels:${ownerId}`,
+  ownerChannels: (ownerId: string) => `o1:owner-channels:${ownerId}`,
 };
 
 // TTLs (seconds). Channel metadata is short so title/access edits surface
@@ -125,5 +132,5 @@ export const cacheKeys = {
 // which block writes don't invalidate) for a high hit rate.
 export const cacheTtl = {
   channel: 300, // 5 minutes
-  userChannels: 1800, // 30 minutes
+  ownerChannels: 1800, // 30 minutes
 };

@@ -138,32 +138,59 @@ export const DEFAULT_EMAIL_NOTIFICATION_PREFS: EmailNotificationPrefs = {
   member: true,
 };
 
-export const userProfile = pgTable(
-  "user_profile",
+// Everything that can hold a handle and own channels: a person (`kind = "user"`,
+// backed by a Better Auth `user` row) or a group. `/{handle}` is a single route
+// segment, so users and groups have to draw from one pool of handles — and only
+// one table can enforce that, since cross-table uniqueness is not a constraint
+// Postgres can express. That is why the handle lives here rather than beside the
+// per-person settings in user_profile.
+//
+// `user_id` is set exactly when `kind = 'user'` (the check below), and cascades
+// from `user`, which preserves the behaviour the old channel.owner_id FK had:
+// delete a person, their owner row goes, and their channels go with it. A group
+// has no such link, so its channels outlive whoever created it.
+//
+// Not named `account` — Better Auth already owns a table by that name above.
+export const owner = pgTable(
+  "owner",
   {
-    user_id: uuid("user_id")
-      .primaryKey()
-      .references(() => user.id, { onDelete: "cascade" }),
-    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    id: uuid("id").primaryKey().defaultRandom(),
+    kind: text("kind", { enum: ["user", "group"] }).notNull(),
     handle: text("handle").notNull().unique(),
     avatar_url: text("avatar_url"),
     about: text("about"),
-    email_notifications: jsonb("email_notifications")
-      .$type<EmailNotificationPrefs>()
-      .notNull()
-      .default(DEFAULT_EMAIL_NOTIFICATION_PREFS),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    user_id: uuid("user_id").references(() => user.id, { onDelete: "cascade" }),
   },
   (t) => [
-    // Explore feed orders new members by join time.
-    index("user_profile_created_at_idx").on(t.created_at),
+    // One owner row per person. Groups all carry a null user_id, and Postgres
+    // treats nulls as distinct in a unique index, so this constrains only users.
+    unique().on(t.user_id),
+    check("owner_user_id_iff_user_kind", sql`(${t.kind} = 'user') = (${t.user_id} is not null)`),
+    // Explore feed orders new members by join time (filtered to kind = 'user').
+    index("owner_created_at_idx").on(t.created_at),
     // Profile search, and the comment @-mention autocomplete behind it. Both
     // run ILIKE '%term%' over handle/about, which a btree can't serve because
     // of the leading wildcard, so each searched column needs a trigram GIN
-    // (pg_trgm) the same way channel and column search do.
-    index("user_profile_handle_trgm_idx").using("gin", sql`${t.handle} gin_trgm_ops`),
-    index("user_profile_about_trgm_idx").using("gin", sql`${t.about} gin_trgm_ops`),
+    // (pg_trgm) the same way channel and column search do. Groups become
+    // searchable and mentionable by sitting in this table.
+    index("owner_handle_trgm_idx").using("gin", sql`${t.handle} gin_trgm_ops`),
+    index("owner_about_trgm_idx").using("gin", sql`${t.about} gin_trgm_ops`),
   ],
 );
+
+// Per-person settings that have nothing to do with owning channels. The handle,
+// avatar and bio moved to `owner`; what is left is the notification preferences,
+// which belong to a human being and never to a group.
+export const userProfile = pgTable("user_profile", {
+  user_id: uuid("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  email_notifications: jsonb("email_notifications")
+    .$type<EmailNotificationPrefs>()
+    .notNull()
+    .default(DEFAULT_EMAIL_NOTIFICATION_PREFS),
+});
 
 export const channel = pgTable(
   "channel",
@@ -177,17 +204,22 @@ export const channel = pgTable(
     access: text("access", { enum: ["public", "open", "private"] })
       .notNull()
       .default("public"),
-    owner_id: uuid("owner_id")
+    // The owner row (a person or a group), not a user id. Renamed from
+    // `owner_id` when owners stopped being people: the old name held a value
+    // that compared equal to a session's user id, and keeping it would have let
+    // every one of those comparisons go on type-checking while quietly meaning
+    // something else.
+    owned_by: uuid("owned_by")
       .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+      .references(() => owner.id, { onDelete: "cascade" }),
     updated_at: timestamp("updated_at", { withTimezone: true }),
     tags: text("tags").array().notNull().default([]),
   },
   (t) => [
     // Explore feed orders newly created channels by time.
     index("channel_created_at_idx").on(t.created_at),
-    // getUserChannels / getUserPublicChannels filtering on owner_id.
-    index("channel_owner_id_idx").on(t.owner_id),
+    // getOwnerChannels / getOwnerPublicChannels filtering on the owner.
+    index("channel_owned_by_idx").on(t.owned_by),
     // Channel search. It ORs `tags @> ARRAY[...]` with ILIKE '%term%' across
     // title/description, so every OR branch needs an index or the planner
     // seq-scans the whole thing: a GIN for tag containment plus trigram GINs

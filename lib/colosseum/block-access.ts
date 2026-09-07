@@ -1,9 +1,8 @@
 import "server-only";
 
 import { getSessionUser } from "@/lib/auth";
-import { Channel, canReadChannel, getChannel } from "./channel";
+import { Channel, canReadChannel, getChannel, resolveChannelViewer, SIGNED_OUT } from "./channel";
 import { Column, getColumn } from "./column";
-import { isChannelMember } from "./member";
 
 // Resolve a block and its channel, enforcing visibility in app code (this
 // connection bypasses RLS): a block is visible only when it belongs to the
@@ -29,10 +28,14 @@ export async function loadVisibleBlock(
   if (!channel) {
     return null;
   }
-  const user = channel.access === "private" ? await getSessionUser() : null;
-  const isMember =
-    channel.access === "private" && user ? await isChannelMember(channel.id, user.id) : false;
-  if (!canReadChannel(channel, user?.id ?? null, isMember)) {
+  // Only a private channel's read depends on who is asking, so the session and
+  // the owner/member lookups behind it stay off the public path entirely.
+  if (channel.access === "private") {
+    const user = await getSessionUser();
+    if (!canReadChannel(channel, await resolveChannelViewer(channel, user?.id ?? null))) {
+      return null;
+    }
+  } else if (!canReadChannel(channel, { ...SIGNED_OUT, isChannelMember: false })) {
     return null;
   }
   return { column, channel };

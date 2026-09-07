@@ -11,7 +11,7 @@ import {
 } from "@/lib/colosseum/api-auth";
 import { assertColumnQuota } from "@/lib/colosseum/admin";
 import { putImageBlobFromUrl } from "@/lib/colosseum/blob";
-import { getChannel } from "@/lib/colosseum/channel";
+import { getChannel, viewerScope } from "@/lib/colosseum/channel";
 import {
   getChannelColumns,
   uploadImageColumn,
@@ -52,7 +52,11 @@ export async function GET(req: Request, { params }: Ctx) {
   try {
     // `limit` is optional, so this can be every block in the channel; the
     // response carries the markdown source, so none of them are rendered.
-    const blocks = await getChannelColumns(channelId, { limit, html: false }, auth.userId);
+    const blocks = await getChannelColumns(
+      channelId,
+      { limit, html: false },
+      await viewerScope(auth.userId),
+    );
     return json({ blocks: await attachPreviews(blocks) });
   } catch (e) {
     logError("channels.id.blocks.GET", `failed to list blocks for channel ${channelId}`, e);

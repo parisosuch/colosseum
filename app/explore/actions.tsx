@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 
 import { ACTIVITY_PAGE, getActivityFeed, groupActivity } from "@/lib/colosseum/activity";
+import { viewerScope } from "@/lib/colosseum/channel";
 import { getSessionUser } from "@/lib/auth";
 import { ActivityRow, activityKey } from "@/components/explore-view";
 
@@ -15,7 +16,7 @@ export async function loadMoreActivity(
 ): Promise<{ rows: ReactNode; nextCursor: string | null; hasMore: boolean }> {
   const user = await getSessionUser();
   const viewerId = user?.id ?? null;
-  const items = await getActivityFeed(viewerId, ACTIVITY_PAGE, before);
+  const items = await getActivityFeed(await viewerScope(viewerId), ACTIVITY_PAGE, before);
   return {
     rows: groupActivity(items).map((group) => (
       <ActivityRow key={activityKey(group[0])} group={group} viewerId={viewerId} />

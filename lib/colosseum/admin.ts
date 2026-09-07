@@ -2,7 +2,7 @@ import { eq, sql } from "drizzle-orm";
 
 import { getSessionUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { appSettings, column, inviteCode, user, userProfile } from "@/lib/db/schema";
+import { appSettings, column, inviteCode, owner, user } from "@/lib/db/schema";
 import type { EmailSettings } from "@/lib/db/schema";
 
 // Instance-wide limits. null = unlimited, 0 = none, N = cap. Stored as a single
@@ -59,9 +59,9 @@ export function effectiveLimit(override: number | null, global: number | null): 
 // oldest first. Surfaced in limit messages so a user knows who to ask.
 export async function getAdminHandles(): Promise<string[]> {
   const rows = await db
-    .select({ handle: userProfile.handle })
+    .select({ handle: owner.handle })
     .from(user)
-    .innerJoin(userProfile, eq(userProfile.user_id, user.id))
+    .innerJoin(owner, eq(owner.user_id, user.id))
     .where(eq(user.is_admin, true))
     .orderBy(user.createdAt);
   return rows.map((r) => r.handle);
@@ -100,10 +100,10 @@ export async function listUsers(): Promise<AdminUser[]> {
       banned: user.banned,
       invite_limit: user.invite_limit,
       column_limit: user.column_limit,
-      handle: userProfile.handle,
+      handle: owner.handle,
     })
     .from(user)
-    .leftJoin(userProfile, eq(userProfile.user_id, user.id))
+    .leftJoin(owner, eq(owner.user_id, user.id))
     .orderBy(user.createdAt);
 
   // Usage aggregated per user in two grouped scans, then stitched in JS. Invite

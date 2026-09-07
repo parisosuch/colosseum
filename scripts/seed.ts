@@ -19,15 +19,27 @@ import {
   comment,
   inviteCode,
   inviteRedemption,
+  owner,
   user,
   userProfile,
 } from "@/lib/db/schema";
 
-type SeedUser = { id: string; name: string; email: string; handle: string; about: string };
+// `id` is the Better Auth user id; `ownerId` is the `owner` row the user's
+// channels hang off. Two distinct ids for the same person, deterministic so a
+// re-seed reuses them and tests can assert on either without a lookup.
+type SeedUser = {
+  id: string;
+  ownerId: string;
+  name: string;
+  email: string;
+  handle: string;
+  about: string;
+};
 
 export const USERS: Record<"alice" | "bob", SeedUser> = {
   alice: {
     id: "10000000-0000-4000-8000-000000000001",
+    ownerId: "30000000-0000-4000-8000-000000000001",
     name: "Alice Seed",
     email: "alice@example.test",
     handle: "alice",
@@ -35,6 +47,7 @@ export const USERS: Record<"alice" | "bob", SeedUser> = {
   },
   bob: {
     id: "10000000-0000-4000-8000-000000000002",
+    ownerId: "30000000-0000-4000-8000-000000000002",
     name: "Bob Seed",
     email: "bob@example.test",
     handle: "bob",
@@ -93,6 +106,7 @@ function bulkUsers(): SeedUser[] {
     const nn = String(i + 1).padStart(2, "0");
     return {
       id: `20000000-0000-4000-8000-${String(i + 1).padStart(12, "0")}`,
+      ownerId: `40000000-0000-4000-8000-${String(i + 1).padStart(12, "0")}`,
       name: `Seed Member ${nn}`,
       email: `member${nn}@example.test`,
       handle: `member${nn}`,
@@ -212,12 +226,30 @@ export async function seed(): Promise<void> {
       password: passwordHash,
     })),
   );
+  // The handle/avatar/bio live on `owner`; user_profile is the notification
+  // settings row beside it. Both are written for every seeded person, which is
+  // the pairing createUserProfile guarantees at onboarding.
+  await db.insert(owner).values(
+    Object.values(USERS).map((u) => ({
+      id: u.ownerId,
+      kind: "user" as const,
+      handle: u.handle,
+      about: u.about,
+      user_id: u.id,
+    })),
+  );
+  await db.insert(owner).values(
+    bulk.map((u) => ({
+      id: u.ownerId,
+      kind: "user" as const,
+      handle: u.handle,
+      about: pick(ABOUTS),
+      user_id: u.id,
+    })),
+  );
   await db
     .insert(userProfile)
-    .values(Object.values(USERS).map((u) => ({ user_id: u.id, handle: u.handle, about: u.about })));
-  await db
-    .insert(userProfile)
-    .values(bulk.map((u) => ({ user_id: u.id, handle: u.handle, about: pick(ABOUTS) })));
+    .values([...Object.values(USERS), ...bulk].map((u) => ({ user_id: u.id })));
 
   // One unused single-use code, and one already redeemed by bob.
   await db.insert(inviteCode).values([
@@ -269,7 +301,7 @@ export async function seed(): Promise<void> {
     .insert(channel)
     .values({
       title: CHANNELS.aliceDesign.title,
-      owner_id: USERS.alice.id,
+      owned_by: USERS.alice.ownerId,
       access: "public",
       tags: CHANNELS.aliceDesign.tags,
     })
@@ -278,7 +310,7 @@ export async function seed(): Promise<void> {
     .insert(channel)
     .values({
       title: CHANNELS.alicePrivate.title,
-      owner_id: USERS.alice.id,
+      owned_by: USERS.alice.ownerId,
       access: "private",
       tags: CHANNELS.alicePrivate.tags,
     })
@@ -287,14 +319,14 @@ export async function seed(): Promise<void> {
     .insert(channel)
     .values({
       title: CHANNELS.aliceOpen.title,
-      owner_id: USERS.alice.id,
+      owned_by: USERS.alice.ownerId,
       access: "open",
       tags: CHANNELS.aliceOpen.tags,
     })
     .returning();
   await db.insert(channel).values({
     title: CHANNELS.bobPhoto.title,
-    owner_id: USERS.bob.id,
+    owned_by: USERS.bob.ownerId,
     access: "public",
     tags: CHANNELS.bobPhoto.tags,
   });
@@ -302,7 +334,7 @@ export async function seed(): Promise<void> {
     .insert(channel)
     .values({
       title: CHANNELS.bobGroup.title,
-      owner_id: USERS.bob.id,
+      owned_by: USERS.bob.ownerId,
       access: "private",
       tags: CHANNELS.bobGroup.tags,
     })
@@ -370,7 +402,9 @@ export async function seed(): Promise<void> {
   // blocks, and comments, all owned by the bulk users (never alice/bob).
   // -------------------------------------------------------------------------
   const ACCESS = ["public", "public", "public", "open", "private", "private"] as const;
-  type Spec = { ownerId: string; access: (typeof ACCESS)[number]; memberIds: string[] };
+  // `userId` rather than an owner id: everything derived from a spec — the
+  // member roster, the block authors, the commenters — is a person.
+  type Spec = { userId: string; access: (typeof ACCESS)[number]; memberIds: string[] };
 
   const channelValues: (typeof channel.$inferInsert)[] = [];
   const specs: Spec[] = [];
@@ -380,12 +414,12 @@ export async function seed(): Promise<void> {
       channelValues.push({
         title: `${pick(ADJ)} ${pick(NOUN)}`,
         description: chance(0.6) ? pick(SENTENCES) : null,
-        owner_id: u.id,
+        owned_by: u.ownerId,
         access,
         tags: sampleN(TAGS, randInt(0, 3)),
         created_at: pastDate(),
       });
-      specs.push({ ownerId: u.id, access, memberIds: [] });
+      specs.push({ userId: u.id, access, memberIds: [] });
     }
   }
 
@@ -406,7 +440,7 @@ export async function seed(): Promise<void> {
   channelRows.forEach((row, i) => {
     const spec = specs[i];
     if (spec.access === "open") return;
-    const others = bulk.filter((u) => u.id !== spec.ownerId);
+    const others = bulk.filter((u) => u.id !== spec.userId);
     spec.memberIds = sampleN(others, randInt(0, 8)).map((u) => u.id);
     for (const uid of spec.memberIds) {
       memberValues.push({ channel_id: row.id, user_id: uid, created_at: pastDate() });
@@ -424,7 +458,7 @@ export async function seed(): Promise<void> {
   channelRows.forEach((row, i) => {
     const spec = specs[i];
     const authors =
-      spec.access === "open" ? bulk.map((u) => u.id) : [spec.ownerId, ...spec.memberIds];
+      spec.access === "open" ? bulk.map((u) => u.id) : [spec.userId, ...spec.memberIds];
     for (let k = 0; k < randInt(3, 40); k++) {
       const isText = chance(0.5);
       columnValues.push({
@@ -457,7 +491,7 @@ export async function seed(): Promise<void> {
     if (!chance(0.3)) return;
     const spec = specs[columnSpecIdx[j]];
     const commenters =
-      spec.access === "private" ? [spec.ownerId, ...spec.memberIds] : bulk.map((u) => u.id);
+      spec.access === "private" ? [spec.userId, ...spec.memberIds] : bulk.map((u) => u.id);
     if (commenters.length === 0) return;
     for (let x = 0; x < randInt(1, 3); x++) {
       commentValues.push({

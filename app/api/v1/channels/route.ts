@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { authenticateApiToken, apiError, json, parseAccess } from "@/lib/colosseum/api-auth";
-import { createChannel, getUserChannels } from "@/lib/colosseum/channel";
+import { createChannel, getOwnerChannels } from "@/lib/colosseum/channel";
+import { ownerIdForUser, requireOwnerId } from "@/lib/colosseum/owner";
 import { logError, logInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -12,7 +13,9 @@ export async function GET(req: Request) {
   if (auth instanceof NextResponse) return auth;
 
   try {
-    const channels = await getUserChannels(auth.userId);
+    // No owner row means onboarding is unfinished, so there is nothing to list.
+    const ownerId = await ownerIdForUser(auth.userId);
+    const channels = ownerId ? await getOwnerChannels(ownerId) : [];
     return json({ channels });
   } catch (e) {
     logError("channels.GET", `failed to list channels for user ${auth.userId}`, e);
@@ -44,8 +47,9 @@ export async function POST(req: Request) {
       title,
       description,
       access,
-      // owner is always the token user; any client-supplied owner is ignored.
-      owner_id: auth.userId,
+      // owner is always the token user's own owner row; any client-supplied
+      // owner is ignored.
+      owned_by: await requireOwnerId(auth.userId),
     });
     logInfo("channels.POST", `created channel ${channel.id} for user ${auth.userId}`);
     return json({ channel }, 201);

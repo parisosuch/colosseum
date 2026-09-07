@@ -45,6 +45,8 @@ test("invalidate() is a no-op that never throws when caching is disabled", async
 
 test("cacheKeys are stable and namespaced", () => {
   expect(cacheKeys.channel(7)).toBe("channel:7");
-  expect(cacheKeys.userPublicChannels("u1")).toBe("user-public-channels:u1");
-  expect(cacheKeys.userChannels("u1")).toBe("user-channels:u1");
+  // The `o1` prefix is a generation marker: these keys are cut by owner id,
+  // which used to hold user ids, so the old names must never be reused.
+  expect(cacheKeys.ownerPublicChannels("o1")).toBe("o1:owner-public-channels:o1");
+  expect(cacheKeys.ownerChannels("o1")).toBe("o1:owner-channels:o1");
 });

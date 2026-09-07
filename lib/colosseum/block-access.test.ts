@@ -13,7 +13,7 @@ test("loadVisibleBlock resolves a block in a public channel", async () => {
   const ch = await createChannel({
     title: "Open Book",
     access: "public",
-    owner_id: USERS.alice.id,
+    owned_by: USERS.alice.ownerId,
   });
   const block = await uploadTextColumn({
     created_by: USERS.alice.id,
@@ -29,8 +29,16 @@ test("loadVisibleBlock resolves a block in a public channel", async () => {
 test("loadVisibleBlock rejects a block that belongs to a different channel", async () => {
   // The deep link puts both ids in the URL, so a block id can be paired with a
   // channel the viewer *can* read. The pairing has to be checked, not assumed.
-  const mine = await createChannel({ title: "Mine", access: "public", owner_id: USERS.alice.id });
-  const other = await createChannel({ title: "Other", access: "public", owner_id: USERS.bob.id });
+  const mine = await createChannel({
+    title: "Mine",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
+  const other = await createChannel({
+    title: "Other",
+    access: "public",
+    owned_by: USERS.bob.ownerId,
+  });
   const block = await uploadTextColumn({
     created_by: USERS.bob.id,
     channel_id: other.id,
@@ -41,7 +49,11 @@ test("loadVisibleBlock rejects a block that belongs to a different channel", asy
 });
 
 test("loadVisibleBlock returns null for missing blocks and unparsed ids", async () => {
-  const ch = await createChannel({ title: "Sparse", access: "public", owner_id: USERS.alice.id });
+  const ch = await createChannel({
+    title: "Sparse",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
   expect(await loadVisibleBlock(ch.id, 99999999)).toBeNull();
   // `?block=abc` parses to NaN; it must not fall through to a query.
   expect(await loadVisibleBlock(ch.id, NaN)).toBeNull();

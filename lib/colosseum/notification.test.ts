@@ -5,7 +5,7 @@ import { desc, eq } from "drizzle-orm";
 import { BLOCKS, CHANNELS, seed, USERS } from "@/scripts/seed";
 import { db } from "@/lib/db";
 import { notification } from "@/lib/db/schema";
-import { createChannel, deleteChannel, getUserChannels } from "./channel";
+import { createChannel, deleteChannel, getOwnerChannels, viewerScope } from "./channel";
 import { addChannelColumn, deleteColumn, getChannelColumns, searchColumns } from "./column";
 import { createComment, deleteComment } from "./comment";
 import {
@@ -27,13 +27,13 @@ let otherBlockId: number;
 
 beforeAll(async () => {
   await seed();
-  const channels = await getUserChannels(USERS.alice.id);
+  const channels = await getOwnerChannels(USERS.alice.ownerId);
   // BLOCKS.alicePublic lives in this channel, so one id covers both the
   // channel-level and block-level cases.
   channelId = channels.find((c) => c.title === CHANNELS.aliceDesign.title)!.id;
-  const bobChannels = await getUserChannels(USERS.bob.id);
+  const bobChannels = await getOwnerChannels(USERS.bob.ownerId);
   bobChannelId = bobChannels.find((c) => c.title === CHANNELS.bobPhoto.title)!.id;
-  const [hit] = await searchColumns(USERS.alice.id, BLOCKS.alicePublic);
+  const [hit] = await searchColumns(await viewerScope(USERS.alice.id), BLOCKS.alicePublic);
   blockId = hit.id;
   otherBlockId = (await getChannelColumns(channelId)).find((c) => c.id !== blockId)!.id;
 });
@@ -128,7 +128,7 @@ test("a connect links to the host channel and names both channels", async () => 
 // can repoint an older connect row onto one, so the rendering still has to keep
 // the host out of the message and the link.
 test("a connect into a private host names neither the host nor links to it", async () => {
-  const channels = await getUserChannels(USERS.alice.id);
+  const channels = await getOwnerChannels(USERS.alice.ownerId);
   const privateId = channels.find((c) => c.title === CHANNELS.alicePrivate.title)!.id;
   const added = await addChannelColumn({
     created_by: USERS.alice.id,
@@ -316,7 +316,7 @@ test("a long title is capped in the rendered message", async () => {
   const host = await createChannel({
     title: "x".repeat(300),
     access: "public",
-    owner_id: USERS.bob.id,
+    owned_by: USERS.bob.ownerId,
   });
   try {
     await createNotification({

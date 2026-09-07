@@ -2,7 +2,7 @@ import { beforeAll, expect, test } from "bun:test";
 
 import { seed, USERS } from "@/scripts/seed";
 import { blockLabel, getActivityFeed, groupActivity, type ActivityItem } from "./activity";
-import { createChannel } from "./channel";
+import { createChannel, viewerScope } from "./channel";
 import { uploadURLColumn } from "./column";
 import { addChannelMemberByHandle } from "./member";
 
@@ -42,7 +42,7 @@ test("getActivityFeed: a member's block carries the channel owner's handle", asy
   const channel = await createChannel({
     title: "Bob's public channel",
     access: "public",
-    owner_id: USERS.bob.id,
+    owned_by: USERS.bob.ownerId,
   });
   await addChannelMemberByHandle(channel.id, USERS.alice.handle);
   const block = await uploadURLColumn({
@@ -51,7 +51,7 @@ test("getActivityFeed: a member's block carries the channel owner's handle", asy
     text: "https://ponytail.example/explore-408-member-add",
   });
 
-  const feed = await getActivityFeed(null, 200);
+  const feed = await getActivityFeed(await viewerScope(null), 200);
   const item = feed.find((i) => i.kind === "block" && i.column?.id === block.id);
 
   expect(item?.handle).toBe(USERS.alice.handle);
@@ -66,7 +66,7 @@ test("getActivityFeed: private-channel blocks reach the owner and members, not o
   const shared = await createChannel({
     title: "Shared",
     access: "private",
-    owner_id: USERS.bob.id,
+    owned_by: USERS.bob.ownerId,
   });
   await addChannelMemberByHandle(shared.id, USERS.alice.handle);
   const sharedBlock = await uploadURLColumn({
@@ -79,7 +79,7 @@ test("getActivityFeed: private-channel blocks reach the owner and members, not o
   const secret = await createChannel({
     title: "Secret",
     access: "private",
-    owner_id: USERS.bob.id,
+    owned_by: USERS.bob.ownerId,
   });
   const secretBlock = await uploadURLColumn({
     created_by: USERS.bob.id,
@@ -88,9 +88,9 @@ test("getActivityFeed: private-channel blocks reach the owner and members, not o
   });
 
   const [bobFeed, aliceFeed, anonFeed] = await Promise.all([
-    getActivityFeed(USERS.bob.id, 200),
-    getActivityFeed(USERS.alice.id, 200),
-    getActivityFeed(null, 200),
+    getActivityFeed(await viewerScope(USERS.bob.id), 200),
+    getActivityFeed(await viewerScope(USERS.alice.id), 200),
+    getActivityFeed(await viewerScope(null), 200),
   ]);
 
   // Owner sees both his private blocks.

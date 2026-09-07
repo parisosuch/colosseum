@@ -4,6 +4,17 @@ All notable changes to Colosseum are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Handles moved to a new `owner` table, which is what a channel now belongs to.
+  Nothing changes for anyone using Colosseum; self-hosters get a migration that
+  rewrites channel ownership, as the groundwork for channels that belong to a
+  group rather than a person. It refuses to run, leaving the database untouched,
+  if any channel is owned by an account that never finished onboarding and so
+  has no handle — it prints how many and what to do about them.
+
 ## [1.12.3] - 2026-09-05
 
 ### Fixed

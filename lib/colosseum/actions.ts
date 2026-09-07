@@ -12,14 +12,18 @@ import {
   ChannelAccess,
   ChannelSearchResult,
   canContributeChannel,
+  canManageChannel,
   canReadChannel,
   channelReaders,
   createChannel,
   deleteChannel,
   getChannel,
+  resolveChannelViewer,
   searchChannels,
   updateChannel,
+  viewerScope,
 } from "./channel";
+import { ownerIdForUser, ownerRecipients } from "./owner";
 import {
   ChannelMember,
   addChannelMemberByHandle,
@@ -149,7 +153,7 @@ async function requireUserId(): Promise<string> {
 // Throws "Not found." otherwise so a private channel's existence never leaks.
 async function requireOwnedChannel(channelId: number, userId: string): Promise<Channel> {
   const channel = await getChannel(channelId);
-  if (!channel || channel.owner_id !== userId) {
+  if (!channel || !canManageChannel(channel, await viewerScope(userId))) {
     throw new Error("Not found.");
   }
   return channel;
@@ -163,11 +167,11 @@ async function requireContributableChannel(channelId: number, userId: string): P
   if (!channel) {
     throw new Error("Not found.");
   }
-  const isMember = channel.access === "open" ? false : await isChannelMember(channelId, userId);
-  if (!canReadChannel(channel, userId, isMember)) {
+  const viewer = await resolveChannelViewer(channel, userId);
+  if (!canReadChannel(channel, viewer)) {
     throw new Error("Not found.");
   }
-  if (!canContributeChannel(channel, userId, isMember)) {
+  if (!canContributeChannel(channel, viewer)) {
     throw new Error("You do not have permission to add to this channel.");
   }
   // Every content upload routes through here, so the per-user block quota is
@@ -186,7 +190,8 @@ async function requireWritableBlock(columnId: number, userId: string): Promise<C
     throw new Error("Not found.");
   }
   const channel = await requireReadableChannel(column.channel_id);
-  if (channel.owner_id !== userId && column.created_by !== userId) {
+  const viewer = await viewerScope(userId);
+  if (!canManageChannel(channel, viewer) && column.created_by !== userId) {
     throw new Error("You do not have permission to modify this block.");
   }
   return column;
@@ -200,9 +205,7 @@ async function requireReadableChannel(channelId: number): Promise<Channel> {
     throw new Error("Not found.");
   }
   const userId = await currentUserId();
-  const isMember =
-    channel.access === "private" && userId ? await isChannelMember(channelId, userId) : false;
-  if (!canReadChannel(channel, userId, isMember)) {
+  if (!canReadChannel(channel, await resolveChannelViewer(channel, userId))) {
     throw new Error("Not found.");
   }
   return channel;
@@ -233,10 +236,11 @@ export async function searchAction(query: string): Promise<{
   if (!userId) {
     return { profiles: [], channels: [], columns: [] };
   }
+  const viewer = await viewerScope(userId);
   const [profiles, channels, columns] = await Promise.all([
     searchProfiles(query),
-    searchChannels(userId, query),
-    searchColumns(userId, query),
+    searchChannels(viewer, query),
+    searchColumns(viewer, query),
   ]);
   return { profiles, channels, columns };
 }
@@ -258,7 +262,11 @@ export async function createChannelAction(input: {
   access: ChannelAccess;
 }): Promise<Channel> {
   const userId = await requireUserId();
-  return createChannel({ ...input, owner_id: userId });
+  const ownerId = await ownerIdForUser(userId);
+  if (!ownerId) {
+    throw new Error("Finish setting up your profile first.");
+  }
+  return createChannel({ ...input, owned_by: ownerId });
 }
 
 export async function updateChannelAction(
@@ -295,7 +303,7 @@ export async function addChannelMemberAction(
   if (!profile) {
     throw new Error("No user with that handle.");
   }
-  if (profile.user_id === channel.owner_id) {
+  if (profile.owner_id === channel.owned_by) {
     throw new Error("You're already the owner of this channel.");
   }
   // Only notify on a genuine add — re-adding an existing member is a no-op.
@@ -337,7 +345,7 @@ export async function getChannelColumnsAction(
   query: ColumnQuery = {},
 ): Promise<Column[]> {
   await requireReadableChannel(channelId);
-  return getChannelColumns(channelId, query, await currentUserId());
+  return getChannelColumns(channelId, query, await viewerScope(await currentUserId()));
 }
 
 // How many blocks match the board's current search/type filter, for the result
@@ -360,7 +368,12 @@ export async function getColumnNeighboursAction(
   query: ColumnQuery = {},
 ): Promise<{ prev: Column | null; next: Column | null }> {
   await requireReadableChannel(channelId);
-  return getChannelColumnNeighbours(channelId, columnId, query, await currentUserId());
+  return getChannelColumnNeighbours(
+    channelId,
+    columnId,
+    query,
+    await viewerScope(await currentUserId()),
+  );
 }
 
 // Add a link block. A URL that points straight at an image file becomes an
@@ -853,14 +866,19 @@ export async function addChannelColumnAction(
   // Nothing is sent when the host is private: what someone collects into a
   // private channel is their own business, and the recipient couldn't open it
   // to see anyway. Privacy runs both ways here.
+  //
+  // Addressed through ownerRecipients rather than the owner id itself: a
+  // notification's recipient is a person, and an owner is not necessarily one.
   if (!host.private) {
-    await createNotification({
-      recipient_id: linked.owner_id,
-      actor_id: userId,
-      type: "connect",
-      channel_id: hostChannelId,
-      column_id: added.id,
-    });
+    for (const recipientId of await ownerRecipients(linked.owned_by)) {
+      await createNotification({
+        recipient_id: recipientId,
+        actor_id: userId,
+        type: "connect",
+        channel_id: hostChannelId,
+        column_id: added.id,
+      });
+    }
   }
 }
 

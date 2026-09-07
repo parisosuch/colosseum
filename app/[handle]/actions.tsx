@@ -3,7 +3,7 @@
 import { buildChannelCards, type ChannelCard } from "@/components/channel-card";
 import { CHANNELS_PAGE } from "@/components/channel-filter";
 import { getSessionUser } from "@/lib/auth";
-import { getProfileChannels } from "@/lib/colosseum/channel";
+import { getProfileChannels, viewerScope } from "@/lib/colosseum/channel";
 import { getChannelColumnCounts } from "@/lib/colosseum/column";
 import { getPublicUserProfile } from "@/lib/colosseum/user";
 
@@ -21,11 +21,11 @@ export async function loadChannelCards(handle: string, ids: number[]): Promise<C
   const [user, profile] = await Promise.all([getSessionUser(), getPublicUserProfile(handle)]);
   if (!profile) return [];
 
-  const viewerId = user?.id ?? null;
-  const entries = await getProfileChannels(profile.user_id, handle, viewerId);
+  const viewer = await viewerScope(user?.id ?? null);
+  const entries = await getProfileChannels(profile.owner_id, handle, viewer);
   const wanted = new Set(ids.slice(0, CHANNELS_PAGE));
   const slice = entries.filter((e) => wanted.has(e.channel.id));
 
   const counts = await getChannelColumnCounts(slice.map((e) => e.channel.id));
-  return buildChannelCards(slice, viewerId, counts);
+  return buildChannelCards(slice, viewer, counts);
 }

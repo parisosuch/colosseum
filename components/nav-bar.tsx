@@ -1,5 +1,5 @@
 import { getUserProfile } from "@/lib/colosseum/user";
-import { getUserChannels } from "@/lib/colosseum/channel";
+import { getOwnerChannels } from "@/lib/colosseum/channel";
 import { unreadNotificationCount } from "@/lib/colosseum/notification";
 import { getSessionUser } from "@/lib/auth";
 import { ArrowRight, Bell } from "lucide-react";
@@ -44,7 +44,7 @@ export default async function NavBar() {
   // The quick-add drawer needs the viewer's channels to pick a destination;
   // only onboarded users see it, so skip both queries otherwise.
   const [ownChannels, unread] = await Promise.all([
-    userProfile ? getUserChannels(user.id) : Promise.resolve([]),
+    userProfile ? getOwnerChannels(userProfile.owner_id) : Promise.resolve([]),
     userProfile ? unreadNotificationCount(user.id) : Promise.resolve(0),
   ]);
 

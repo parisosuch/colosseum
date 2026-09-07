@@ -8,7 +8,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { buildChannelCards } from "@/components/channel-card";
 import { CHANNELS_PAGE } from "@/components/channel-filter";
 import { ChannelsView } from "@/components/channels-view";
-import { getProfileChannels } from "@/lib/colosseum/channel";
+import { getProfileChannels, viewerScope } from "@/lib/colosseum/channel";
 import { getChannelColumnCounts } from "@/lib/colosseum/column";
 import { getPublicUserProfile } from "@/lib/colosseum/user";
 import { getSessionUser } from "@/lib/auth";
@@ -43,7 +43,8 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
   // Owned channels (as this viewer may see them) followed by the ones you've
   // been invited to. Metadata only — a row per channel, which is what the
   // search box, the filters, the sorts and the list view all read.
-  const entries = await getProfileChannels(userProfile.user_id, handle, user?.id ?? null);
+  const viewer = await viewerScope(user?.id ?? null);
+  const entries = await getProfileChannels(userProfile.owner_id, handle, viewer);
 
   // Column counts for every channel: one grouped count(*), shared by the grid
   // cards and the list rows so the two views don't re-query, and needed in full
@@ -56,7 +57,7 @@ export default async function UserPage({ params }: { params: Promise<{ handle: s
   // client asks loadChannelCards for the rest as the reader scrolls.
   const gridCards = await buildChannelCards(
     entries.slice(0, CHANNELS_PAGE),
-    user?.id ?? null,
+    viewer,
     countById,
     true,
   );

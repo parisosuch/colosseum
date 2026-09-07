@@ -24,9 +24,11 @@ import {
   createChannel,
   deleteChannel,
   getChannel,
-  getUserChannels,
+  getOwnerChannels,
   updateChannel,
+  viewerScope,
 } from "@/lib/colosseum/channel";
+import { requireOwnerId } from "@/lib/colosseum/owner";
 import {
   Column,
   deleteColumn,
@@ -124,7 +126,7 @@ const handler = createMcpHandler(
       "list_channels",
       { description: "List your Colosseum channels.", inputSchema: {} },
       asTool(async (_args: Record<string, never>, { userId }) => ({
-        channels: await getUserChannels(userId),
+        channels: await getOwnerChannels(await requireOwnerId(userId)),
       })),
     );
 
@@ -159,7 +161,7 @@ const handler = createMcpHandler(
               title,
               description: args.description,
               access: parseAccess(args, "public"),
-              owner_id: userId,
+              owned_by: await requireOwnerId(userId),
             }),
           };
         },
@@ -235,7 +237,11 @@ const handler = createMcpHandler(
       },
       asTool(async ({ channelId, limit }: { channelId: number; limit?: number }, { userId }) => {
         await requireChannel(userId, channelId, "read");
-        const blocks = await getChannelColumns(channelId, { limit, html: false }, userId);
+        const blocks = await getChannelColumns(
+          channelId,
+          { limit, html: false },
+          await viewerScope(userId),
+        );
         return { blocks: blocks.map(toApiBlock) };
       }),
     );

@@ -5,6 +5,7 @@ import React, { useEffect, useId, useState } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { Select } from "./ui/select";
 import { PlusIcon } from "lucide-react";
 import {
   createChannelAction,
@@ -118,9 +119,8 @@ export default function CreateChannelForm({
           {groups.length > 0 ? (
             <>
               <Label htmlFor={`${uid}-owner`}>Belongs to</Label>
-              <select
+              <Select
                 id={`${uid}-owner`}
-                className="rounded-md border bg-background px-3 py-2 text-sm"
                 value={ownerId}
                 onChange={(e) => setOwnerId(e.target.value)}
               >
@@ -130,7 +130,7 @@ export default function CreateChannelForm({
                     {g.name} (@{g.handle})
                   </option>
                 ))}
-              </select>
+              </Select>
             </>
           ) : null}
           <div className="mt-2">

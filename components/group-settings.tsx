@@ -1,12 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import React, { useRef, useState } from "react";
 import { SettingsIcon } from "lucide-react";
 
-import { deleteGroupAction, updateGroupAction } from "@/lib/colosseum/actions";
+import { deleteGroupAction, updateGroupAction, uploadAvatarAction } from "@/lib/colosseum/actions";
 import type { Group, GroupMember, GroupRole } from "@/lib/colosseum/group";
 import GroupMembers from "./group-members";
+import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button } from "./ui/button";
 import {
   AlertDialog,
@@ -49,6 +50,9 @@ export default function GroupSettings({
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(group.name);
   const [about, setAbout] = useState(group.about ?? "");
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(group.avatar_url ?? null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [members, setMembers] = useState(initialMembers);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -59,11 +63,31 @@ export default function GroupSettings({
   // them to admin without a reload, so read it back from the roster.
   const currentRole = members.find((m) => m.user_id === viewerUserId)?.role ?? viewerRole;
 
+  // Previewed locally and uploaded on save, the same shape the profile editor
+  // uses — so cancelling out of the dialog leaves no orphaned blob behind.
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarFile(file);
+    setAvatarPreview(URL.createObjectURL(file));
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setError(null);
     try {
-      await updateGroupAction(group.id, { name, about });
+      let avatar_url: string | undefined = group.avatar_url;
+      if (avatarFile) {
+        const formData = new FormData();
+        formData.set("file", avatarFile);
+        ({ url: avatar_url } = await uploadAvatarAction(formData));
+      }
+      await updateGroupAction(group.id, {
+        name,
+        about,
+        ...(avatar_url !== group.avatar_url ? { avatar_url } : {}),
+      });
+      setAvatarFile(null);
       router.refresh();
       setOpen(false);
     } catch (err) {
@@ -100,6 +124,28 @@ export default function GroupSettings({
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
+          <div className="flex items-center gap-4">
+            <Avatar className="size-16">
+              <AvatarImage src={avatarPreview ?? undefined} />
+              <AvatarFallback>{group.handle.charAt(0).toUpperCase()}</AvatarFallback>
+            </Avatar>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              Change
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleAvatarChange}
+            />
+          </div>
+
           <div className="grid gap-2">
             <Label htmlFor="group-name">Name</Label>
             <Input id="group-name" value={name} onChange={(e) => setName(e.target.value)} />
@@ -125,7 +171,14 @@ export default function GroupSettings({
             <div className="border-t pt-4">
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button variant="destructive" disabled={deleting}>
+                  <Button
+                    variant="outline"
+                    // Red type on a transparent ground: the fill pair is for the
+                    // confirm button inside the dialog, not the affordance that
+                    // opens it. Matches the channel delete trigger.
+                    className="border-destructive bg-transparent text-destructive-text shadow-none hover:bg-destructive/10 hover:text-destructive-text"
+                    disabled={deleting}
+                  >
                     Delete group
                   </Button>
                 </AlertDialogTrigger>

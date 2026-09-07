@@ -196,6 +196,27 @@ export const getOwnerChannels = cache(async (owner_id: string): Promise<Channel[
   });
 });
 
+// Every channel the viewer holds as an owner — their own plus each group they
+// belong to — each carrying the handle its `/{handle}/{id}` link needs, since
+// for a group's channel that is not the viewer's own handle.
+//
+// Uncached, unlike getOwnerChannels: the key would have to be the viewer's whole
+// owner set, which changes whenever anyone's group membership does, and the two
+// API callers are not on a render path.
+export async function getViewerChannels(
+  viewer: ViewerScope,
+): Promise<(Channel & { handle: string })[]> {
+  const ownerIds = viewerOwnerIds(viewer);
+  if (ownerIds.length === 0) return [];
+  const rows = await db
+    .select({ ch: channel, handle: owner.handle })
+    .from(channel)
+    .innerJoin(owner, eq(owner.id, channel.owned_by))
+    .where(inArray(channel.owned_by, ownerIds))
+    .orderBy(desc(lastBlockAddedAt));
+  return rows.map(({ ch, handle }) => ({ ...toChannel(ch), handle }));
+}
+
 // Invalidate the per-owner channel-list caches. Called whenever a channel that
 // owner holds is created, updated, or deleted.
 async function invalidateOwnerChannelLists(owner_id: string): Promise<void> {

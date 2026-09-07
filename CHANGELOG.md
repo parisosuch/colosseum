@@ -16,6 +16,12 @@ All notable changes to Colosseum are recorded here. The format follows
   Groups in the account menu, existing channels can be moved into or out of a
   group from the channel's manage dialog, and a group's page is /{its handle},
   the same place a person's is.
+- Groups reach the API and MCP. `GET /api/v1/channels` (and `list_channels`) now
+  returns your groups' channels alongside your own, each with the handle it
+  lives under; `POST /api/v1/channels` (and `create_channel`) takes an `owner`
+  handle to create one a group owns; and `GET /api/v1/groups` (`list_groups`)
+  lists the groups you're in with your role in each, which is how a client
+  learns which handles it may pass. Omitting `owner` behaves exactly as before.
 
 ### Changed
 

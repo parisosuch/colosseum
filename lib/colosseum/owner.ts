@@ -4,7 +4,8 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { owner } from "@/lib/db/schema";
-import { groupRecipients } from "./group";
+import { groupRecipients, groupRole, roleCanManage } from "./group";
+import { normalizeHandle } from "./handle";
 
 // The `owner` table's data layer: everything that holds a handle and can own
 // channels. A row is either a person (`kind = "user"`, one per account, created
@@ -79,6 +80,31 @@ export async function requireOwnerId(user_id: string): Promise<string> {
     throw new Error("Finish setting up your profile first.");
   }
   return id;
+}
+
+// Resolve the owner a caller wants to create a channel under, given a handle.
+// Omitted means themselves. A group requires the manage tier there, so a plain
+// member gets the same refusal as an outsider — creating a channel the group
+// owns is a structural act, not a contribution.
+//
+// Throws rather than returning null: every caller treats a bad owner as a failed
+// request, and the messages here are what the API hands back.
+export async function resolveCreateOwner(user_id: string, handle?: string): Promise<string> {
+  const own = await requireOwnerId(user_id);
+  if (!handle) return own;
+
+  const target = await getOwnerByHandle(normalizeHandle(handle));
+  if (!target) {
+    throw new Error(`No owner with the handle "${handle}".`);
+  }
+  if (target.id === own) return own;
+  if (target.kind !== "group") {
+    throw new Error("You can only create channels for yourself or a group you manage.");
+  }
+  if (!roleCanManage(await groupRole(target.id, user_id))) {
+    throw new Error("You do not have permission to create channels in that group.");
+  }
+  return target.id;
 }
 
 // The people to notify about something that happened to an owner's channel.

@@ -19,23 +19,40 @@ Authorization: Bearer clsm_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 - `404` — the resource doesn't exist, or it's a private channel you can't see.
 
 A token grants the same access its owner has: it can read public channels and
-anything you own, and write only what you own.
+anything you own, and write only what you own. "You" includes the groups you
+belong to — a group's channels are yours to read, and yours to write if your
+role there allows it.
 
 ## Channels
 
 ### `GET /api/v1/channels`
 
-List your channels. → `{ "channels": [...] }`
+List your channels, including those owned by groups you're in.
+→ `{ "channels": [...] }`
+
+Each channel carries the `handle` it lives under, which for a group's channel
+is the group's rather than yours — so its page is `/{handle}/{id}`.
 
 ### `POST /api/v1/channels`
 
-Create a channel (owned by you).
+Create a channel. Owned by you unless `owner` names a group you manage.
 
 ```json
 { "title": "My channel", "description": "optional", "private": false }
 ```
 
+| Field         |                                                                      |
+| :------------ | :------------------------------------------------------------------- |
+| `title`       | Required.                                                            |
+| `description` | Optional.                                                            |
+| `access`      | `public`, `open` or `private`. Defaults to `public`.                 |
+| `owner`       | Optional group handle (see `GET /api/v1/groups`). Omit for your own. |
+
 → `201 { "channel": { ... } }`
+
+`403` if `owner` names a group you're only a member of: adding blocks to a
+group's channels is what membership buys, while starting new ones takes the
+owner or admin role.
 
 ### `GET /api/v1/channels/:id`
 
@@ -54,6 +71,24 @@ Update a channel you own. Partial — omitted fields are unchanged.
 ### `DELETE /api/v1/channels/:id`
 
 Delete a channel you own (its blocks cascade). → `{ "success": true }`
+
+## Groups
+
+A group is a handle several people share. The channels made in it belong to the
+group rather than to any one account, and each member's role says what they may
+do with them: `member` adds blocks, `admin` also manages the channels and the
+roster, and the single `owner` can hand the group on or delete it.
+
+### `GET /api/v1/groups`
+
+List the groups you're in. → `{ "groups": [{ "handle", "name", "about", "role", "created_at" }] }`
+
+This is how a client learns which handles it may pass as `owner` when creating
+a channel; `role` says which of them will be accepted.
+
+Read-only. Creating a group claims a handle in the same namespace people draw
+from, and changing a roster decides who can read private channels — both stay in
+the app, where they are confirmed.
 
 ## Blocks
 

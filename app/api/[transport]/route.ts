@@ -10,6 +10,8 @@ import { z } from "zod";
 
 import {
   ApiAuth,
+  attachPreview,
+  attachPreviews,
   authorizeBlockWrite,
   authorizeChannelContribute,
   authorizeChannelManage,
@@ -17,7 +19,6 @@ import {
   moveBlock,
   parseAccess,
   resolveApiToken,
-  toApiBlock,
 } from "@/lib/colosseum/api-auth";
 import {
   Channel,
@@ -38,6 +39,7 @@ import {
   uploadURLColumn,
 } from "@/lib/colosseum/column";
 import { putImageBlobFromUrl } from "@/lib/colosseum/blob";
+import { triggerScreenshotCapture } from "@/lib/colosseum/screenshot";
 import { logError } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -236,7 +238,7 @@ const handler = createMcpHandler(
       asTool(async ({ channelId, limit }: { channelId: number; limit?: number }, { userId }) => {
         await requireChannel(userId, channelId, "read");
         const blocks = await getChannelColumns(channelId, { limit, html: false }, userId);
-        return { blocks: blocks.map(toApiBlock) };
+        return { blocks: await attachPreviews(blocks) };
       }),
     );
 
@@ -246,8 +248,9 @@ const handler = createMcpHandler(
         description:
           "Add a block to a channel you can contribute to (one you own, any open " +
           "channel, or a public/private channel you're a member of). Exactly one " +
-          "of text/url/image must match `type`. URL blocks added this way are not " +
-          "screenshotted (that flow is web-only).",
+          "of text/url/image must match `type`. A url block's preview screenshot " +
+          "captures in the background, so it comes back null here — poll get_block " +
+          "until `preview` lands.",
         inputSchema: {
           channelId: z.number().int(),
           type: z.enum(["text", "url", "image"]),
@@ -272,11 +275,19 @@ const handler = createMcpHandler(
 
           if (args.type === "text") {
             if (!args.text?.trim()) throw new Error("`text` is required for a text block.");
-            return { block: toApiBlock(await uploadTextColumn({ ...base, text: args.text })) };
+            return {
+              block: await attachPreview(await uploadTextColumn({ ...base, text: args.text })),
+            };
           }
           if (args.type === "url") {
             if (!args.url?.trim()) throw new Error("`url` is required for a url block.");
-            return { block: toApiBlock(await uploadURLColumn({ ...base, text: args.url.trim() })) };
+            // uploadURLColumn stores its `text` arg as the block's url.
+            const url = args.url.trim();
+            const block = await attachPreview(await uploadURLColumn({ ...base, text: url }));
+            // Fire-and-forget, same as the REST create path: the capture is
+            // queued and deduped per URL, and the tool result returns now.
+            triggerScreenshotCapture(url, userId);
+            return { block };
           }
           if (!args.image?.trim())
             throw new Error("`image` (a public image URL) is required for an image block.");
@@ -287,7 +298,7 @@ const handler = createMcpHandler(
             userId,
             channel.private ? "private" : "public",
           );
-          return { block: toApiBlock(await uploadImageColumn({ ...base, image })) };
+          return { block: await attachPreview(await uploadImageColumn({ ...base, image })) };
         },
       ),
     );
@@ -299,7 +310,7 @@ const handler = createMcpHandler(
         inputSchema: { id: z.number().int() },
       },
       asTool(async ({ id }: { id: number }, { userId }) => ({
-        block: toApiBlock(await requireBlock(userId, id, "read")),
+        block: await attachPreview(await requireBlock(userId, id, "read")),
       })),
     );
 
@@ -339,7 +350,13 @@ const handler = createMcpHandler(
             throw new Error(`No editable fields provided. Allowed: ${allowed.join(", ")}.`);
           }
 
-          return { block: toApiBlock(await updateColumn(args.id, updates)) };
+          const updated = await attachPreview(await updateColumn(args.id, updates));
+          // A new url means a new preview to capture; skips itself if this URL
+          // is already cached.
+          if (block.type === "url" && typeof updates.url === "string") {
+            triggerScreenshotCapture(updates.url, userId);
+          }
+          return { block: updated };
         },
       ),
     );
@@ -356,7 +373,7 @@ const handler = createMcpHandler(
       asTool(async ({ id, channelId }: { id: number; channelId: number }, { userId }) => {
         const moved = await moveBlock(id, channelId, userId);
         if (moved instanceof NextResponse) throw await denialToError(moved);
-        return { block: toApiBlock(moved) };
+        return { block: await attachPreview(moved) };
       }),
     );
 

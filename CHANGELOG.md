@@ -4,6 +4,18 @@ All notable changes to Colosseum are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.4] - 2026-09-10
+
+### Fixed
+
+- Links added over MCP get a preview screenshot. `create_block` saved the block
+  and stopped there, so a link added by an agent stayed a bare url while the
+  same link through the REST API or the web app got a picture within seconds.
+  `update_block` had the same gap when it changed a block's url.
+- MCP block results carry the `preview` field the REST API already returned, so
+  a client can tell a capture still in flight from one that failed, and see the
+  screenshot once it lands.
+
 ## [1.12.3] - 2026-09-05
 
 ### Fixed

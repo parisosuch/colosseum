@@ -72,8 +72,11 @@ ownership.
 
 `create_block`/`update_block` field rules match the REST API: exactly one of
 `text`/`url`/`image` for creation (matching `type`), and only that type's
-field (plus `title`/`description`) on update. URL blocks added this way are
-**not** screenshotted — that capture flow is web-app-only.
+field (plus `title`/`description`) on update. A url block's preview screenshot
+captures in the background, exactly as it does over REST: the tool returns
+immediately with `preview: null`, and `get_block` reports the same three states
+the REST API documents — `null` while capturing, `{ "failed": true }` after a
+permanent failure, `{ "image_url", "title" }` once it lands.
 
 `move_block` only rewrites the block's `channel_id`, so the block keeps its id,
 `created_at`, tags, content, and any cached screenshot. `update_block` can't do

@@ -77,8 +77,7 @@ export const REORDER_HELP_ID = "block-reorder-help";
 // so following the pointer costs no renders; the card carries `group`, which is
 // what lets a child react to an attribute on its parent.
 function DropIndicator({ axis }: { axis: "grid" | "list" }) {
-  const shared =
-    "pointer-events-none absolute z-10 rounded-full bg-primary opacity-0 transition-opacity";
+  const shared = "pointer-events-none absolute z-10 rounded-full bg-primary opacity-0";
   if (axis === "list") {
     return (
       <>
@@ -276,7 +275,11 @@ const ColumnComponent = memo(function ColumnComponent({
   // A card being dragged follows the pointer and its old slot reads as empty;
   // one held by the keyboard stays put and is outlined instead, because there
   // is no pointer to say where it currently is.
-  const activeClass = !reorderActive ? "" : heldHere ? "ring-2 ring-ring rounded-lg" : "opacity-60";
+  const activeClass = !reorderActive
+    ? ""
+    : heldHere
+      ? "rounded-lg shadow-lg ring-2 ring-ring"
+      : "opacity-60";
 
   // A real <button> can't contain the grip (or a tweet embed's own buttons)
   // without nesting interactive elements, so those cases become a role=button

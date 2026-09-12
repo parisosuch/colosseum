@@ -272,6 +272,15 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+
+  /* A spinner is the exception: its motion *is* the message. The blanket rule
+     above runs one 0.01ms iteration and leaves a frozen partial circle, which
+     reads as a stuck page rather than as a working one. Slower than the
+     default, since the point is to say "still going", not to draw the eye. */
+  .animate-spin {
+    animation-duration: 1.2s !important;
+    animation-iteration-count: infinite !important;
+  }
 }
 
 @media (prefers-reduced-transparency: reduce) {

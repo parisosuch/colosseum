@@ -248,8 +248,14 @@ export function ColumnUploadProgress({ uploader }: { uploader: ColumnUploader })
               <span className="truncate">{u.filename || "Video"}</span>
               <span className="text-muted-foreground">{`${pct}%`}</span>
             </div>
+            {/* scaleX, not width: this updates on every progress event, and
+                width is a layout property — the bar is one of the few things
+                on screen animating many times a second. */}
             <div className="mt-1 h-1 w-full overflow-hidden rounded bg-muted">
-              <div className="h-full bg-primary transition-[width]" style={{ width: `${pct}%` }} />
+              <div
+                className="h-full origin-left bg-primary transition-transform duration-micro ease-linear"
+                style={{ transform: `scaleX(${pct / 100})` }}
+              />
             </div>
           </div>
         );

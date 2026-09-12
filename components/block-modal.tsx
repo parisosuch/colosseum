@@ -181,7 +181,7 @@ function BlockImage({ src, alt }: { src: string | undefined; alt: string }) {
         aria-hidden
         onLoad={measureThumb}
         className={cn(
-          "max-h-[70vh] max-w-full blur-[6px] md:absolute md:inset-0 md:h-full md:w-full md:max-h-none",
+          "max-h-[70vh] max-w-full blur-[6px] transition-opacity duration-ui md:absolute md:inset-0 md:h-full md:w-full md:max-h-none",
           downsized ? "object-contain" : "object-scale-down",
           // Kept in flow (not `hidden`) so the box it sizes on mobile survives.
           loaded && "opacity-0",

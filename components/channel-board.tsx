@@ -734,7 +734,7 @@ export default function ChannelBoard({
         <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-background/85 p-6">
           <div className="flex flex-col items-center gap-3 rounded-lg border-2 border-dashed px-10 py-8 text-center">
             <Upload className="size-8 text-muted-foreground" />
-            <p className="text-lg font-medium">Drop to add blocks</p>
+            <p className="text-heading">Drop to add blocks</p>
             <p className="text-caption">Images, videos, PDFs and Markdown files.</p>
           </div>
         </div>
@@ -782,7 +782,7 @@ export default function ChannelBoard({
       <div className="flex flex-col space-y-4">
         <div className="flex flex-col">
           <h2 className="text-label">Description</h2>
-          {channel.description ? <p className="">{channel.description}</p> : null}
+          {channel.description ? <p className="max-w-[68ch]">{channel.description}</p> : null}
         </div>
         {channel.tags.length > 0 ? (
           <div className="flex flex-wrap gap-2">
@@ -797,8 +797,8 @@ export default function ChannelBoard({
         <div className="flex flex-col">
           <h2 className="text-label">Meta</h2>
           {metaData.map((meta, index) => (
-            <div key={index} className="flex w-full max-w-[350px] justify-between">
-              <h3>{meta.title}</h3>
+            <div key={index} className="flex w-full max-w-sm justify-between">
+              <h3 className="text-sm">{meta.title}</h3>
               <p className="font-mono">{meta.data}</p>
             </div>
           ))}

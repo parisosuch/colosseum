@@ -727,41 +727,63 @@ function BlockModalBody({
           </Button>
         </div>
         <div className="border rounded-lg space-y-2 h-fit shrink-0">
-          <DialogTitle>
-            <Input
-              ref={titleInputRef}
-              placeholder="No title"
-              disabled={!canEdit}
-              value={title}
-              className="border-none shadow-none"
-              onChange={(e) => setTitle(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  saveField(handleTitleChange);
-                }
-              }}
-            />
-          </DialogTitle>
-          <DialogDescription>
-            <Textarea
-              ref={descriptionInputRef}
-              placeholder="No description"
-              disabled={!canEdit}
-              value={description}
-              rows={1}
-              // field-sizing grows the box with its content; shift+Enter adds a
-              // line, Enter saves.
-              className="resize-none border-none shadow-none [field-sizing:content]"
-              onChange={(e) => setDescription(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  saveField(handleDescriptionChange);
-                }
-              }}
-            />
+          {/* The dialog's name and description are text, not the fields below.
+              Radix computes the name from whatever DialogTitle contains, and a
+              textbox contributes its *value* — so an untitled block used to
+              fall through to the input's placeholder and the modal announced
+              itself as "No title". */}
+          <DialogTitle className="sr-only">{column.title || "Untitled block"}</DialogTitle>
+          <DialogDescription className="sr-only">
+            {column.description || `A ${column.type} block.`}
           </DialogDescription>
+          {canEdit ? (
+            <div className="space-y-2">
+              <Input
+                ref={titleInputRef}
+                aria-label="Block title"
+                placeholder="No title"
+                value={title}
+                // Transparent until hovered: with the border gone entirely
+                // there was nothing to say the title could be edited.
+                className="border-transparent shadow-none hover:border-input"
+                onChange={(e) => setTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    saveField(handleTitleChange);
+                  }
+                }}
+              />
+              <Textarea
+                ref={descriptionInputRef}
+                aria-label="Block description"
+                placeholder="No description"
+                value={description}
+                rows={1}
+                // field-sizing grows the box with its content; shift+Enter adds a
+                // line, Enter saves.
+                className="resize-none border-transparent shadow-none hover:border-input [field-sizing:content]"
+                onChange={(e) => setDescription(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    saveField(handleDescriptionChange);
+                  }
+                }}
+              />
+            </div>
+          ) : (
+            /* A reader can't edit these, so they're content — not fields dimmed
+               to 50% under a not-allowed cursor, which is what a disabled Input
+               rendered. An absent description is absent rather than a
+               placeholder standing in for one. */
+            <div className="space-y-1 px-3 pt-3">
+              <p className="text-heading">{column.title || "Untitled"}</p>
+              {column.description ? (
+                <p className="text-sm text-muted-foreground">{column.description}</p>
+              ) : null}
+            </div>
+          )}
           {canEdit || column.tags.length > 0 ? (
             <div className="p-3">
               <TagInput tags={column.tags} onChange={handleTagsChange} disabled={!canEdit} />

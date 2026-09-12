@@ -22,8 +22,8 @@ export function AddBlockDrawer({ channels }: { channels: PickableChannel[] }) {
   return (
     <Drawer open={flow.open} onOpenChange={flow.onOpenChange}>
       {/* The trigger is one of the bottom bar's tabs, so it wears the same
-          shape as its siblings. "Add" is the visible half of "Add column". */}
-      <DrawerTrigger aria-label="Add column" className={TAB}>
+          shape as its siblings. "Add" is the visible half of "Add block". */}
+      <DrawerTrigger aria-label="Add block" className={TAB}>
         <PlusIcon />
         <TabLabel>Add</TabLabel>
       </DrawerTrigger>

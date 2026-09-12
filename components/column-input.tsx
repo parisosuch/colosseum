@@ -379,7 +379,7 @@ export default function ColumnInput({
       }
     } catch (e) {
       console.error(e);
-      toast.error(await columnLimitToast("Couldn't add that column. Please try again."));
+      toast.error(await columnLimitToast("Couldn't add that block. Please try again."));
       return;
     }
 
@@ -414,7 +414,7 @@ export default function ColumnInput({
                     ? "Image added."
                     : column.type === "url"
                       ? "Link added."
-                      : "Column added.",
+                      : "Block added.",
     );
 
     // Only plain URL blocks get the async screenshot pass. A tweet block already
@@ -445,7 +445,7 @@ export default function ColumnInput({
         }
       } catch (e) {
         console.error(e);
-        toast.warning("Column added, but the screenshot for that link couldn't be captured.");
+        toast.warning("Block added, but the screenshot for that link couldn't be captured.");
       } finally {
         // Always clear the capturing state — on failure this refetches to a
         // null preview (so the spinner stops); on success, the real shot.

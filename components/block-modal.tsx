@@ -516,7 +516,7 @@ function BlockModalBody({
       toast.success("Moved.");
     } catch (e) {
       console.error(e);
-      toast.error("Couldn't move that column. Please try again.");
+      toast.error("Couldn't move that block. Please try again.");
       setMoving(false);
     }
   };
@@ -535,7 +535,7 @@ function BlockModalBody({
       toast.success("Copied.");
     } catch (e) {
       console.error(e);
-      toast.error("Couldn't copy that column. Please try again.");
+      toast.error("Couldn't copy that block. Please try again.");
     } finally {
       setCopying(false);
     }
@@ -710,7 +710,7 @@ function BlockModalBody({
           <Button
             variant="ghost"
             size="icon"
-            aria-label="Previous column"
+            aria-label="Previous block"
             disabled={!hasPrev}
             onClick={onPrev}
           >
@@ -719,7 +719,7 @@ function BlockModalBody({
           <Button
             variant="ghost"
             size="icon"
-            aria-label="Next column"
+            aria-label="Next block"
             disabled={!hasNext}
             onClick={onNext}
           >

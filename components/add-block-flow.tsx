@@ -117,7 +117,7 @@ export function useAddBlockFlow(channels: PickableChannel[]) {
       } else {
         await uploadTextColumnAction({ channelId, text });
       }
-      toast.success("Column added.");
+      toast.success("Block added.");
       onOpenChange(false);
       return true;
     } catch (e) {
@@ -125,7 +125,7 @@ export function useAddBlockFlow(channels: PickableChannel[]) {
       const quota = await getColumnQuotaAction().catch(() => null);
       toast.error(
         (quota && columnLimitMessage(quota, quota.admins)) ||
-          "Couldn't add that column. Please try again.",
+          "Couldn't add that block. Please try again.",
       );
       setSubmitting(false);
       return false;
@@ -321,7 +321,7 @@ export function AddBlockBody({
           </li>
         ))}
         {filteredChannels.length === 0 && channels.length > 0 ? (
-          <li className="p-3 text-sm text-muted-foreground">No channels match.</li>
+          <li className="p-3 text-caption">No channels match that search.</li>
         ) : null}
         {/* Always last, so somebody with no channels — or a search that
             matches none — has somewhere to go other than back. */}

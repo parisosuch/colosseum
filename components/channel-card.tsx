@@ -47,7 +47,9 @@ function ChannelColumnsView({
         {channel.description ? (
           <p className="text-center line-clamp-3 break-words max-w-full">{channel.description}</p>
         ) : null}
-        <p className="text-caption">{columnCount} column(s)</p>
+        <p className="text-caption">
+          {columnCount} {columnCount === 1 ? "block" : "blocks"}
+        </p>
         {memberOf ? (
           <Badge variant="secondary" className="font-normal">
             member of

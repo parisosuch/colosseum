@@ -12,6 +12,10 @@ export default {
   theme: {
     extend: {
       fontFamily: {
+        // Geist reaches the page through a className on <body>, so `font-sans`
+        // used to compile to the system UI stack — there was no way to ask for
+        // the app's own sans inside a serif context.
+        sans: ["var(--font-geist-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
         serif: ["var(--font-serif)", "ui-serif", "Georgia", "serif"],
       },
       colors: {

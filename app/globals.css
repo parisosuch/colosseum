@@ -105,14 +105,17 @@
   /* Page title / breadcrumb header. */
   .text-display {
     @apply font-serif text-2xl font-semibold tracking-tight sm:text-4xl;
+    font-optical-sizing: auto;
   }
   /* Section title within a page. */
   .text-title {
     @apply font-serif text-2xl font-semibold tracking-tight;
+    font-optical-sizing: auto;
   }
   /* Sub-section / card heading. */
   .text-heading {
     @apply font-serif text-lg font-medium;
+    font-optical-sizing: auto;
   }
   /* Eyebrow label above a value ("Description", "Meta", "Created"). */
   .text-label {

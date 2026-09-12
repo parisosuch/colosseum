@@ -525,9 +525,7 @@ export default function ColumnInput({
       {loading && (
         <div className="absolute inset-0 flex flex-col gap-2 items-center justify-center bg-background/80 z-10">
           <GradientSpin />
-          {uploading > 1 ? (
-            <p className="text-xs text-muted-foreground">{uploading} left…</p>
-          ) : null}
+          {uploading > 1 ? <p className="text-caption">{uploading} left…</p> : null}
         </div>
       )}
     </div>

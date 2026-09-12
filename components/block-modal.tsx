@@ -726,7 +726,12 @@ function BlockModalBody({
             <ChevronRight />
           </Button>
         </div>
-        <div className="border rounded-lg space-y-2 h-fit shrink-0">
+        {/* Padding belongs to the panel, per the panel recipe in DESIGN.md.
+            With it on every child instead, each boundary came to the same
+            32px — so the gap between the tags and the metadata matched the
+            gap between two lines of one key/value pair, and nothing read as
+            grouped. */}
+        <div className="h-fit shrink-0 space-y-4 rounded-lg border p-3">
           {/* The dialog's name and description are text, not the fields below.
               Radix computes the name from whatever DialogTitle contains, and a
               textbox contributes its *value* — so an untitled block used to
@@ -777,7 +782,7 @@ function BlockModalBody({
                to 50% under a not-allowed cursor, which is what a disabled Input
                rendered. An absent description is absent rather than a
                placeholder standing in for one. */
-            <div className="space-y-1 px-3 pt-3">
+            <div className="space-y-1">
               <p className="text-heading">{column.title || "Untitled"}</p>
               {column.description ? (
                 <p className="text-sm text-muted-foreground">{column.description}</p>
@@ -785,26 +790,28 @@ function BlockModalBody({
             </div>
           )}
           {canEdit || column.tags.length > 0 ? (
-            <div className="p-3">
-              <TagInput tags={column.tags} onChange={handleTagsChange} disabled={!canEdit} />
-            </div>
+            <TagInput tags={column.tags} onChange={handleTagsChange} disabled={!canEdit} />
           ) : null}
-          <div className="flex w-full justify-between text-xs p-3">
-            <h3>Created on</h3>
-            <p className="font-mono">{new Date(column.created_at).toDateString()}</p>
+          {/* One group: these two lines belong together, so they sit closer to
+              each other than to anything else in the panel. */}
+          <div className="space-y-1">
+            <div className="flex w-full justify-between text-xs">
+              <h3>Created on</h3>
+              <p className="font-mono">{new Date(column.created_at).toDateString()}</p>
+            </div>
+            {column.created_by_handle ? (
+              <div className="flex w-full justify-between text-xs">
+                <h3>Created by</h3>
+                <Link href={`/${column.created_by_handle}`} className="font-mono hover:underline">
+                  @{column.created_by_handle}
+                </Link>
+              </div>
+            ) : null}
           </div>
-          {column.created_by_handle ? (
-            <div className="flex w-full justify-between text-xs p-3">
-              <h3>Created by</h3>
-              <Link href={`/${column.created_by_handle}`} className="font-mono hover:underline">
-                @{column.created_by_handle}
-              </Link>
-            </div>
-          ) : null}
           {/* Two rows, not one. Copy-to-channel used to sit 8px from Delete,
               which is close enough that a slip destroys the block instead of
               duplicating it; the confirmation was the only thing between them. */}
-          <div className="flex w-full flex-col gap-2 p-3">
+          <div className="flex w-full flex-col gap-2">
             <div className="flex flex-wrap items-center justify-end gap-2">
               <Button asChild variant="link" size="sm">
                 {/* Deep link, not the standalone block page: sharing this drops

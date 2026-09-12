@@ -807,10 +807,12 @@ export default function ChannelBoard({
         <ViewToggle view={view} onChange={setView} />
       </div>
       <div className="flex flex-col space-y-4">
-        <div className="flex flex-col">
-          <h2 className="text-label">Description</h2>
-          {channel.description ? <p className="max-w-[68ch]">{channel.description}</p> : null}
-        </div>
+        {channel.description ? (
+          <div className="flex flex-col">
+            <h2 className="text-label">Description</h2>
+            <p className="max-w-[68ch]">{channel.description}</p>
+          </div>
+        ) : null}
         {channel.tags.length > 0 ? (
           <div className="flex flex-wrap gap-2">
             {channel.tags.map((tag) => (

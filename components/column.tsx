@@ -281,6 +281,13 @@ const ColumnComponent = memo(function ColumnComponent({
   // div. Keyed on the card element itself so a keypress inside the grip isn't
   // read as "open this block".
   const asDiv = column.type === "tweet" || reorderable;
+  // What both views call a card. A fixed "Open column" made every row in a list
+  // the same control to anything reading names, and hid the title, URL and
+  // author the row is showing. Capped so a long text block doesn't become a
+  // paragraph-length name.
+  const openLabel = `Open ${
+    (column.title || urlTitle || column.text || "block").trim().slice(0, 80) || "block"
+  }`;
   const openOnKey = (e: React.KeyboardEvent<HTMLElement>) => {
     if (e.target !== e.currentTarget) return;
     if (e.key === "Enter" || e.key === " ") {
@@ -340,7 +347,7 @@ const ColumnComponent = memo(function ColumnComponent({
           ref={cardRef}
           role="button"
           tabIndex={0}
-          aria-label="Open column"
+          aria-label={openLabel}
           data-column-id={column.id}
           onClick={() => onOpen(column.id)}
           onKeyDown={openOnKey}
@@ -356,7 +363,7 @@ const ColumnComponent = memo(function ColumnComponent({
       <button
         ref={cardRef}
         type="button"
-        aria-label="Open column"
+        aria-label={openLabel}
         data-column-id={column.id}
         onClick={() => onOpen(column.id)}
         {...prefetch}
@@ -403,6 +410,7 @@ const ColumnComponent = memo(function ColumnComponent({
         ref={cardRef}
         role="button"
         tabIndex={0}
+        aria-label={openLabel}
         data-column-id={column.id}
         onClick={() => onOpen(column.id)}
         onKeyDown={openOnKey}
@@ -420,6 +428,7 @@ const ColumnComponent = memo(function ColumnComponent({
     <button
       ref={cardRef}
       type="button"
+      aria-label={openLabel}
       data-column-id={column.id}
       onClick={() => onOpen(column.id)}
       {...prefetch}

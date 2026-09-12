@@ -26,7 +26,10 @@
        7.19:1 in dark, where the fill managed 1.98:1. */
     --destructive-text: 0 72.2% 50.6%;
     --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
+    /* Darker than --border on purpose: this one is the only thing drawing the
+       edge of a bg-transparent field, so it has to clear 3:1 against the page
+       (1.4.11). At --border's value it measured 1.26:1. */
+    --input: 0 0% 58%;
     --ring: 0 0% 3.9%;
     --radius: 0.5rem;
     /* Which palette the browser draws its *own* UI in — native scrollbars,
@@ -56,7 +59,7 @@
     --destructive-foreground: 0 0% 98%;
     --destructive-text: 0 90.6% 70.9%;
     --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
+    --input: 0 0% 40%;
     --ring: 0 0% 83.1%;
     color-scheme: dark;
   }
@@ -259,11 +262,13 @@
 @media (prefers-contrast: more) {
   :root {
     --border: 0 0% 55%;
+    --input: 0 0% 45%;
     --ring: 0 0% 0%;
     --muted-foreground: 0 0% 28%;
   }
   .dark {
     --border: 0 0% 45%;
+    --input: 0 0% 60%;
     --ring: 0 0% 100%;
     --muted-foreground: 0 0% 80%;
   }

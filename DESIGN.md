@@ -67,6 +67,32 @@ Stay on Tailwind's 4px scale. The page rhythm:
 Fixed media dimensions (preview tiles, avatars) may use explicit sizes; arbitrary
 layout widths (`w-[350px]`) should not — use the scale or a responsive width.
 
+## Motion
+
+Two curves and three durations, defined in `globals.css` and surfaced as
+Tailwind utilities:
+
+| Utility          | Value                            | Use for                                                |
+| ---------------- | -------------------------------- | ------------------------------------------------------ |
+| `ease-out`       | `cubic-bezier(0.23, 1, 0.32, 1)` | Entrances, and anything the pointer waits on           |
+| `ease-in`        | `cubic-bezier(0.4, 0, 1, 1)`     | Exits — leave quickly, no long tail                    |
+| `duration-micro` | 120ms                            | Continuous pointer feedback: a drop indicator, a press |
+| `duration-ui`    | 200ms                            | UI state: menus, tooltips, toggles                     |
+| `duration-panel` | 260ms                            | Something whose travel is visible: a dialog, a sheet   |
+
+Don't leave an `animate-in` bare. `tailwindcss-animate` fills in 150ms and the
+CSS initial `ease` (a symmetric ease-in-out), so an unspecified surface isn't
+using a default from this table — it's using one from the plugin.
+
+Keyframe animations can't read `duration-*`, which sets `transition-duration`
+and nothing else. They take `![animation-duration:var(--duration-ui)]` —
+important-flagged, because the plugin's own 150ms is an equally specific
+utility and wins on source order otherwise — plus
+`[animation-timing-function:var(--ease-out)]`, which needs no flag.
+
+An entrance and its exit are one gesture: a scrim and the panel it sits behind
+animate together, on the same clock.
+
 ## Components
 
 - **Buttons:** always `components/ui/button.tsx`. Never a bespoke

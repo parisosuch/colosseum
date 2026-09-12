@@ -37,8 +37,18 @@
        switch is a class toggle over these variables and nothing told the
        browser about it, so all of that stayed light inside a dark app. */
     color-scheme: light;
+    /* Motion. Two curves and three durations, surfaced as Tailwind's ease-out /
+       ease-in and duration-micro / -ui / -panel (see tailwind.config.ts and
+       DESIGN.md). Keyframe animations can't read the duration utilities —
+       tailwindcss-animate owns animation-duration — so those reach for
+       [animation-duration:var(--duration-ui)] instead. */
     /* Strong ease-out for UI feedback (stronger than the built-in curve). */
     --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    /* Its mirror, for exits: goes immediately, no long tail. */
+    --ease-in: cubic-bezier(0.4, 0, 1, 1);
+    --duration-micro: 120ms;
+    --duration-ui: 200ms;
+    --duration-panel: 260ms;
   }
   .dark {
     --background: 0 0% 3.9%;

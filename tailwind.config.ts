@@ -89,6 +89,24 @@ export default {
       aria: {
         invalid: 'invalid="true"',
       },
+      // Motion vocabulary. Before this, one --ease-out token had two call
+      // sites, the same curve was also written out longhand, and most
+      // surfaces specified nothing — which lands on tailwindcss-animate's
+      // 150ms and the CSS initial `ease`, not on anything chosen.
+      transitionTimingFunction: {
+        // Entrances and anything the pointer is waiting on.
+        out: "var(--ease-out)",
+        // Exits: leave quickly, no long tail.
+        in: "var(--ease-in)",
+      },
+      transitionDuration: {
+        // Continuous pointer feedback — a drop indicator, a press.
+        micro: "var(--duration-micro)",
+        // The default for UI state: menus, tooltips, toggles.
+        ui: "var(--duration-ui)",
+        // Something large enough that its travel is visible: a dialog, a sheet.
+        panel: "var(--duration-panel)",
+      },
     },
   },
   plugins: [

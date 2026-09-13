@@ -265,7 +265,7 @@ export function useBlockReorder<T extends Item>({
       const scrolledX = window.scrollX - state.scrollX;
       const scrolledY = window.scrollY - state.scrollY;
       if (state.element) {
-        state.element.style.transform = `translate(${event.clientX - state.startX + scrolledX}px, ${event.clientY - state.startY + scrolledY}px)`;
+        state.element.style.transform = `translate(${event.clientX - state.startX + scrolledX}px, ${event.clientY - state.startY + scrolledY}px) scale(1.03)`;
         state.element.style.zIndex = "30";
       }
 

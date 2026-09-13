@@ -19,6 +19,7 @@ import ColumnInput, { ColumnUploadProgress, useColumnUpload } from "@/components
 import ChannelControls from "@/components/channel-controls";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { GradientSpin } from "@/components/gradient-spin";
@@ -34,7 +35,7 @@ import {
   getScreenshotsForUrlsAction,
   reorderColumnAction,
 } from "@/lib/colosseum/actions";
-import { Plus, Upload } from "lucide-react";
+import { Plus, SearchX, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -84,12 +85,34 @@ function BlockSkeleton({ view }: { view: "grid" | "list" }) {
 
 // Nothing to show. Distinguishes an empty channel from a filter that matched
 // nothing — the second is a control the viewer can undo, and in list view both
-// used to render as a bare table header over no rows.
-function EmptyBlocks({ filtered }: { filtered: boolean }) {
+// used to render as a bare table header over no rows. The filtered case carries
+// the way out; a filter that hides everything and offers no exit is a dead end.
+function EmptyBlocks({
+  filtered,
+  onClearFilters,
+}: {
+  filtered: boolean;
+  onClearFilters: () => void;
+}) {
+  if (filtered) {
+    return (
+      <EmptyState
+        icon={SearchX}
+        title="Nothing matches"
+        description="No block in this channel matches the current search and filter."
+      >
+        <Button variant="outline" size="sm" onClick={onClearFilters}>
+          Clear filters
+        </Button>
+      </EmptyState>
+    );
+  }
   return (
-    <p className="py-8 text-center text-muted-foreground">
-      {filtered ? "No blocks match this search or filter." : "No blocks yet."}
-    </p>
+    <EmptyState
+      icon={Plus}
+      title="No blocks yet"
+      description="Paste a link, drop a file, or type a note to start this channel."
+    />
   );
 }
 
@@ -275,6 +298,10 @@ export default function ChannelBoard({
   // Whether the board is showing a subset of the channel. Sort doesn't narrow
   // anything, so it isn't part of this.
   const isFiltered = debouncedSearch.trim() !== "" || typeFilter !== "all";
+  const clearFilters = () => {
+    setSearch("");
+    setTypeFilter("all");
+  };
 
   // Load (or reload) the first page whenever the channel or any control changes.
   // The previous list stays on screen until the new one resolves — the grid dims
@@ -734,7 +761,7 @@ export default function ChannelBoard({
         <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-background/85 p-6">
           <div className="flex flex-col items-center gap-3 rounded-lg border-2 border-dashed px-10 py-8 text-center">
             <Upload className="size-8 text-muted-foreground" />
-            <p className="text-lg font-medium">Drop to add blocks</p>
+            <p className="text-heading">Drop to add blocks</p>
             <p className="text-caption">Images, videos, PDFs and Markdown files.</p>
           </div>
         </div>
@@ -780,10 +807,12 @@ export default function ChannelBoard({
         <ViewToggle view={view} onChange={setView} />
       </div>
       <div className="flex flex-col space-y-4">
-        <div className="flex flex-col">
-          <h2 className="text-label">Description</h2>
-          {channel.description ? <p className="">{channel.description}</p> : null}
-        </div>
+        {channel.description ? (
+          <div className="flex flex-col">
+            <h2 className="text-label">Description</h2>
+            <p className="max-w-[68ch]">{channel.description}</p>
+          </div>
+        ) : null}
         {channel.tags.length > 0 ? (
           <div className="flex flex-wrap gap-2">
             {channel.tags.map((tag) => (
@@ -797,8 +826,8 @@ export default function ChannelBoard({
         <div className="flex flex-col">
           <h2 className="text-label">Meta</h2>
           {metaData.map((meta, index) => (
-            <div key={index} className="flex w-full max-w-[350px] justify-between">
-              <h3>{meta.title}</h3>
+            <div key={index} className="flex w-full max-w-sm justify-between">
+              <h3 className="text-sm">{meta.title}</h3>
               <p className="font-mono">{meta.data}</p>
             </div>
           ))}
@@ -854,7 +883,7 @@ export default function ChannelBoard({
       </p>
 
       {!canContribute && totalCount === 0 ? (
-        <p className="text-muted-foreground">No columns yet.</p>
+        <EmptyState icon={Plus} title="No blocks yet" description="This channel is empty." />
       ) : (
         <>
           {/* The list on screen belongs to the previous selection until the new
@@ -881,14 +910,14 @@ export default function ChannelBoard({
                     onClick={() => setAdding(true)}
                   >
                     <Plus />
-                    Add column
+                    Add block
                   </Button>
                 ) : null}
                 <div>
                   {/* No header over an empty table — that reads as a rendering
                       failure rather than as "there is nothing here". */}
                   {columns.length === 0 && !loadingPage ? (
-                    <EmptyBlocks filtered={isFiltered} />
+                    <EmptyBlocks filtered={isFiltered} onClearFilters={clearFilters} />
                   ) : (
                     <>
                       <div className={`border-b px-2 py-2 text-label ${LIST_GRID}`}>
@@ -963,7 +992,7 @@ export default function ChannelBoard({
             {/* The grid's own empty state sits under the input tile, which stays
                 available to add the first block. */}
             {view === "grid" && columns.length === 0 && !loadingPage ? (
-              <EmptyBlocks filtered={isFiltered} />
+              <EmptyBlocks filtered={isFiltered} onClearFilters={clearFilters} />
             ) : null}
           </div>
           {/* Infinite-scroll sentinel + load-more spinner. */}
@@ -1000,7 +1029,7 @@ export default function ChannelBoard({
       <Dialog open={adding} onOpenChange={setAdding}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Add column</DialogTitle>
+            <DialogTitle>Add block</DialogTitle>
           </DialogHeader>
           <ColumnInput
             user={user}

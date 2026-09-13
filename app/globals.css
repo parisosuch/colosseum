@@ -26,7 +26,10 @@
        7.19:1 in dark, where the fill managed 1.98:1. */
     --destructive-text: 0 72.2% 50.6%;
     --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
+    /* Darker than --border on purpose: this one is the only thing drawing the
+       edge of a bg-transparent field, so it has to clear 3:1 against the page
+       (1.4.11). At --border's value it measured 1.26:1. */
+    --input: 0 0% 58%;
     --ring: 0 0% 3.9%;
     --radius: 0.5rem;
     /* Which palette the browser draws its *own* UI in — native scrollbars,
@@ -34,8 +37,18 @@
        switch is a class toggle over these variables and nothing told the
        browser about it, so all of that stayed light inside a dark app. */
     color-scheme: light;
+    /* Motion. Two curves and three durations, surfaced as Tailwind's ease-out /
+       ease-in and duration-micro / -ui / -panel (see tailwind.config.ts and
+       DESIGN.md). Keyframe animations can't read the duration utilities —
+       tailwindcss-animate owns animation-duration — so those reach for
+       [animation-duration:var(--duration-ui)] instead. */
     /* Strong ease-out for UI feedback (stronger than the built-in curve). */
     --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    /* Its mirror, for exits: goes immediately, no long tail. */
+    --ease-in: cubic-bezier(0.4, 0, 1, 1);
+    --duration-micro: 120ms;
+    --duration-ui: 200ms;
+    --duration-panel: 260ms;
   }
   .dark {
     --background: 0 0% 3.9%;
@@ -56,7 +69,7 @@
     --destructive-foreground: 0 0% 98%;
     --destructive-text: 0 90.6% 70.9%;
     --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
+    --input: 0 0% 40%;
     --ring: 0 0% 83.1%;
     color-scheme: dark;
   }
@@ -101,15 +114,18 @@
 @layer components {
   /* Page title / breadcrumb header. */
   .text-display {
-    @apply font-serif text-2xl font-semibold tracking-tight sm:text-4xl;
+    @apply text-balance font-serif text-2xl font-semibold tracking-tight sm:text-4xl;
+    font-optical-sizing: auto;
   }
   /* Section title within a page. */
   .text-title {
-    @apply font-serif text-2xl font-semibold tracking-tight;
+    @apply text-balance font-serif text-2xl font-semibold tracking-tight;
+    font-optical-sizing: auto;
   }
   /* Sub-section / card heading. */
   .text-heading {
     @apply font-serif text-lg font-medium;
+    font-optical-sizing: auto;
   }
   /* Eyebrow label above a value ("Description", "Meta", "Created"). */
   .text-label {
@@ -128,21 +144,30 @@
   /* Rendered markdown docs (developers page). Styles marked's HTML output with
      the app's theme tokens — no typography plugin. */
   .doc {
-    @apply text-sm leading-relaxed text-muted-foreground;
+    /* Capped measure: past ~75 characters the eye loses the start of the next
+       line, and every surface that renders markdown here — the block page, the
+       modal, a text card — is wider than that at a desktop width. */
+    @apply max-w-[68ch] text-sm leading-relaxed text-muted-foreground;
   }
   /* Sit flush at the top so rendered markdown doesn't add a leading gap inside
      compact block cards/previews (headings/paragraphs carry a top margin). */
   .doc > :first-child {
     @apply mt-0;
   }
+  /* Heading sizes and margins are relative, because the same markdown renders
+     in a full-width page and inside a 200px block card (CARD_TEXT_SIZE sets
+     text-xs there). Absolute sizes put a 24px h1 over 12px body text, with a
+     40px margin above it, and left an h3 bigger than the text it heads. */
   .doc h1 {
-    @apply mt-10 mb-4 scroll-mt-24 font-serif text-2xl font-semibold tracking-tight text-foreground;
+    @apply mb-[0.6em] mt-[1.6em] scroll-mt-24 font-serif text-[1.5em] font-semibold tracking-tight text-foreground;
+    font-optical-sizing: auto;
   }
   .doc h2 {
-    @apply mt-8 mb-3 scroll-mt-24 font-serif text-lg font-medium text-foreground;
+    @apply mb-[0.5em] mt-[1.4em] scroll-mt-24 font-serif text-[1.15em] font-medium text-foreground;
+    font-optical-sizing: auto;
   }
   .doc h3 {
-    @apply mt-6 mb-2 font-mono text-sm font-semibold text-foreground;
+    @apply mb-[0.4em] mt-[1.2em] font-mono text-[1em] font-semibold text-foreground;
   }
   .doc p {
     @apply my-3;
@@ -247,6 +272,15 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+
+  /* A spinner is the exception: its motion *is* the message. The blanket rule
+     above runs one 0.01ms iteration and leaves a frozen partial circle, which
+     reads as a stuck page rather than as a working one. Slower than the
+     default, since the point is to say "still going", not to draw the eye. */
+  .animate-spin {
+    animation-duration: 1.2s !important;
+    animation-iteration-count: infinite !important;
+  }
 }
 
 @media (prefers-reduced-transparency: reduce) {
@@ -259,11 +293,13 @@
 @media (prefers-contrast: more) {
   :root {
     --border: 0 0% 55%;
+    --input: 0 0% 45%;
     --ring: 0 0% 0%;
     --muted-foreground: 0 0% 28%;
   }
   .dark {
     --border: 0 0% 45%;
+    --input: 0 0% 60%;
     --ring: 0 0% 100%;
     --muted-foreground: 0 0% 80%;
   }

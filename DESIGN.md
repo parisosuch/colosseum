@@ -30,17 +30,26 @@ is spelled out once because token colors don't accept an opacity modifier.
 
 ## Typography
 
-Geist Sans throughout; `font-mono` for code, URLs, and exact values. Semantic
-classes live in `@layer components` (`globals.css`) — don't hand-roll
+Two faces. **Geist Sans** for body, UI and controls — it's on `<body>`, so it's
+what you get by default. **Fraunces** for the wordmark and the three heading
+classes, reached through `font-serif`. `font-mono` for code, URLs, and exact
+values. `font-sans` names Geist explicitly, which is how you get back to it
+inside a serif context.
+
+Semantic classes live in `@layer components` (`globals.css`) — don't hand-roll
 `text-Nxl font-light`:
 
-| Class           | Scale                            | Use for                        |
-| --------------- | -------------------------------- | ------------------------------ |
-| `.text-display` | `text-2xl sm:text-4xl semibold`  | Page title / breadcrumb header |
-| `.text-title`   | `text-2xl semibold`              | Section title within a page    |
-| `.text-heading` | `text-lg medium`                 | Card / sub-section heading     |
-| `.text-label`   | `text-xs medium uppercase muted` | Eyebrow label above a value    |
-| `.text-caption` | `text-xs muted`                  | Timestamps, counts, captions   |
+| Class           | Scale                                      | Use for                        |
+| --------------- | ------------------------------------------ | ------------------------------ |
+| `.text-display` | `font-serif text-2xl sm:text-4xl semibold` | Page title / breadcrumb header |
+| `.text-title`   | `font-serif text-2xl semibold`             | Section title within a page    |
+| `.text-heading` | `font-serif text-lg medium`                | Card / sub-section heading     |
+| `.text-label`   | `text-xs medium uppercase muted`           | Eyebrow label above a value    |
+| `.text-caption` | `text-xs muted`                            | Timestamps, counts, captions   |
+
+The three serif classes carry `font-optical-sizing: auto`, and Fraunces is
+loaded with its `opsz` axis — that's what lets one family read right at 36px in
+a page title and at 18px in a card heading.
 
 Body copy is the default (`text-sm` in dense UI, base in prose). Avoid
 `font-light` — Geist reads thin and inconsistent below normal weight.
@@ -57,6 +66,32 @@ Stay on Tailwind's 4px scale. The page rhythm:
 
 Fixed media dimensions (preview tiles, avatars) may use explicit sizes; arbitrary
 layout widths (`w-[350px]`) should not — use the scale or a responsive width.
+
+## Motion
+
+Two curves and three durations, defined in `globals.css` and surfaced as
+Tailwind utilities:
+
+| Utility          | Value                            | Use for                                                |
+| ---------------- | -------------------------------- | ------------------------------------------------------ |
+| `ease-out`       | `cubic-bezier(0.23, 1, 0.32, 1)` | Entrances, and anything the pointer waits on           |
+| `ease-in`        | `cubic-bezier(0.4, 0, 1, 1)`     | Exits — leave quickly, no long tail                    |
+| `duration-micro` | 120ms                            | Continuous pointer feedback: a drop indicator, a press |
+| `duration-ui`    | 200ms                            | UI state: menus, tooltips, toggles                     |
+| `duration-panel` | 260ms                            | Something whose travel is visible: a dialog, a sheet   |
+
+Don't leave an `animate-in` bare. `tailwindcss-animate` fills in 150ms and the
+CSS initial `ease` (a symmetric ease-in-out), so an unspecified surface isn't
+using a default from this table — it's using one from the plugin.
+
+Keyframe animations can't read `duration-*`, which sets `transition-duration`
+and nothing else. They take `![animation-duration:var(--duration-ui)]` —
+important-flagged, because the plugin's own 150ms is an equally specific
+utility and wins on source order otherwise — plus
+`[animation-timing-function:var(--ease-out)]`, which needs no flag.
+
+An entrance and its exit are one gesture: a scrim and the panel it sits behind
+animate together, on the same clock.
 
 ## Components
 

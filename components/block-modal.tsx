@@ -181,7 +181,7 @@ function BlockImage({ src, alt }: { src: string | undefined; alt: string }) {
         aria-hidden
         onLoad={measureThumb}
         className={cn(
-          "max-h-[70vh] max-w-full blur-[6px] md:absolute md:inset-0 md:h-full md:w-full md:max-h-none",
+          "max-h-[70vh] max-w-full blur-[6px] transition-opacity duration-ui md:absolute md:inset-0 md:h-full md:w-full md:max-h-none",
           downsized ? "object-contain" : "object-scale-down",
           // Kept in flow (not `hidden`) so the box it sizes on mobile survives.
           loaded && "opacity-0",
@@ -516,7 +516,7 @@ function BlockModalBody({
       toast.success("Moved.");
     } catch (e) {
       console.error(e);
-      toast.error("Couldn't move that column. Please try again.");
+      toast.error("Couldn't move that block. Please try again.");
       setMoving(false);
     }
   };
@@ -535,7 +535,7 @@ function BlockModalBody({
       toast.success("Copied.");
     } catch (e) {
       console.error(e);
-      toast.error("Couldn't copy that column. Please try again.");
+      toast.error("Couldn't copy that block. Please try again.");
     } finally {
       setCopying(false);
     }
@@ -646,7 +646,7 @@ function BlockModalBody({
             href={`/${column.linked_channel?.handle}/${column.linked_channel_id}`}
             className="flex aspect-square w-full max-w-md flex-col items-center justify-center gap-2 rounded-md border p-6 text-center transition-colors hover:bg-accent"
           >
-            <span className="max-w-full text-title">
+            <span className="line-clamp-2 max-w-full break-words text-title">
               {column.linked_channel?.title ?? "Channel"}
             </span>
             {column.linked_channel?.description ? (
@@ -710,7 +710,7 @@ function BlockModalBody({
           <Button
             variant="ghost"
             size="icon"
-            aria-label="Previous column"
+            aria-label="Previous block"
             disabled={!hasPrev}
             onClick={onPrev}
           >
@@ -719,70 +719,99 @@ function BlockModalBody({
           <Button
             variant="ghost"
             size="icon"
-            aria-label="Next column"
+            aria-label="Next block"
             disabled={!hasNext}
             onClick={onNext}
           >
             <ChevronRight />
           </Button>
         </div>
-        <div className="border rounded-lg space-y-2 h-fit shrink-0">
-          <DialogTitle>
-            <Input
-              ref={titleInputRef}
-              placeholder="No title"
-              disabled={!canEdit}
-              value={title}
-              className="border-none shadow-none"
-              onChange={(e) => setTitle(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  saveField(handleTitleChange);
-                }
-              }}
-            />
-          </DialogTitle>
-          <DialogDescription>
-            <Textarea
-              ref={descriptionInputRef}
-              placeholder="No description"
-              disabled={!canEdit}
-              value={description}
-              rows={1}
-              // field-sizing grows the box with its content; shift+Enter adds a
-              // line, Enter saves.
-              className="resize-none border-none shadow-none [field-sizing:content]"
-              onChange={(e) => setDescription(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  saveField(handleDescriptionChange);
-                }
-              }}
-            />
+        {/* Padding belongs to the panel, per the panel recipe in DESIGN.md.
+            With it on every child instead, each boundary came to the same
+            32px — so the gap between the tags and the metadata matched the
+            gap between two lines of one key/value pair, and nothing read as
+            grouped. */}
+        <div className="h-fit shrink-0 space-y-4 rounded-lg border p-3">
+          {/* The dialog's name and description are text, not the fields below.
+              Radix computes the name from whatever DialogTitle contains, and a
+              textbox contributes its *value* — so an untitled block used to
+              fall through to the input's placeholder and the modal announced
+              itself as "No title". */}
+          <DialogTitle className="sr-only">{column.title || "Untitled block"}</DialogTitle>
+          <DialogDescription className="sr-only">
+            {column.description || `A ${column.type} block.`}
           </DialogDescription>
+          {canEdit ? (
+            <div className="space-y-2">
+              <Input
+                ref={titleInputRef}
+                aria-label="Block title"
+                placeholder="No title"
+                value={title}
+                // Transparent until hovered: with the border gone entirely
+                // there was nothing to say the title could be edited.
+                className="border-transparent shadow-none hover:border-input"
+                onChange={(e) => setTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    saveField(handleTitleChange);
+                  }
+                }}
+              />
+              <Textarea
+                ref={descriptionInputRef}
+                aria-label="Block description"
+                placeholder="No description"
+                value={description}
+                rows={1}
+                // field-sizing grows the box with its content; shift+Enter adds a
+                // line, Enter saves.
+                className="resize-none border-transparent shadow-none hover:border-input [field-sizing:content]"
+                onChange={(e) => setDescription(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    saveField(handleDescriptionChange);
+                  }
+                }}
+              />
+            </div>
+          ) : (
+            /* A reader can't edit these, so they're content — not fields dimmed
+               to 50% under a not-allowed cursor, which is what a disabled Input
+               rendered. An absent description is absent rather than a
+               placeholder standing in for one. */
+            <div className="space-y-1">
+              <p className="text-heading">{column.title || "Untitled"}</p>
+              {column.description ? (
+                <p className="text-sm text-muted-foreground">{column.description}</p>
+              ) : null}
+            </div>
+          )}
           {canEdit || column.tags.length > 0 ? (
-            <div className="p-3">
-              <TagInput tags={column.tags} onChange={handleTagsChange} disabled={!canEdit} />
-            </div>
+            <TagInput tags={column.tags} onChange={handleTagsChange} disabled={!canEdit} />
           ) : null}
-          <div className="flex w-full justify-between text-xs p-3">
-            <h3>Created on</h3>
-            <p className="font-mono">{new Date(column.created_at).toDateString()}</p>
+          {/* One group: these two lines belong together, so they sit closer to
+              each other than to anything else in the panel. */}
+          <div className="space-y-1">
+            <div className="flex w-full justify-between text-xs">
+              <h3>Created on</h3>
+              <p className="font-mono">{new Date(column.created_at).toDateString()}</p>
+            </div>
+            {column.created_by_handle ? (
+              <div className="flex w-full justify-between text-xs">
+                <h3>Created by</h3>
+                <Link href={`/${column.created_by_handle}`} className="font-mono hover:underline">
+                  @{column.created_by_handle}
+                </Link>
+              </div>
+            ) : null}
           </div>
-          {column.created_by_handle ? (
-            <div className="flex w-full justify-between text-xs p-3">
-              <h3>Created by</h3>
-              <Link href={`/${column.created_by_handle}`} className="font-mono hover:underline">
-                @{column.created_by_handle}
-              </Link>
-            </div>
-          ) : null}
           {/* Two rows, not one. Copy-to-channel used to sit 8px from Delete,
               which is close enough that a slip destroys the block instead of
               duplicating it; the confirmation was the only thing between them. */}
-          <div className="flex w-full flex-col gap-2 p-3">
+          <div className="flex w-full flex-col gap-2">
             <div className="flex flex-wrap items-center justify-end gap-2">
               <Button asChild variant="link" size="sm">
                 {/* Deep link, not the standalone block page: sharing this drops

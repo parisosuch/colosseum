@@ -77,8 +77,7 @@ export const REORDER_HELP_ID = "block-reorder-help";
 // so following the pointer costs no renders; the card carries `group`, which is
 // what lets a child react to an attribute on its parent.
 function DropIndicator({ axis }: { axis: "grid" | "list" }) {
-  const shared =
-    "pointer-events-none absolute z-10 rounded-full bg-primary opacity-0 transition-opacity";
+  const shared = "pointer-events-none absolute z-10 rounded-full bg-primary opacity-0";
   if (axis === "list") {
     return (
       <>
@@ -151,7 +150,9 @@ const ColumnComponent = memo(function ColumnComponent({
   const thumbnail =
     column.type === "channel" ? (
       <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center">
-        <span className="max-w-full text-heading">{column.linked_channel?.title ?? "Channel"}</span>
+        <span className="line-clamp-2 max-w-full break-words text-heading">
+          {column.linked_channel?.title ?? "Channel"}
+        </span>
         {column.linked_channel?.description ? (
           <p className="line-clamp-4 break-words text-sm text-muted-foreground">
             {column.linked_channel.description}
@@ -274,13 +275,24 @@ const ColumnComponent = memo(function ColumnComponent({
   // A card being dragged follows the pointer and its old slot reads as empty;
   // one held by the keyboard stays put and is outlined instead, because there
   // is no pointer to say where it currently is.
-  const activeClass = !reorderActive ? "" : heldHere ? "ring-2 ring-ring rounded-lg" : "opacity-60";
+  const activeClass = !reorderActive
+    ? ""
+    : heldHere
+      ? "rounded-lg shadow-lg ring-2 ring-ring"
+      : "opacity-60";
 
   // A real <button> can't contain the grip (or a tweet embed's own buttons)
   // without nesting interactive elements, so those cases become a role=button
   // div. Keyed on the card element itself so a keypress inside the grip isn't
   // read as "open this block".
   const asDiv = column.type === "tweet" || reorderable;
+  // What both views call a card. A fixed "Open column" made every row in a list
+  // the same control to anything reading names, and hid the title, URL and
+  // author the row is showing. Capped so a long text block doesn't become a
+  // paragraph-length name.
+  const openLabel = `Open ${
+    (column.title || urlTitle || column.text || "block").trim().slice(0, 80) || "block"
+  }`;
   const openOnKey = (e: React.KeyboardEvent<HTMLElement>) => {
     if (e.target !== e.currentTarget) return;
     if (e.key === "Enter" || e.key === " ") {
@@ -340,7 +352,7 @@ const ColumnComponent = memo(function ColumnComponent({
           ref={cardRef}
           role="button"
           tabIndex={0}
-          aria-label="Open column"
+          aria-label={openLabel}
           data-column-id={column.id}
           onClick={() => onOpen(column.id)}
           onKeyDown={openOnKey}
@@ -356,7 +368,7 @@ const ColumnComponent = memo(function ColumnComponent({
       <button
         ref={cardRef}
         type="button"
-        aria-label="Open column"
+        aria-label={openLabel}
         data-column-id={column.id}
         onClick={() => onOpen(column.id)}
         {...prefetch}
@@ -403,6 +415,7 @@ const ColumnComponent = memo(function ColumnComponent({
         ref={cardRef}
         role="button"
         tabIndex={0}
+        aria-label={openLabel}
         data-column-id={column.id}
         onClick={() => onOpen(column.id)}
         onKeyDown={openOnKey}
@@ -420,6 +433,7 @@ const ColumnComponent = memo(function ColumnComponent({
     <button
       ref={cardRef}
       type="button"
+      aria-label={openLabel}
       data-column-id={column.id}
       onClick={() => onOpen(column.id)}
       {...prefetch}

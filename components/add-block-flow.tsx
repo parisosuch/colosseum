@@ -19,6 +19,8 @@ import { isURL } from "@/lib/utils";
 import type { Channel } from "@/lib/colosseum/channel";
 import CreateChannelForm from "@/components/create-channel-form";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 export type PickableChannel = { id: number; title: string; private: boolean };
 
@@ -117,7 +119,7 @@ export function useAddBlockFlow(channels: PickableChannel[]) {
       } else {
         await uploadTextColumnAction({ channelId, text });
       }
-      toast.success("Column added.");
+      toast.success("Block added.");
       onOpenChange(false);
       return true;
     } catch (e) {
@@ -125,7 +127,7 @@ export function useAddBlockFlow(channels: PickableChannel[]) {
       const quota = await getColumnQuotaAction().catch(() => null);
       toast.error(
         (quota && columnLimitMessage(quota, quota.admins)) ||
-          "Couldn't add that column. Please try again.",
+          "Couldn't add that block. Please try again.",
       );
       setSubmitting(false);
       return false;
@@ -213,7 +215,7 @@ export function AddBlockBody({
   if (step === "content") {
     return (
       <div className={`flex flex-col gap-3 px-4 pb-6 ${tall ? "min-h-0 flex-1" : ""}`}>
-        <textarea
+        <Textarea
           value={text}
           onChange={(e) => {
             setText(e.target.value);
@@ -234,20 +236,34 @@ export function AddBlockBody({
             }
           }}
           placeholder="Paste a link or an image, or type text…"
-          // text-base (16px) so iOS doesn't zoom on focus.
-          className="min-h-28 w-full resize-none rounded-md border bg-transparent p-3 text-base leading-normal focus:outline-none focus:ring-2 focus:ring-ring"
+          aria-label="Block content"
+          className="min-h-28 resize-none p-3 leading-normal"
         />
 
         {file ? (
-          <p className="truncate text-sm text-muted-foreground">File: {file.name}</p>
+          // Keep a way back: the input unmounts once a file is picked, and the
+          // next press uploads, so a mis-picked 100MB video had no exit short of
+          // typing text and deleting it again.
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <span className="truncate">File: {file.name}</span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-label={`Remove ${file.name}`}
+              onClick={() => setFile(null)}
+            >
+              Remove
+            </Button>
+          </div>
         ) : (
-          <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-muted-foreground underline">
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-sm text-sm text-muted-foreground underline focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background">
             <ImageIcon size={16} />
             Upload an image, video, or PDF
             <input
               type="file"
               accept="image/*,video/mp4,video/webm,video/quicktime,video/ogg,application/pdf"
-              className="hidden"
+              className="sr-only"
               onChange={(e) => {
                 pickFile(e.target.files?.[0]);
                 e.target.value = "";
@@ -289,13 +305,13 @@ export function AddBlockBody({
   return (
     <div className={`flex flex-col gap-3 px-4 pb-6 ${tall ? "min-h-0 flex-1" : ""}`}>
       {channels.length > 0 ? (
-        <input
+        <Input
           type="search"
           value={channelQuery}
           onChange={(e) => setChannelQuery(e.target.value)}
           placeholder="Search channels…"
-          // text-base (16px) so iOS doesn't zoom on focus.
-          className="w-full shrink-0 rounded-md border bg-transparent p-3 text-base leading-normal focus:outline-none focus:ring-2 focus:ring-ring"
+          aria-label="Search channels"
+          className="shrink-0"
         />
       ) : null}
       {/* In the sheet the list shrink-wraps a short channel list and
@@ -311,17 +327,15 @@ export function AddBlockBody({
               type="button"
               disabled={submitting}
               onClick={() => addToChannel(channel.id)}
-              className={`flex w-full items-center justify-between gap-2 p-3 text-left text-sm hover:bg-accent disabled:opacity-50 ${channel.private ? "bg-red-500/5 border-red-500/50 hover:border-red-500" : ""}`}
+              className={`flex w-full items-center justify-between gap-2 p-3 text-left text-sm hover:bg-accent disabled:opacity-50 ${channel.private ? "bg-red-500/5" : ""}`}
             >
               <span className="truncate">{channel.title}</span>
-              {channel.private ? (
-                <span className="shrink-0 text-xs text-muted-foreground">private</span>
-              ) : null}
+              {channel.private ? <span className="shrink-0 text-caption">private</span> : null}
             </button>
           </li>
         ))}
         {filteredChannels.length === 0 && channels.length > 0 ? (
-          <li className="p-3 text-sm text-muted-foreground">No channels match.</li>
+          <li className="p-3 text-caption">No channels match that search.</li>
         ) : null}
         {/* Always last, so somebody with no channels — or a search that
             matches none — has somewhere to go other than back. */}

@@ -42,7 +42,9 @@ const isMarkdownFile = (f: File) => f.type === "text/markdown" || /\.(md|markdow
 
 // One video file in flight: the resumable endpoint reports progress against it
 // while the block is created in the background.
-type ActiveUpload = { filename: string; sent: number; total: number; error?: string };
+// A failure drops its row and surfaces as a toast, so an entry here is always
+// in flight.
+type ActiveUpload = { filename: string; sent: number; total: number };
 
 export type ColumnUploader = {
   // Create a block per dropped or picked file.
@@ -95,16 +97,18 @@ export function useColumnUpload({
       onBlockAdded();
       toast.success("Video uploaded.");
     },
-    onError: (fp, message) =>
-      setVideoUploads((u) => ({
-        ...u,
-        [fp]: {
-          filename: u[fp]?.filename ?? "",
-          sent: u[fp]?.sent ?? 0,
-          total: u[fp]?.total ?? 0,
-          error: message,
-        },
-      })),
+    // Drop the row and report through the same channel every other failure in
+    // this file uses. Keeping a failed entry left it in the progress panel with
+    // no retry, no dismiss, and the reason never shown.
+    onError: (fp, message) => {
+      const filename = videoUploads[fp]?.filename ?? "";
+      setVideoUploads((u) => {
+        const next = { ...u };
+        delete next[fp];
+        return next;
+      });
+      toast.error(filename ? `${filename}: ${message}` : message);
+    },
   };
 
   // On mount / channel change, resume any video upload this browser left pending
@@ -242,21 +246,17 @@ export function ColumnUploadProgress({ uploader }: { uploader: ColumnUploader })
           <div key={fp} className="rounded-md border bg-background/90 px-2 py-1 backdrop-blur">
             <div className="flex items-center justify-between gap-2 text-xs">
               <span className="truncate">{u.filename || "Video"}</span>
-              {/* The failure reads as type, not as a fill, so it takes
-                  --destructive-text; --destructive is picked to sit under
-                  white and barely clears the background in dark mode. */}
-              <span className={u.error ? "text-destructive-text" : "text-muted-foreground"}>
-                {u.error ? "Failed" : `${pct}%`}
-              </span>
+              <span className="text-muted-foreground">{`${pct}%`}</span>
             </div>
-            {!u.error && (
-              <div className="mt-1 h-1 w-full overflow-hidden rounded bg-muted">
-                <div
-                  className="h-full bg-primary transition-[width]"
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-            )}
+            {/* scaleX, not width: this updates on every progress event, and
+                width is a layout property — the bar is one of the few things
+                on screen animating many times a second. */}
+            <div className="mt-1 h-1 w-full overflow-hidden rounded bg-muted">
+              <div
+                className="h-full origin-left bg-primary transition-transform duration-micro ease-linear"
+                style={{ transform: `scaleX(${pct / 100})` }}
+              />
+            </div>
           </div>
         );
       })}
@@ -379,7 +379,7 @@ export default function ColumnInput({
       }
     } catch (e) {
       console.error(e);
-      toast.error(await columnLimitToast("Couldn't add that column. Please try again."));
+      toast.error(await columnLimitToast("Couldn't add that block. Please try again."));
       return;
     }
 
@@ -414,7 +414,7 @@ export default function ColumnInput({
                     ? "Image added."
                     : column.type === "url"
                       ? "Link added."
-                      : "Column added.",
+                      : "Block added.",
     );
 
     // Only plain URL blocks get the async screenshot pass. A tweet block already
@@ -445,7 +445,7 @@ export default function ColumnInput({
         }
       } catch (e) {
         console.error(e);
-        toast.warning("Column added, but the screenshot for that link couldn't be captured.");
+        toast.warning("Block added, but the screenshot for that link couldn't be captured.");
       } finally {
         // Always clear the capturing state — on failure this refetches to a
         // null preview (so the spinner stops); on success, the real shot.
@@ -459,7 +459,7 @@ export default function ColumnInput({
   // belong to the container (see channel-board). A drop landing here bubbles
   // there like any other.
   return (
-    <div className="relative w-full aspect-square rounded-lg dark:bg-white/10 bg-gray-100">
+    <div className="relative w-full aspect-square rounded-lg bg-muted">
       {/* Text input. text-base (16px), not text-sm — iOS Safari auto-zooms on
           focus of any input smaller than 16px. */}
       <textarea
@@ -467,7 +467,10 @@ export default function ColumnInput({
         disabled={loading}
         // Extra bottom padding once there's something to submit, so the text
         // doesn't run under the Add button sitting in that corner.
-        className={`w-full h-full bg-transparent resize-none focus:outline-none p-3 leading-normal text-base ${text ? "pb-12" : ""} ${loading ? "hidden" : ""}`}
+        // The instruction sits in the overlay below, which is decorative and
+        // unreachable to a screen reader, so the control names itself.
+        aria-label="Add a block"
+        className={`focus-ring w-full h-full bg-transparent resize-none p-3 leading-normal text-base ${text ? "pb-12" : ""} ${loading ? "hidden" : ""}`}
         value={text}
         onChange={(e) => {
           setText(e.target.value);
@@ -484,16 +487,22 @@ export default function ColumnInput({
 
       {/* Overlay placeholder with clickable Upload */}
       {!text && !loading && (
-        <div className="absolute inset-0 px-3 pt-3 text-base leading-normal text-gray-500 flex items-start pointer-events-none">
+        <div className="absolute inset-0 px-3 pt-3 text-base leading-normal text-muted-foreground flex items-start pointer-events-none">
           <span>
             Type, paste an image, or{" "}
-            <label className="underline cursor-pointer pointer-events-auto">
+            {/* focus-within, because the input itself is clipped: without it
+                the only sign a keyboard has reached upload is the caret it
+                doesn't have. */}
+            <label className="underline cursor-pointer pointer-events-auto rounded-sm focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background">
               upload
               <input
                 type="file"
                 accept="image/*,video/mp4,video/webm,video/quicktime,video/ogg,application/pdf,.md,.markdown,text/markdown"
                 multiple
-                className="hidden"
+                // sr-only, not hidden: `display:none` takes the input out of
+                // the tab order, which left no keyboard path to uploading at
+                // all — the drop target is pointer-only too.
+                className="sr-only"
                 onChange={handleFileChange}
               />
             </label>{" "}
@@ -514,11 +523,9 @@ export default function ColumnInput({
       ) : null}
 
       {loading && (
-        <div className="absolute inset-0 flex flex-col gap-2 items-center justify-center bg-gray-100/60 dark:bg-black/50 z-10">
+        <div className="absolute inset-0 flex flex-col gap-2 items-center justify-center bg-background/80 z-10">
           <GradientSpin />
-          {uploading > 1 ? (
-            <p className="text-xs text-muted-foreground">{uploading} left…</p>
-          ) : null}
+          {uploading > 1 ? <p className="text-caption">{uploading} left…</p> : null}
         </div>
       )}
     </div>

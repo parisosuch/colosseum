@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { getSessionUser } from "@/lib/auth";
 import { getUserProfile } from "@/lib/colosseum/user";
-import { getActivityFeed } from "@/lib/colosseum/activity";
+import { getActivityPage } from "@/lib/colosseum/activity";
 import ExploreView from "@/components/explore-view";
 
 // Explore lives on its own route (not `/`) so it renders inside the normal app
@@ -17,6 +17,13 @@ export default async function ExplorePage() {
     if (!profile) redirect("/auth/onboarding");
   }
 
-  const activity = await getActivityFeed(user?.id ?? null);
-  return <ExploreView activity={activity} viewerId={user?.id ?? null} />;
+  const { items, nextCursor, hasMore } = await getActivityPage(user?.id ?? null);
+  return (
+    <ExploreView
+      activity={items}
+      cursor={nextCursor}
+      hasMore={hasMore}
+      viewerId={user?.id ?? null}
+    />
+  );
 }

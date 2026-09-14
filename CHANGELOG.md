@@ -4,6 +4,16 @@ All notable changes to Colosseum are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.5] - 2026-09-14
+
+### Fixed
+
+- Explore shows a long burst of adds as one collage. The feed groups an
+  uninterrupted run of adds by one person to one channel, but it did the
+  grouping a page at a time, so a run of more than 24 was cut where the page
+  ended and came out as two collages in a row. A page now reads on until the run
+  it ends on is finished, and hands the next page a cursor past it.
+
 ## [1.12.4] - 2026-09-10
 
 ### Fixed

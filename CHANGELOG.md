@@ -4,34 +4,6 @@ All notable changes to Colosseum are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Added
-
-- Groups. A group has a handle of its own, and the channels made in it belong to
-  the group rather than to whoever created them, so they outlive any one
-  account. Everyone in a group can add to its channels and read its private
-  ones; admins can also rename and delete them and manage who's in the group;
-  the single owner can hand the group on or delete it. New groups are made from
-  Groups in the account menu, existing channels can be moved into or out of a
-  group from the channel's manage dialog, and a group's page is /{its handle},
-  the same place a person's is, with its own name, bio and avatar.
-- Groups reach the API and MCP. `GET /api/v1/channels` (and `list_channels`) now
-  returns your groups' channels alongside your own, each with the handle it
-  lives under; `POST /api/v1/channels` (and `create_channel`) takes an `owner`
-  handle to create one a group owns; and `GET /api/v1/groups` (`list_groups`)
-  lists the groups you're in with your role in each, which is how a client
-  learns which handles it may pass. Omitting `owner` behaves exactly as before.
-
-### Changed
-
-- Handles moved to a new `owner` table, which is what a channel now belongs to.
-  Nothing changes for anyone using Colosseum; self-hosters get a migration that
-  rewrites channel ownership, as the groundwork for channels that belong to a
-  group rather than a person. It refuses to run, leaving the database untouched,
-  if any channel is owned by an account that never finished onboarding and so
-  has no handle — it prints how many and what to do about them.
-
 ## [1.12.5] - 2026-09-14
 
 ### Fixed

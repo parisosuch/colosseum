@@ -33,6 +33,9 @@ underlying command directly if you prefer (e.g. `bun run dev`).
   "Closes #123"), and the squash commit links the PR automatically.
 - **Don't bump `version` in `package.json`.** Versioning happens at release
   time, not in feature/fix PRs.
+- **Don't edit `CHANGELOG.md`.** It records released versions only, with no
+  `Unreleased` section to add to. Describe your change in the PR description;
+  maintainers write the release notes when they cut the release.
 
 ## Commit messages
 

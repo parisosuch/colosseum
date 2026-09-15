@@ -54,8 +54,15 @@ Use `bun`, never `npm`. A `Makefile` wraps the common ones:
     `CHANGELOG.md` section in the hotfix PR itself.
 - **Bumping the version means updating the changelog.** Whenever you bump
   `package.json` for a release (the PR that ships to `main`), stamp a matching
-  `## [X.Y.Z] - YYYY-MM-DD` section in `CHANGELOG.md` in the same commit,
-  moving the accumulated `Unreleased` notes under it. The two never move apart.
+  `## [X.Y.Z] - YYYY-MM-DD` section in `CHANGELOG.md` in the same commit. The
+  two never move apart.
+- **`CHANGELOG.md` records released versions only.** Never add an `Unreleased`
+  section, and don't file notes ahead of a release anywhere else either (a
+  sidecar file, a `.changes/` directory). A feature/fix PR into `next` leaves
+  `CHANGELOG.md` untouched and describes itself in the PR body; the release
+  section is written when the release is cut, from the PRs it ships. An
+  `Unreleased` section on `next` conflicts with every hotfix section on `main`,
+  because both get inserted at the same spot in the file.
 - GH releases need to attribute PRs. See previous release for example.
 
 ## Conventions

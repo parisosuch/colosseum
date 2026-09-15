@@ -13,6 +13,7 @@ import { assertColumnQuota } from "@/lib/colosseum/admin";
 import { putImageBlobFromUrl } from "@/lib/colosseum/blob";
 import { getChannel, viewerScope } from "@/lib/colosseum/channel";
 import {
+  getChannelColumnCount,
   getChannelColumns,
   getColumn,
   updateColumnTags,
@@ -34,7 +35,8 @@ function parseId(id: string): number | null {
 }
 
 // GET /api/v1/channels/:id/blocks — list a channel's blocks (visible when the
-// channel is public or owned). Optional ?limit=N.
+// channel is public or owned). Optional ?limit=N&offset=N, newest first, with
+// the channel's whole `total` alongside the page.
 export async function GET(req: Request, { params }: Ctx) {
   const auth = await authenticateApiToken(req);
   if (auth instanceof NextResponse) return auth;
@@ -46,21 +48,30 @@ export async function GET(req: Request, { params }: Ctx) {
   const denied = await authorizeChannelRead(channel, auth.userId);
   if (denied) return denied;
 
-  const limitParam = new URL(req.url).searchParams.get("limit");
+  const search = new URL(req.url).searchParams;
+  const limitParam = search.get("limit");
   const limit = limitParam ? Number(limitParam) : undefined;
   if (limit !== undefined && (!Number.isInteger(limit) || limit < 1)) {
     return apiError("`limit` must be a positive integer.", 400);
+  }
+  const offsetParam = search.get("offset");
+  const offset = offsetParam ? Number(offsetParam) : undefined;
+  if (offset !== undefined && (!Number.isInteger(offset) || offset < 0)) {
+    return apiError("`offset` must be a non-negative integer.", 400);
   }
 
   try {
     // `limit` is optional, so this can be every block in the channel; the
     // response carries the markdown source, so none of them are rendered.
-    const blocks = await getChannelColumns(
-      channelId,
-      { limit, html: false },
-      await viewerScope(auth.userId),
-    );
-    return json({ blocks: await attachPreviews(blocks) });
+    //
+    // `total` is the channel's whole count, not the page's, so a client can
+    // tell a short page from the end of the channel and knows when to stop —
+    // without it, reading past the newest N meant guessing.
+    const [blocks, total] = await Promise.all([
+      getChannelColumns(channelId, { limit, offset, html: false }, await viewerScope(auth.userId)),
+      getChannelColumnCount(channelId),
+    ]);
+    return json({ blocks: await attachPreviews(blocks), total });
   } catch (e) {
     logError("channels.id.blocks.GET", `failed to list blocks for channel ${channelId}`, e);
     return apiError("Failed to list blocks.", 500);

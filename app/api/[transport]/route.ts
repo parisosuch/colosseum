@@ -37,6 +37,7 @@ import { listUserGroups } from "@/lib/colosseum/group";
 import {
   Column,
   deleteColumn,
+  getChannelColumnCount,
   getChannelColumns,
   getColumn,
   updateColumn,
@@ -313,18 +314,30 @@ const handler = createMcpHandler(
     server.registerTool(
       "list_blocks",
       {
-        description: "List a channel's blocks (public or owned).",
-        inputSchema: { channelId: z.number().int(), limit: z.number().int().positive().optional() },
+        description:
+          "List a channel's blocks (public or owned), newest first. `limit` " +
+          "and `offset` page through them, and `total` is the channel's whole " +
+          "count — so a channel bigger than one page can be read to the end " +
+          "rather than sampled from the top.",
+        inputSchema: {
+          channelId: z.number().int(),
+          limit: z.number().int().positive().optional(),
+          offset: z.number().int().nonnegative().optional(),
+        },
       },
-      asTool(async ({ channelId, limit }: { channelId: number; limit?: number }, { userId }) => {
-        await requireChannel(userId, channelId, "read");
-        const blocks = await getChannelColumns(
-          channelId,
-          { limit, html: false },
-          await viewerScope(userId),
-        );
-        return { blocks: await attachPreviews(blocks) };
-      }),
+      asTool(
+        async (
+          { channelId, limit, offset }: { channelId: number; limit?: number; offset?: number },
+          { userId },
+        ) => {
+          await requireChannel(userId, channelId, "read");
+          const [blocks, total] = await Promise.all([
+            getChannelColumns(channelId, { limit, offset, html: false }, await viewerScope(userId)),
+            getChannelColumnCount(channelId),
+          ]);
+          return { blocks: await attachPreviews(blocks), total };
+        },
+      ),
     );
 
     server.registerTool(

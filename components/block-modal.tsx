@@ -598,7 +598,7 @@ function BlockModalBody({
             <track kind="captions" />
           </video>
         ) : column.type === "tweet" ? (
-          <div className="max-h-full w-full max-w-xl overflow-y-auto">
+          <div className="max-h-full w-full max-w-xl overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <TweetBlock id={tweetIdFromUrl(column.url ?? "") ?? ""} />
           </div>
         ) : column.type === "youtube" ? (

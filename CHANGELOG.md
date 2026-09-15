@@ -4,6 +4,16 @@ All notable changes to Colosseum are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.6] - 2026-09-15
+
+### Fixed
+
+- A long tweet in the block modal no longer shows a scroll bar beside it. The
+  tweet needs a scroll box of its own, because the panel centers it and the
+  modal's outer scroll can't reach content that overflows above the center
+  line; that box kept the browser's bar while the modal's other scrolling
+  surfaces hide theirs. It still scrolls by wheel and touch.
+
 ## [1.12.5] - 2026-09-14
 
 ### Fixed

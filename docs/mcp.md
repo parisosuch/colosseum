@@ -57,21 +57,22 @@ One tool per REST endpoint, plus `move_block`, which has no REST equivalent.
 Reads are visible if a channel is public or you own it; writes require
 ownership. A group's channels count as yours on both counts.
 
-| Tool             | Equivalent                         | Notes                                                             |
-| ---------------- | ---------------------------------- | ----------------------------------------------------------------- |
-| `whoami`         | `GET /api/v1/me`                   | Your `handle`, and the block allowance `create_block` refuses on. |
-| `list_channels`  | `GET /api/v1/channels`             | Yours and your groups', each with the `handle` it lives under.    |
-| `list_groups`    | `GET /api/v1/groups`               | The groups you're in, with your `role` in each.                   |
-| `create_channel` | `POST /api/v1/channels`            | `title`, optional `description`, `private`, `owner`.              |
-| `get_channel`    | `GET /api/v1/channels/:id`         | `id`.                                                             |
-| `update_channel` | `PATCH /api/v1/channels/:id`       | `id` + any of `title`/`description`/`private`.                    |
-| `delete_channel` | `DELETE /api/v1/channels/:id`      | `id`. Cascades to the channel's blocks.                           |
-| `list_blocks`    | `GET /api/v1/channels/:id/blocks`  | `channelId`, optional `limit`.                                    |
-| `create_block`   | `POST /api/v1/channels/:id/blocks` | `channelId`, `type` (`text`/`url`/`image`) + the matching field.  |
-| `get_block`      | `GET /api/v1/blocks/:id`           | `id`.                                                             |
-| `update_block`   | `PATCH /api/v1/blocks/:id`         | `id` + editable fields for that block's type.                     |
-| `delete_block`   | `DELETE /api/v1/blocks/:id`        | `id`.                                                             |
-| `move_block`     | —                                  | `id`, `channelId`. You must own both channels.                    |
+| Tool             | Equivalent                               | Notes                                                             |
+| ---------------- | ---------------------------------------- | ----------------------------------------------------------------- |
+| `whoami`         | `GET /api/v1/me`                         | Your `handle`, and the block allowance `create_block` refuses on. |
+| `list_channels`  | `GET /api/v1/channels`                   | Yours and your groups', each with the `handle` it lives under.    |
+| `list_groups`    | `GET /api/v1/groups`                     | The groups you're in, with your `role` in each.                   |
+| `leave_channel`  | `DELETE /api/v1/channels/:id/members/me` | `channelId`. Not one you manage.                                  |
+| `create_channel` | `POST /api/v1/channels`                  | `title`, optional `description`, `private`, `owner`.              |
+| `get_channel`    | `GET /api/v1/channels/:id`               | `id`.                                                             |
+| `update_channel` | `PATCH /api/v1/channels/:id`             | `id` + any of `title`/`description`/`private`.                    |
+| `delete_channel` | `DELETE /api/v1/channels/:id`            | `id`. Cascades to the channel's blocks.                           |
+| `list_blocks`    | `GET /api/v1/channels/:id/blocks`        | `channelId`, optional `limit`.                                    |
+| `create_block`   | `POST /api/v1/channels/:id/blocks`       | `channelId`, `type` (`text`/`url`/`image`) + the matching field.  |
+| `get_block`      | `GET /api/v1/blocks/:id`                 | `id`.                                                             |
+| `update_block`   | `PATCH /api/v1/blocks/:id`               | `id` + editable fields for that block's type.                     |
+| `delete_block`   | `DELETE /api/v1/blocks/:id`              | `id`.                                                             |
+| `move_block`     | —                                        | `id`, `channelId`. You must own both channels.                    |
 
 `create_block`/`update_block` field rules match the REST API: exactly one of
 `text`/`url`/`image` for creation (matching `type`), and only that type's

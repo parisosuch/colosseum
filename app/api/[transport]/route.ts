@@ -16,6 +16,7 @@ import {
   authorizeChannelContribute,
   authorizeChannelManage,
   authorizeChannelRead,
+  leaveChannel,
   moveBlock,
   parseAccess,
   resolveApiToken,
@@ -168,6 +169,21 @@ const handler = createMcpHandler(
             blocks: { used: blocks.used, limit: blocks.limit },
           },
         };
+      }),
+    );
+
+    server.registerTool(
+      "leave_channel",
+      {
+        description:
+          "Give up your membership of a channel someone else owns. You cannot " +
+          "leave one you manage — delete it or hand it on instead.",
+        inputSchema: { channelId: z.number().int() },
+      },
+      asTool(async ({ channelId }: { channelId: number }, { userId }) => {
+        const denial = await leaveChannel(channelId, userId);
+        if (denial) throw await denialToError(denial);
+        return { left: channelId };
       }),
     );
 

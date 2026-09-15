@@ -72,6 +72,18 @@ Update a channel you own. Partial — omitted fields are unchanged.
 
 Delete a channel you own (its blocks cascade). → `{ "success": true }`
 
+### `DELETE /api/v1/channels/:id/members/me`
+
+Give up your own membership of a channel someone else owns. → `204`, no body.
+
+Scoped to `me`. Removing _other_ people is roster management and stays in the
+app, where it is confirmed.
+
+`409` if you manage the channel — ownership is not a membership row, so there
+would be nothing to remove, and the answer is to delete the channel or hand it
+on. `409` if you were never a member. `404` if you cannot read the channel at
+all, so this never confirms that someone else's private channel exists.
+
 ## Account
 
 ### `GET /api/v1/me`

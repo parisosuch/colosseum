@@ -1,4 +1,5 @@
 import { beforeAll, expect, test } from "bun:test";
+import { sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { column } from "@/lib/db/schema";
@@ -167,6 +168,51 @@ async function stampedBlocks(specs: { by: string; channelId: number }[]) {
     })),
   );
 }
+
+test("getActivityFeed: pages through blocks written inside one millisecond", async () => {
+  const channel = await createChannel({
+    title: "One millisecond",
+    access: "public",
+    owner_id: USERS.alice.id,
+  });
+  // Three blocks sharing a millisecond, then nudged apart by microseconds so
+  // they sit at distinct instants Postgres can order but a JS Date cannot hold.
+  stampWindow += 4000;
+  const rows = await db
+    .insert(column)
+    .values(
+      [0, 1, 2].map((i) => ({
+        type: "url" as const,
+        url: `https://ponytail.example/explore-560-${i}`,
+        created_by: USERS.alice.id,
+        channel_id: channel.id,
+        created_at: new Date(stampWindow),
+      })),
+    )
+    .returning({ id: column.id });
+  // Newest first: index 0 ends up latest within the millisecond.
+  const offsets = [456, 200, 0];
+  await Promise.all(
+    rows.map((r, i) =>
+      db.execute(
+        sql`update ${column} set created_at = created_at + ${`${offsets[i]} microseconds`}::interval where ${column.id} = ${r.id}`,
+      ),
+    ),
+  );
+
+  const first = await getActivityFeed(null, 2);
+  // The microseconds have to reach `at`. Rounded to the millisecond all three
+  // carry the same stamp, which leaves the merge unable to order them and the
+  // cursor unable to address them.
+  expect(first[1].at).toMatch(/\.\d{6}Z$/);
+  expect(first.map((i) => i.column?.id)).toEqual([rows[0].id, rows[1].id]);
+
+  // The next row down shares a millisecond with the cursor. Against a cursor
+  // rounded down it was older than the last item shown and not older than the
+  // cursor, so it appeared on no page at all.
+  const second = await getActivityFeed(null, 2, first[1].at);
+  expect(second.map((i) => i.column?.id)).toContain(rows[2].id);
+});
 
 test("getActivityPage: a run longer than one page stays a single group", async () => {
   const channel = await createChannel({

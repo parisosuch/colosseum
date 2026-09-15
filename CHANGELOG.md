@@ -4,6 +4,19 @@ All notable changes to Colosseum are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.7] - 2026-09-15
+
+### Fixed
+
+- Explore no longer loses blocks written inside the same millisecond as a page
+  boundary. The feed's cursor came off a JS `Date`, which holds milliseconds,
+  while `created_at` in Postgres holds microseconds — so a page ending at
+  `T.123456` asked the next one for rows older than `T.123`, and anything
+  written between the two belonged to neither page and showed up nowhere. A
+  bulk upload was enough to hit it, and nothing surfaced the loss to the
+  reader. The feed now reads its timestamps at full precision and compares the
+  cursor without rounding it.
+
 ## [1.12.6] - 2026-09-15
 
 ### Fixed

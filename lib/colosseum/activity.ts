@@ -192,27 +192,71 @@ export async function getActivityFeed(
   return items.sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, limit);
 }
 
+// A channel-column ("connected X to Y") reads as its own sentence, so it never
+// groups; neither do joins or new channels. Everything else — a plain block —
+// can run together with its neighbours.
+const groupable = (i: ActivityItem) => i.kind === "block" && i.column?.type !== "channel";
+
+// Whether `item` carries on the run that `head` starts: the same person adding
+// to the same channel, with nothing else in between.
+const joinsRun = (head: ActivityItem, item: ActivityItem) =>
+  groupable(head) &&
+  groupable(item) &&
+  head.handle === item.handle &&
+  head.channelId === item.channelId;
+
 // Consecutive adds by the same person to the same channel collapse into one
-// feed entry, so a burst of uploads doesn't flood Explore. A channel-column
-// ("connected X to Y") reads as its own sentence, so it never groups; neither
-// do joins or new channels. Each returned array is one feed row — most hold a
-// single item. Pure so it's unit-testable.
+// feed entry, so a burst of uploads doesn't flood Explore. Each returned array
+// is one feed row — most hold a single item. Pure so it's unit-testable.
 export function groupActivity(items: ActivityItem[]): ActivityItem[][] {
-  const groupable = (i: ActivityItem) => i.kind === "block" && i.column?.type !== "channel";
   const groups: ActivityItem[][] = [];
   for (const item of items) {
     const prev = groups[groups.length - 1];
-    if (
-      prev &&
-      groupable(item) &&
-      groupable(prev[0]) &&
-      prev[0].handle === item.handle &&
-      prev[0].channelId === item.channelId
-    ) {
+    if (prev && joinsRun(prev[0], item)) {
       prev.push(item);
     } else {
       groups.push([item]);
     }
   }
   return groups;
+}
+
+// How many extra pages one run may pull into its page. A burst longer than this
+// splits the way it used to, which beats walking an entire channel to render a
+// single collage.
+const MAX_RUN_PAGES = 20;
+
+// One page of the feed, with its trailing run left whole.
+//
+// `groupActivity` only ever sees one page, so a burst that straddles the page
+// boundary used to come out as two collages. Pull the rest of the run into the
+// page that starts it and move the cursor past everything taken, so the next
+// page begins on a fresh group. Interleaving is handled by re-reading the merged
+// feed: anything else that happened mid-burst ends the run, exactly as it does
+// within a page.
+export async function getActivityPage(
+  viewer: ViewerScope,
+  before?: string,
+): Promise<{ items: ActivityItem[]; nextCursor: string | null; hasMore: boolean }> {
+  const items = await getActivityFeed(viewer, ACTIVITY_PAGE, before);
+  let hasMore = items.length === ACTIVITY_PAGE;
+
+  for (let pages = 0; hasMore && pages < MAX_RUN_PAGES; pages++) {
+    const last = items[items.length - 1];
+    if (!groupable(last)) break;
+    const more = await getActivityFeed(viewer, ACTIVITY_PAGE, last.at);
+    const end = more.findIndex((i) => !joinsRun(last, i));
+    const taken = end === -1 ? more : more.slice(0, end);
+    items.push(...taken);
+    // Something that isn't part of the run is still unread, so the run is over
+    // and the next page picks up from there.
+    if (taken.length < more.length) break;
+    hasMore = more.length === ACTIVITY_PAGE;
+  }
+
+  return {
+    items,
+    nextCursor: items.length > 0 ? items[items.length - 1].at : null,
+    hasMore,
+  };
 }

@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { getSessionUser } from "@/lib/auth";
 import { getUserProfile } from "@/lib/colosseum/user";
-import { getActivityFeed } from "@/lib/colosseum/activity";
+import { getActivityPage } from "@/lib/colosseum/activity";
 import { viewerScope } from "@/lib/colosseum/channel";
 import ExploreView from "@/components/explore-view";
 
@@ -18,6 +18,13 @@ export default async function ExplorePage() {
     if (!profile) redirect("/auth/onboarding");
   }
 
-  const activity = await getActivityFeed(await viewerScope(user?.id ?? null));
-  return <ExploreView activity={activity} viewerId={user?.id ?? null} />;
+  const { items, nextCursor, hasMore } = await getActivityPage(await viewerScope(user?.id ?? null));
+  return (
+    <ExploreView
+      activity={items}
+      cursor={nextCursor}
+      hasMore={hasMore}
+      viewerId={user?.id ?? null}
+    />
+  );
 }

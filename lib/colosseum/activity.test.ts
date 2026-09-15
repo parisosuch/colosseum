@@ -1,7 +1,16 @@
 import { beforeAll, expect, test } from "bun:test";
 
+import { db } from "@/lib/db";
+import { column } from "@/lib/db/schema";
 import { seed, USERS } from "@/scripts/seed";
-import { blockLabel, getActivityFeed, groupActivity, type ActivityItem } from "./activity";
+import {
+  ACTIVITY_PAGE,
+  blockLabel,
+  getActivityFeed,
+  getActivityPage,
+  groupActivity,
+  type ActivityItem,
+} from "./activity";
 import { createChannel, viewerScope } from "./channel";
 import { uploadURLColumn } from "./column";
 import { addChannelMemberByHandle } from "./member";
@@ -137,4 +146,72 @@ test("groupActivity: a channel-column never joins a group", () => {
     add("alice", 1, 3),
   ]);
   expect(groups.map((g) => g.length)).toEqual([1, 1, 1]);
+});
+
+// Blocks stamped at fixed, spaced times in the future, so they sit at the head
+// of the feed in a known order however much else the seed and the tests above
+// have put in the database. Each batch takes a window above the last, so two
+// tests' blocks never interleave.
+let stampWindow = Date.now() + 60 * 60 * 1000;
+async function stampedBlocks(specs: { by: string; channelId: number }[]) {
+  stampWindow += (specs.length + 1) * 1000;
+  const base = stampWindow;
+  await db.insert(column).values(
+    specs.map((s, i) => ({
+      type: "url" as const,
+      url: `https://ponytail.example/explore-558-${i}`,
+      created_by: s.by,
+      channel_id: s.channelId,
+      // Newest first once the feed sorts, so index 0 leads the page.
+      created_at: new Date(base - i * 1000),
+    })),
+  );
+}
+
+test("getActivityPage: a run longer than one page stays a single group", async () => {
+  const channel = await createChannel({
+    title: "A burst",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
+  // Comfortably over ACTIVITY_PAGE, which is where the run used to be cut.
+  const run = ACTIVITY_PAGE + 6;
+  await stampedBlocks(
+    Array.from({ length: run }, () => ({ by: USERS.alice.id, channelId: channel.id })),
+  );
+
+  const page = await getActivityPage(await viewerScope(null));
+  const groups = groupActivity(page.items);
+
+  expect(groups[0].length).toBe(run);
+  // The cursor has to clear the whole run, or the next page re-opens it.
+  expect(page.nextCursor).toBe(page.items[run - 1].at);
+  expect(page.hasMore).toBe(true);
+});
+
+test("getActivityPage: another actor ends the run past the page boundary", async () => {
+  const channel = await createChannel({
+    title: "A burst, interrupted",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
+  // Alice's run crosses the page boundary and then Bob adds one, which ends it.
+  const before = ACTIVITY_PAGE + 3;
+  await stampedBlocks([
+    ...Array.from({ length: before }, () => ({ by: USERS.alice.id, channelId: channel.id })),
+    { by: USERS.bob.id, channelId: channel.id },
+    { by: USERS.alice.id, channelId: channel.id },
+  ]);
+
+  const first = await getActivityPage(await viewerScope(null));
+  // The page stops where the run does, rather than reading on into Bob's add.
+  expect(groupActivity(first.items)[0].length).toBe(before);
+  expect(first.items.length).toBe(before);
+  expect(first.hasMore).toBe(true);
+
+  // And the next page opens on Bob, so nothing is skipped and the run isn't
+  // re-opened below it.
+  const second = await getActivityPage(await viewerScope(null), first.nextCursor!);
+  expect(second.items[0].handle).toBe(USERS.bob.handle);
+  expect(second.items[1].handle).toBe(USERS.alice.handle);
 });

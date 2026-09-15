@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { Compass } from "lucide-react";
 
-import { ACTIVITY_PAGE, groupActivity, type ActivityItem } from "@/lib/colosseum/activity";
+import { groupActivity, type ActivityItem } from "@/lib/colosseum/activity";
 import { timeAgo } from "@/lib/utils";
 import PageHeader from "@/components/page-header";
 import ColumnPreview from "@/components/column-preview";
@@ -243,9 +243,16 @@ export function ActivityRow({
 // connected network, each item showing the block or channel as the focal point.
 export default function ExploreView({
   activity,
+  cursor,
+  hasMore,
   viewerId,
 }: {
   activity: ActivityItem[];
+  // Where load-more picks up, and whether there is anything left to pick up.
+  // Both come from the page fetch, which may have read past ACTIVITY_PAGE to
+  // finish a run, so neither can be derived from `activity` here.
+  cursor: string | null;
+  hasMore: boolean;
   viewerId: string | null;
 }) {
   return (
@@ -282,8 +289,8 @@ export default function ExploreView({
             />
           ))}
           <ExploreLoadMore
-            initialCursor={activity[activity.length - 1].at}
-            initialHasMore={activity.length >= ACTIVITY_PAGE}
+            initialCursor={cursor}
+            initialHasMore={hasMore}
             signedIn={viewerId !== null}
           />
         </div>

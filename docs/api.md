@@ -72,6 +72,19 @@ Update a channel you own. Partial — omitted fields are unchanged.
 
 Delete a channel you own (its blocks cascade). → `{ "success": true }`
 
+## Account
+
+### `GET /api/v1/me`
+
+Who the token belongs to. → `{ "me": { "handle", "about", "avatar_url", "created_at" } }`
+
+Every other endpoint is addressed by channel id, or by a group handle from
+`GET /api/v1/groups`, so without this a client can name every group it belongs
+to but not its own account.
+
+Identity only. The user id and owner id are not returned: no endpoint accepts
+either, and the two are easy to mistake for one another.
+
 ## Groups
 
 A group is a handle several people share. The channels made in it belong to the

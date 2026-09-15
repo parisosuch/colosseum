@@ -2,10 +2,11 @@ import { beforeAll, expect, test } from "bun:test";
 import { NextResponse } from "next/server";
 
 import { seed, USERS } from "@/scripts/seed";
-import { attachPreview, attachPreviews, moveBlock } from "./api-auth";
+import { attachPreview, attachPreviews, leaveChannel, moveBlock } from "./api-auth";
 import { createMedia, putBlob } from "./blob";
 import { createChannel } from "./channel";
 import { Column, getChannelColumns, uploadTextColumn, uploadURLColumn } from "./column";
+import { addChannelMemberByHandle, isChannelMember } from "./member";
 import { getScreenshot, upsertScreenshot } from "./screenshot-data";
 
 beforeAll(async () => {
@@ -169,6 +170,68 @@ test("moveBlock 404s on a missing block or a missing destination channel", async
     status: 404,
     error: "Not found.",
   });
+});
+
+// leaveChannel returns null on success and a denial NextResponse otherwise, so
+// it needs its own reader — `denial` above is typed for moveBlock's return.
+async function leaveDenial(
+  result: NextResponse | null,
+): Promise<{ status: number; error: string }> {
+  expect(result).toBeInstanceOf(NextResponse);
+  const res = result as NextResponse;
+  const body = (await res.json()) as { error?: string };
+  return { status: res.status, error: body.error ?? "" };
+}
+
+test("leaveChannel drops the caller's membership", async () => {
+  const channel = await createChannel({
+    title: "Bob's, with Alice in it",
+    access: "private",
+    owned_by: USERS.bob.ownerId,
+  });
+  await addChannelMemberByHandle(channel.id, USERS.alice.handle);
+  expect(await isChannelMember(channel.id, USERS.alice.id)).toBe(true);
+
+  expect(await leaveChannel(channel.id, USERS.alice.id)).toBeNull();
+  expect(await isChannelMember(channel.id, USERS.alice.id)).toBe(false);
+});
+
+test("leaveChannel refuses the owner, who has no membership to give up", async () => {
+  const channel = await createChannel({
+    title: "Alice's own",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
+
+  // Without this guard removeChannelMember deletes nothing and reports success,
+  // leaving the owner believing they left a channel they still own.
+  const { status, error } = await leaveDenial(await leaveChannel(channel.id, USERS.alice.id));
+  expect(status).toBe(409);
+  expect(error).toContain("manage this channel");
+});
+
+test("leaveChannel refuses someone who was never a member", async () => {
+  const channel = await createChannel({
+    title: "Bob's, without Alice",
+    access: "public",
+    owned_by: USERS.bob.ownerId,
+  });
+
+  const { status, error } = await leaveDenial(await leaveChannel(channel.id, USERS.alice.id));
+  expect(status).toBe(409);
+  expect(error).toContain("not a member");
+});
+
+test("leaveChannel 404s on a private channel the caller cannot read", async () => {
+  const channel = await createChannel({
+    title: "Bob's secret",
+    access: "private",
+    owned_by: USERS.bob.ownerId,
+  });
+
+  // A 409 here would confirm the channel exists to someone with no access.
+  const { status } = await leaveDenial(await leaveChannel(channel.id, USERS.alice.id));
+  expect(status).toBe(404);
 });
 
 test("API block payloads carry the markdown source, not the rendered HTML", async () => {

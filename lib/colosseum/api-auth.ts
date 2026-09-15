@@ -18,7 +18,7 @@ import {
   viewerScope,
 } from "./channel";
 import { getChannel } from "./channel";
-import { isChannelMember } from "./member";
+import { isChannelMember, removeChannelMember } from "./member";
 import { Column, getColumn, moveColumn } from "./column";
 import { ApiToken } from "./api-token";
 import { getScreenshot, getScreenshotsForUrls } from "./screenshot-data";
@@ -280,6 +280,40 @@ export async function moveBlock(
 
   const moved = await moveColumn(blockId, destinationChannelId);
   return moved ?? apiError("Not found.", 404);
+}
+
+// Leaving a channel someone else owns: the caller drops their own membership.
+// Composed here beside the rest of the matrix, since both surfaces need the
+// same three guards.
+//
+// An owner cannot leave. Ownership is `channel.owned_by`, not a membership row,
+// so removeChannelMember would delete nothing and report success while the
+// channel stayed exactly as it was — the caller has to delete the channel, or
+// hand it on, and should be told so rather than silently no-op'd. The same
+// holds for a group's admins, who manage its channels through the group.
+//
+// A channel the caller cannot read is a 404, so this never confirms that
+// someone else's private channel exists.
+export async function leaveChannel(
+  channelId: number,
+  userId: string,
+): Promise<NextResponse | null> {
+  const channel = await getChannel(channelId);
+  const denial = await authorizeChannelRead(channel, userId);
+  if (denial) return denial;
+
+  if (canManageChannel(channel!, await viewerScope(userId))) {
+    return apiError(
+      "You manage this channel, so there is no membership to give up. Delete it or transfer it instead.",
+      409,
+    );
+  }
+  if (!(await isChannelMember(channelId, userId))) {
+    return apiError("You are not a member of this channel.", 409);
+  }
+
+  await removeChannelMember(channelId, userId);
+  return null;
 }
 
 // url blocks capture a preview asynchronously (see triggerScreenshotCapture in

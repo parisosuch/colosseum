@@ -1,7 +1,7 @@
 import "server-only";
 
-import { and, desc, eq, inArray, lt, ne, or, sql } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
+import { and, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
+import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
 
 import { db } from "@/lib/db";
 import { channel, channelMember, column, owner } from "@/lib/db/schema";
@@ -66,6 +66,22 @@ export function blockLabel(b: {
   return "a column";
 }
 
+// Postgres keeps created_at to microseconds, but drizzle's `timestamp` column
+// maps through a JS Date — millisecond precision — in both directions. A cursor
+// read off one of those Dates is rounded down, and `created_at < cursor` then
+// skipped anything written inside the boundary millisecond: older than the last
+// item on the page, so not on it, and not older than the truncated cursor, so
+// not on the next one either. Those rows reached no page at all.
+//
+// Reading the timestamp as text keeps the microseconds, and the cursor goes back
+// as a timestamptz literal rather than through a Date, so neither side rounds.
+// The format is fixed-width, so `at` still orders as a plain string compare, and
+// a millisecond cursor issued by an older page still parses.
+const preciseAt = (col: AnyPgColumn) =>
+  sql<string>`to_char(${col} at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
+
+const olderThan = (col: AnyPgColumn, cursor: string) => sql`${col} < ${cursor}::timestamptz`;
+
 // Recent public blocks, channels, and new members, merged newest-first. Capped
 // queries (indexed on created_at), then merge + slice in memory. `before` is a
 // cursor — the `at` of the last item seen — so each source returns only older
@@ -75,7 +91,6 @@ export async function getActivityFeed(
   limit = ACTIVITY_PAGE,
   before?: string,
 ): Promise<ActivityItem[]> {
-  const cursor = before ? new Date(before) : null;
   const ownerIds = viewerOwnerIds(viewer);
   // The block's creator is a person and the channel's owner is an owner row, so
   // the two handles come from the same table joined on different keys.
@@ -85,6 +100,7 @@ export async function getActivityFeed(
     db
       .select({
         col: column,
+        at: preciseAt(column.created_at),
         handle: creator.handle,
         avatar: creator.avatar_url,
         channelTitle: channel.title,
@@ -106,14 +122,14 @@ export async function getActivityFeed(
               ? sql`exists (select 1 from ${channelMember} where ${channelMember.channel_id} = ${channel.id} and ${channelMember.user_id} = ${viewer.userId})`
               : undefined,
           ),
-          cursor ? lt(column.created_at, cursor) : undefined,
+          before ? olderThan(column.created_at, before) : undefined,
         ),
       )
       .orderBy(desc(column.created_at))
       .limit(limit),
     db
       .select({
-        at: channel.created_at,
+        at: preciseAt(channel.created_at),
         handle: owner.handle,
         avatar: owner.avatar_url,
         channelId: channel.id,
@@ -123,7 +139,10 @@ export async function getActivityFeed(
       .from(channel)
       .innerJoin(owner, eq(owner.id, channel.owned_by))
       .where(
-        and(ne(channel.access, "private"), cursor ? lt(channel.created_at, cursor) : undefined),
+        and(
+          ne(channel.access, "private"),
+          before ? olderThan(channel.created_at, before) : undefined,
+        ),
       )
       .orderBy(desc(channel.created_at))
       .limit(limit),
@@ -131,12 +150,12 @@ export async function getActivityFeed(
     // people — a new group is not a new member of the network.
     db
       .select({
-        at: owner.created_at,
+        at: preciseAt(owner.created_at),
         handle: owner.handle,
         avatar: owner.avatar_url,
       })
       .from(owner)
-      .where(and(eq(owner.kind, "user"), cursor ? lt(owner.created_at, cursor) : undefined))
+      .where(and(eq(owner.kind, "user"), before ? olderThan(owner.created_at, before) : undefined))
       .orderBy(desc(owner.created_at))
       .limit(limit),
   ]);
@@ -158,9 +177,9 @@ export async function getActivityFeed(
   ]);
 
   const items: ActivityItem[] = [
-    ...blocks.map(({ col, handle, avatar, channelTitle, channelHandle }, i) => ({
+    ...blocks.map(({ col, at, handle, avatar, channelTitle, channelHandle }, i) => ({
       kind: "block" as const,
-      at: col.created_at.toISOString(),
+      at,
       handle,
       avatarUrl: avatar ?? undefined,
       channelId: col.channel_id,
@@ -172,7 +191,7 @@ export async function getActivityFeed(
     })),
     ...channels.map((c) => ({
       kind: "channel" as const,
-      at: c.at.toISOString(),
+      at: c.at,
       handle: c.handle,
       avatarUrl: c.avatar ?? undefined,
       channelId: c.channelId,
@@ -183,7 +202,7 @@ export async function getActivityFeed(
     })),
     ...joins.map((u) => ({
       kind: "user" as const,
-      at: u.at.toISOString(),
+      at: u.at,
       handle: u.handle,
       avatarUrl: u.avatar ?? undefined,
     })),

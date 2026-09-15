@@ -59,6 +59,7 @@ ownership. A group's channels count as yours on both counts.
 
 | Tool             | Equivalent                         | Notes                                                            |
 | ---------------- | ---------------------------------- | ---------------------------------------------------------------- |
+| `whoami`         | `GET /api/v1/me`                   | The account the token belongs to, by `handle`.                   |
 | `list_channels`  | `GET /api/v1/channels`             | Yours and your groups', each with the `handle` it lives under.   |
 | `list_groups`    | `GET /api/v1/groups`               | The groups you're in, with your `role` in each.                  |
 | `create_channel` | `POST /api/v1/channels`            | `title`, optional `description`, `private`, `owner`.             |

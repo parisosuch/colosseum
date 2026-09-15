@@ -30,6 +30,7 @@ import {
   viewerScope,
 } from "@/lib/colosseum/channel";
 import { resolveCreateOwner } from "@/lib/colosseum/owner";
+import { getUserProfile } from "@/lib/colosseum/user";
 import { listUserGroups } from "@/lib/colosseum/group";
 import {
   Column,
@@ -136,6 +137,29 @@ const handler = createMcpHandler(
       asTool(async (_args: Record<string, never>, { userId }) => ({
         channels: await getViewerChannels(await viewerScope(userId)),
       })),
+    );
+
+    server.registerTool(
+      "whoami",
+      {
+        description:
+          "The account this token belongs to: its `handle`, and what its " +
+          "profile shows. Use it to name yourself — every other tool is " +
+          "addressed by channel id or by a group handle from list_groups.",
+        inputSchema: {},
+      },
+      asTool(async (_args: Record<string, never>, { userId }) => {
+        const profile = await getUserProfile(userId);
+        if (!profile) throw new Error("This account has not finished onboarding.");
+        return {
+          me: {
+            handle: profile.handle,
+            about: profile.about,
+            avatar_url: profile.avatar_url,
+            created_at: profile.created_at,
+          },
+        };
+      }),
     );
 
     server.registerTool(

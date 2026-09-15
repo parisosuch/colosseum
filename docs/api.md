@@ -127,8 +127,13 @@ the app, where they are confirmed.
 
 ### `GET /api/v1/channels/:id/blocks`
 
-List a channel's blocks (public or owned). Optional `?limit=N`.
-→ `{ "blocks": [...] }`
+List a channel's blocks (public or owned), newest first.
+Optional `?limit=N&offset=N`. → `{ "blocks": [...], "total": 128 }`
+
+`total` is the channel's whole block count, not the page's, so a client can page
+to the end instead of guessing: request `offset=0&limit=50`, then `offset=50`,
+until `offset + blocks.length` reaches `total`. Without an offset the newest
+`limit` blocks are a sample of a large channel rather than a listing of it.
 
 ### `POST /api/v1/channels/:id/blocks`
 

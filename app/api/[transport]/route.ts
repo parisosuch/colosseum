@@ -40,12 +40,14 @@ import {
   getChannelColumns,
   getColumn,
   updateColumn,
+  updateColumnTags,
   uploadImageColumn,
   uploadTextColumn,
   uploadURLColumn,
 } from "@/lib/colosseum/column";
 import { putImageBlobFromUrl } from "@/lib/colosseum/blob";
 import { triggerScreenshotCapture } from "@/lib/colosseum/screenshot";
+import { normalizeTags } from "@/lib/tags";
 import { logError } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -333,13 +335,15 @@ const handler = createMcpHandler(
           "channel, or a public/private channel you're a member of). Exactly one " +
           "of text/url/image must match `type`. A url block's preview screenshot " +
           "captures in the background, so it comes back null here — poll get_block " +
-          "until `preview` lands.",
+          "until `preview` lands. Optional `tags` are alphanumeric with dashes; " +
+          "anything else is stripped.",
         inputSchema: {
           channelId: z.number().int(),
           type: z.enum(["text", "url", "image"]),
           text: z.string().optional(),
           url: z.string().optional(),
           image: z.string().optional(),
+          tags: z.array(z.string()).optional(),
         },
       },
       asTool(
@@ -350,38 +354,48 @@ const handler = createMcpHandler(
             text?: string;
             url?: string;
             image?: string;
+            tags?: string[];
           },
           { userId },
         ) => {
           const channel = await requireChannel(userId, args.channelId, "contribute");
           const base = { created_by: userId, channel_id: args.channelId };
 
+          // The three creates funnel into one variable so tags are applied once
+          // at the end, rather than repeated down each branch.
+          let created: Column;
           if (args.type === "text") {
             if (!args.text?.trim()) throw new Error("`text` is required for a text block.");
-            return {
-              block: await attachPreview(await uploadTextColumn({ ...base, text: args.text })),
-            };
-          }
-          if (args.type === "url") {
+            created = await uploadTextColumn({ ...base, text: args.text });
+          } else if (args.type === "url") {
             if (!args.url?.trim()) throw new Error("`url` is required for a url block.");
             // uploadURLColumn stores its `text` arg as the block's url.
             const url = args.url.trim();
-            const block = await attachPreview(await uploadURLColumn({ ...base, text: url }));
+            created = await uploadURLColumn({ ...base, text: url });
             // Fire-and-forget, same as the REST create path: the capture is
             // queued and deduped per URL, and the tool result returns now.
             triggerScreenshotCapture(url, userId);
-            return { block };
+          } else {
+            if (!args.image?.trim())
+              throw new Error("`image` (a public image URL) is required for an image block.");
+            // Fetch and store the image so it's thumbnailed and self-hosted,
+            // rather than persisting a third-party URL that skips compression.
+            const image = await putImageBlobFromUrl(
+              args.image.trim(),
+              userId,
+              channel.private ? "private" : "public",
+            );
+            created = await uploadImageColumn({ ...base, image });
           }
-          if (!args.image?.trim())
-            throw new Error("`image` (a public image URL) is required for an image block.");
-          // Fetch and store the image so it's thumbnailed and self-hosted,
-          // rather than persisting a third-party URL that skips compression.
-          const image = await putImageBlobFromUrl(
-            args.image.trim(),
-            userId,
-            channel.private ? "private" : "public",
-          );
-          return { block: await attachPreview(await uploadImageColumn({ ...base, image })) };
+
+          // The upload helpers take no tags, so this is a second write — the
+          // same two steps the web app makes when adding a block and tagging it.
+          const tags = args.tags ? normalizeTags(args.tags) : [];
+          if (tags.length > 0) {
+            await updateColumnTags(created.id, tags);
+            created = (await getColumn(created.id, { html: false })) ?? created;
+          }
+          return { block: await attachPreview(created) };
         },
       ),
     );
@@ -400,7 +414,11 @@ const handler = createMcpHandler(
     server.registerTool(
       "update_block",
       {
-        description: "Update a block in a channel you own. Omitted fields are unchanged.",
+        description:
+          "Update a block in a channel you own. Omitted fields are unchanged. " +
+          "`tags` replaces the whole list, so pass the tags you want to keep; " +
+          "an empty array clears them. Tags are alphanumeric with dashes — " +
+          "anything else is stripped.",
         inputSchema: {
           id: z.number().int(),
           title: z.string().optional(),
@@ -408,6 +426,7 @@ const handler = createMcpHandler(
           text: z.string().optional(),
           url: z.string().optional(),
           image: z.string().optional(),
+          tags: z.array(z.string()).optional(),
         },
       },
       asTool(
@@ -419,6 +438,7 @@ const handler = createMcpHandler(
             text?: string;
             url?: string;
             image?: string;
+            tags?: string[];
           },
           { userId },
         ) => {
@@ -429,11 +449,19 @@ const handler = createMcpHandler(
             const value = (args as Record<string, unknown>)[key];
             if (typeof value === "string") updates[key] = value;
           }
-          if (Object.keys(updates).length === 0) {
-            throw new Error(`No editable fields provided. Allowed: ${allowed.join(", ")}.`);
+          // Tags are a string[] on every type, so they're written separately
+          // from the field loop. Presence is what counts — `[]` clears them.
+          const tags = args.tags !== undefined ? normalizeTags(args.tags) : null;
+          if (Object.keys(updates).length === 0 && tags === null) {
+            throw new Error(`No editable fields provided. Allowed: ${allowed.join(", ")}, tags.`);
           }
+          if (tags !== null) await updateColumnTags(args.id, tags);
 
-          const updated = await attachPreview(await updateColumn(args.id, updates));
+          const updated = await attachPreview(
+            Object.keys(updates).length > 0
+              ? await updateColumn(args.id, updates)
+              : (await getColumn(args.id, { html: false }))!,
+          );
           // A new url means a new preview to capture; skips itself if this URL
           // is already cached.
           if (block.type === "url" && typeof updates.url === "string") {

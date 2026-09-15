@@ -140,6 +140,8 @@ Add a block to a channel you own. One of:
 { "type": "image", "image": "https://.../public-image.png" }
 ```
 
+Optional `tags` on any of them: `{ "type": "url", "url": "...", "tags": ["reading", "css"] }`.
+
 → `201 { "block": { ..., "preview": null } }`
 
 > A url block's preview screenshot captures in the background — the create call
@@ -162,8 +164,19 @@ Fetch a block (visible if its channel is public or owned).
 ### `PATCH /api/v1/blocks/:id`
 
 Update a block in a channel you own. Editable fields by type: `title`,
-`description`, plus `text` / `url` / `image` for that block's type.
-→ `{ "block": { ... } }`
+`description`, plus `text` / `url` / `image` for that block's type, and `tags`
+on any type. → `{ "block": { ... } }`
+
+`tags` replaces the whole list rather than adding to it, so send the tags you
+want to keep; `[]` clears them.
+
+#### Tags
+
+Tags are alphanumeric with dashes. Spaces become dashes, anything else is
+dropped, and duplicates are removed — `["design systems", "#css!"]` is stored as
+`["design-systems", "css"]`. The board filters tags on an exact match, so a tag
+stored in any other shape would match nothing and could not be removed from the
+editor either; the same rule runs in both places (`lib/tags.ts`).
 
 ### `DELETE /api/v1/blocks/:id`
 

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 
+import { normalizeTag, sanitizeTag } from "@/lib/tags";
 import { cn } from "@/lib/utils";
 import { Badge, badgeVariants } from "./ui/badge";
 import { Input } from "./ui/input";
@@ -24,18 +25,13 @@ export default function TagInput({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
 
-  // Tags are alphanumeric-with-dashes: spaces become `-`, everything else is
-  // dropped as it's typed. Runs of dashes collapse so "a  b" → "a-b", not
-  // "a--b". Leading/trailing dashes are trimmed on commit, not mid-type (so you
-  // can still type the `-` between two words).
-  const sanitize = (value: string) =>
-    value
-      .replace(/\s+/g, "-")
-      .replace(/[^a-zA-Z0-9-]/g, "")
-      .replace(/-+/g, "-");
+  // Shared with the API so both write the same shape (see lib/tags.ts).
+  // Leading/trailing dashes are trimmed on commit rather than mid-type, so you
+  // can still type the `-` between two words.
+  const sanitize = sanitizeTag;
 
   const commit = () => {
-    const tag = draft.replace(/^-+|-+$/g, "");
+    const tag = normalizeTag(draft);
     if (tag) {
       onChange([...new Set([...tags, tag])]);
     }

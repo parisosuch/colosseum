@@ -14,11 +14,14 @@ import { putImageBlobFromUrl } from "@/lib/colosseum/blob";
 import { getChannel, viewerScope } from "@/lib/colosseum/channel";
 import {
   getChannelColumns,
+  getColumn,
+  updateColumnTags,
   uploadImageColumn,
   uploadTextColumn,
   uploadURLColumn,
 } from "@/lib/colosseum/column";
 import { triggerScreenshotCapture } from "@/lib/colosseum/screenshot";
+import { normalizeTags } from "@/lib/tags";
 import { logError, logInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -100,6 +103,11 @@ export async function POST(req: Request, { params }: Ctx) {
   const type = body.type;
   const base = { created_by: auth.userId, channel_id: channelId };
 
+  if (body.tags !== undefined && !Array.isArray(body.tags)) {
+    return apiError("`tags` must be an array of strings.", 400);
+  }
+  const tags = Array.isArray(body.tags) ? normalizeTags(body.tags) : [];
+
   try {
     let block;
     if (type === "text") {
@@ -136,6 +144,12 @@ export async function POST(req: Request, { params }: Ctx) {
       block = await uploadImageColumn({ ...base, image });
     } else {
       return apiError("`type` must be one of: text, url, image.", 400);
+    }
+    // The upload helpers take no tags, so this is a second write — the same two
+    // steps the web app makes when adding a block and then tagging it.
+    if (tags.length > 0) {
+      await updateColumnTags(block.id, tags);
+      block = (await getColumn(block.id, { html: false })) ?? block;
     }
     logInfo(
       "channels.id.blocks.POST",

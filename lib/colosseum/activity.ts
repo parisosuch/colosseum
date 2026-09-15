@@ -1,7 +1,7 @@
 import "server-only";
 
-import { and, desc, eq, lt, ne, or, sql } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
+import { and, desc, eq, ne, or, sql } from "drizzle-orm";
+import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
 
 import { db } from "@/lib/db";
 import { channel, channelMember, column, userProfile } from "@/lib/db/schema";
@@ -65,6 +65,22 @@ export function blockLabel(b: {
   return "a column";
 }
 
+// Postgres keeps created_at to microseconds, but drizzle's `timestamp` column
+// maps through a JS Date — millisecond precision — in both directions. A cursor
+// read off one of those Dates is rounded down, and `created_at < cursor` then
+// skipped anything written inside the boundary millisecond: older than the last
+// item on the page, so not on it, and not older than the truncated cursor, so
+// not on the next one either. Those rows reached no page at all.
+//
+// Reading the timestamp as text keeps the microseconds, and the cursor goes back
+// as a timestamptz literal rather than through a Date, so neither side rounds.
+// The format is fixed-width, so `at` still orders as a plain string compare, and
+// a millisecond cursor issued by an older page still parses.
+const preciseAt = (col: AnyPgColumn) =>
+  sql<string>`to_char(${col} at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
+
+const olderThan = (col: AnyPgColumn, cursor: string) => sql`${col} < ${cursor}::timestamptz`;
+
 // Recent public blocks, channels, and new members, merged newest-first. Capped
 // queries (indexed on created_at), then merge + slice in memory. `before` is a
 // cursor — the `at` of the last item seen — so each source returns only older
@@ -74,7 +90,6 @@ export async function getActivityFeed(
   limit = ACTIVITY_PAGE,
   before?: string,
 ): Promise<ActivityItem[]> {
-  const cursor = before ? new Date(before) : null;
   // The block's creator and the channel's owner are different people whenever a
   // member adds to someone else's channel, so resolve both handles.
   const creator = alias(userProfile, "creator_profile");
@@ -83,6 +98,7 @@ export async function getActivityFeed(
     db
       .select({
         col: column,
+        at: preciseAt(column.created_at),
         handle: creator.handle,
         avatar: creator.avatar_url,
         channelTitle: channel.title,
@@ -104,14 +120,14 @@ export async function getActivityFeed(
               ? sql`exists (select 1 from ${channelMember} where ${channelMember.channel_id} = ${channel.id} and ${channelMember.user_id} = ${viewerId})`
               : undefined,
           ),
-          cursor ? lt(column.created_at, cursor) : undefined,
+          before ? olderThan(column.created_at, before) : undefined,
         ),
       )
       .orderBy(desc(column.created_at))
       .limit(limit),
     db
       .select({
-        at: channel.created_at,
+        at: preciseAt(channel.created_at),
         handle: userProfile.handle,
         avatar: userProfile.avatar_url,
         channelId: channel.id,
@@ -121,19 +137,22 @@ export async function getActivityFeed(
       .from(channel)
       .innerJoin(userProfile, eq(userProfile.user_id, channel.owner_id))
       .where(
-        and(ne(channel.access, "private"), cursor ? lt(channel.created_at, cursor) : undefined),
+        and(
+          ne(channel.access, "private"),
+          before ? olderThan(channel.created_at, before) : undefined,
+        ),
       )
       .orderBy(desc(channel.created_at))
       .limit(limit),
     // A member "joins" the network when they get a handle (onboard).
     db
       .select({
-        at: userProfile.created_at,
+        at: preciseAt(userProfile.created_at),
         handle: userProfile.handle,
         avatar: userProfile.avatar_url,
       })
       .from(userProfile)
-      .where(cursor ? lt(userProfile.created_at, cursor) : undefined)
+      .where(before ? olderThan(userProfile.created_at, before) : undefined)
       .orderBy(desc(userProfile.created_at))
       .limit(limit),
   ]);
@@ -155,9 +174,9 @@ export async function getActivityFeed(
   ]);
 
   const items: ActivityItem[] = [
-    ...blocks.map(({ col, handle, avatar, channelTitle, channelHandle }, i) => ({
+    ...blocks.map(({ col, at, handle, avatar, channelTitle, channelHandle }, i) => ({
       kind: "block" as const,
-      at: col.created_at.toISOString(),
+      at,
       handle,
       avatarUrl: avatar ?? undefined,
       channelId: col.channel_id,
@@ -169,7 +188,7 @@ export async function getActivityFeed(
     })),
     ...channels.map((c) => ({
       kind: "channel" as const,
-      at: c.at.toISOString(),
+      at: c.at,
       handle: c.handle,
       avatarUrl: c.avatar ?? undefined,
       channelId: c.channelId,
@@ -180,7 +199,7 @@ export async function getActivityFeed(
     })),
     ...joins.map((u) => ({
       kind: "user" as const,
-      at: u.at.toISOString(),
+      at: u.at,
       handle: u.handle,
       avatarUrl: u.avatar ?? undefined,
     })),

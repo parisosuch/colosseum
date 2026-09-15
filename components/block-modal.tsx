@@ -227,8 +227,17 @@ function MarkdownEditor({
   const [mode, setMode] = useState<"write" | "preview">("preview");
 
   if (!canEdit) {
+    // Hold the text to its measure instead of the full media pane. The pane is
+    // sized for an image and centres what's in it, so a full-width wrapper left
+    // a one-line block stranded at the left edge of a near-viewport surface.
+    // Capping the wrapper lets that centring do its job, and `.doc` caps the
+    // text at the same 68ch either way.
+    //
+    // Scrollbar hidden as it is on the modal's other scrolling surfaces: at
+    // pane width the bar sat far from the text, but against a 68ch column it
+    // would run right beside it.
     return (
-      <div className="w-full max-h-full overflow-y-auto">
+      <div className="w-full max-w-[68ch] max-h-full overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <RenderedMarkdown html={savedHtml} />
       </div>
     );

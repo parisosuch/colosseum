@@ -30,6 +30,7 @@ import {
   viewerScope,
 } from "@/lib/colosseum/channel";
 import { resolveCreateOwner } from "@/lib/colosseum/owner";
+import { getColumnQuota } from "@/lib/colosseum/admin";
 import { getUserProfile } from "@/lib/colosseum/user";
 import { listUserGroups } from "@/lib/colosseum/group";
 import {
@@ -143,13 +144,18 @@ const handler = createMcpHandler(
       "whoami",
       {
         description:
-          "The account this token belongs to: its `handle`, and what its " +
-          "profile shows. Use it to name yourself — every other tool is " +
-          "addressed by channel id or by a group handle from list_groups.",
+          "The account this token belongs to: its `handle`, what its profile " +
+          "shows, and its block allowance. Use it to name yourself — every " +
+          "other tool is addressed by channel id or by a group handle from " +
+          "list_groups — and to check `blocks` before adding a batch, since " +
+          "create_block refuses once `used` reaches `limit`.",
         inputSchema: {},
       },
       asTool(async (_args: Record<string, never>, { userId }) => {
-        const profile = await getUserProfile(userId);
+        const [profile, blocks] = await Promise.all([
+          getUserProfile(userId),
+          getColumnQuota(userId),
+        ]);
         if (!profile) throw new Error("This account has not finished onboarding.");
         return {
           me: {
@@ -157,6 +163,9 @@ const handler = createMcpHandler(
             about: profile.about,
             avatar_url: profile.avatar_url,
             created_at: profile.created_at,
+            // What create_block will refuse on, before it refuses. A null
+            // limit is unlimited.
+            blocks: { used: blocks.used, limit: blocks.limit },
           },
         };
       }),

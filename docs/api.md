@@ -76,7 +76,15 @@ Delete a channel you own (its blocks cascade). → `{ "success": true }`
 
 ### `GET /api/v1/me`
 
-Who the token belongs to. → `{ "me": { "handle", "about", "avatar_url", "created_at" } }`
+Who the token belongs to, and what it may still add.
+
+→ `{ "me": { "handle", "about", "avatar_url", "created_at", "blocks": { "used", "limit" } } }`
+
+`blocks` is the account's block allowance: `used` against the `limit` that
+`POST /api/v1/channels/:id/blocks` refuses on once reached. A `null` limit is
+unlimited — admins, and instances that set no cap. Reading it is how a client
+adding a batch can tell a quota refusal apart from a transient failure before
+it hits one.
 
 Every other endpoint is addressed by channel id, or by a group handle from
 `GET /api/v1/groups`, so without this a client can name every group it belongs

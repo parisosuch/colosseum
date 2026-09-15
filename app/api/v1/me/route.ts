@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { authenticateApiToken, apiError, json } from "@/lib/colosseum/api-auth";
+import { getColumnQuota } from "@/lib/colosseum/admin";
 import { getUserProfile } from "@/lib/colosseum/user";
 import { logError } from "@/lib/log";
 
@@ -18,7 +19,10 @@ export async function GET(req: Request) {
   if (auth instanceof NextResponse) return auth;
 
   try {
-    const profile = await getUserProfile(auth.userId);
+    const [profile, blocks] = await Promise.all([
+      getUserProfile(auth.userId),
+      getColumnQuota(auth.userId),
+    ]);
     // A token can only be minted from a settings page onboarding gates, so an
     // account with no profile row is a broken state rather than a normal one.
     if (!profile) return apiError("This account has not finished onboarding.", 404);
@@ -29,6 +33,9 @@ export async function GET(req: Request) {
         about: profile.about,
         avatar_url: profile.avatar_url,
         created_at: profile.created_at,
+        // What `create_block` will refuse on, before it refuses. `limit: null`
+        // is unlimited (admins, and instances that set no cap).
+        blocks: { used: blocks.used, limit: blocks.limit },
       },
     });
   } catch (e) {

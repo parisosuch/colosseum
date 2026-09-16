@@ -177,11 +177,25 @@ Add a block to a channel you own. One of:
 
 ```json
 { "type": "text",  "text": "a note" }
-{ "type": "url",   "url": "https://example.com" }
+{ "type": "url",   "url": "https://example.com", "detect": true }
 { "type": "image", "image": "https://.../public-image.png" }
 ```
 
 Optional `tags` on any of them: `{ "type": "url", "url": "...", "tags": ["reading", "css"] }`.
+
+A url is ingested as what it points at: a tweet, a YouTube video or channel, a
+Spotify item, a GitHub repo or account, an Instagram post, or a direct image
+each become that kind of block, with their details fetched and stored — the
+same as a link pasted into the web app. Anything else stays a plain link, and
+only a plain link gets a screenshot.
+
+**So the block that comes back is often not `type: "url"`.** Read the returned
+`type` rather than assuming. Pass `"detect": false` to force a plain link block
+— worth it if you want the screenshot card, or if the link's host is slow and
+you'd rather not wait on the lookup.
+
+When a lookup fails — a deleted tweet, a rate-limited GitHub, an unreachable
+host — the block falls back to a plain link rather than failing the request.
 
 → `201 { "block": { ..., "preview": null } }`
 

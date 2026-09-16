@@ -53,6 +53,7 @@ import {
 } from "@/lib/colosseum/column";
 import { putImageBlobFromUrl } from "@/lib/colosseum/blob";
 import { triggerScreenshotCapture } from "@/lib/colosseum/screenshot";
+import { ingestUrlColumn } from "@/lib/colosseum/ingest";
 import { normalizeTags } from "@/lib/tags";
 import { SEARCH_LIMIT } from "@/lib/utils";
 import { logError } from "@/lib/log";
@@ -447,7 +448,13 @@ const handler = createMcpHandler(
           "of text/url/image must match `type`. A url block's preview screenshot " +
           "captures in the background, so it comes back null here — poll get_block " +
           "until `preview` lands. Optional `tags` are alphanumeric with dashes; " +
-          "anything else is stripped.",
+          "anything else is stripped.\n\n" +
+          "A url is ingested as what it points at: a tweet, a YouTube video or " +
+          "channel, a Spotify item, a GitHub repo or account, an Instagram post, " +
+          "or a direct image each become that kind of block, with its details " +
+          "fetched and stored. Anything else stays a plain link with a " +
+          "screenshot. The returned block's `type` says which it became — it is " +
+          "often not `url`. Pass `detect: false` to force a plain link block.",
         inputSchema: {
           channelId: z.number().int(),
           type: z.enum(["text", "url", "image"]),
@@ -455,6 +462,7 @@ const handler = createMcpHandler(
           url: z.string().optional(),
           image: z.string().optional(),
           tags: z.array(z.string()).optional(),
+          detect: z.boolean().optional(),
         },
       },
       asTool(
@@ -466,6 +474,7 @@ const handler = createMcpHandler(
             url?: string;
             image?: string;
             tags?: string[];
+            detect?: boolean;
           },
           { userId },
         ) => {
@@ -480,12 +489,24 @@ const handler = createMcpHandler(
             created = await uploadTextColumn({ ...base, text: args.text });
           } else if (args.type === "url") {
             if (!args.url?.trim()) throw new Error("`url` is required for a url block.");
-            // uploadURLColumn stores its `text` arg as the block's url.
             const url = args.url.trim();
-            created = await uploadURLColumn({ ...base, text: url });
+            // A tweet, a YouTube video, a GitHub repo and so on each become
+            // their own kind of block, the same as a link pasted into the web
+            // app. `detect: false` keeps it a plain link.
+            created =
+              args.detect === false
+                ? await uploadURLColumn({ ...base, text: url })
+                : await ingestUrlColumn({
+                    url,
+                    userId,
+                    channelId: args.channelId,
+                    channelPrivate: channel.private,
+                  });
+            // Only a block that stayed a plain link wants a screenshot; the
+            // richer types render from data fetched during the ingest.
             // Fire-and-forget, same as the REST create path: the capture is
             // queued and deduped per URL, and the tool result returns now.
-            triggerScreenshotCapture(url, userId);
+            if (created.type === "url") triggerScreenshotCapture(url, userId);
           } else {
             if (!args.image?.trim())
               throw new Error("`image` (a public image URL) is required for an image block.");

@@ -22,6 +22,7 @@ import {
   uploadURLColumn,
 } from "@/lib/colosseum/column";
 import { triggerScreenshotCapture } from "@/lib/colosseum/screenshot";
+import { ingestUrlColumn } from "@/lib/colosseum/ingest";
 import { normalizeTags } from "@/lib/tags";
 import { logError, logInfo } from "@/lib/log";
 
@@ -130,10 +131,23 @@ export async function POST(req: Request, { params }: Ctx) {
       if (typeof body.url !== "string" || !body.url.trim()) {
         return apiError("`url` is required for a url block.", 400);
       }
-      // uploadURLColumn stores its `text` arg as the block's url.
       const url = body.url.trim();
-      block = await uploadURLColumn({ ...base, text: url });
-      triggerScreenshotCapture(url, auth.userId);
+      // A tweet, a YouTube video, a GitHub repo and so on each become their own
+      // kind of block, the same as a link pasted into the web app. `detect:
+      // false` keeps it a plain link — the escape hatch for a caller that wants
+      // the screenshot card, or that is adding a link whose host is slow.
+      block =
+        body.detect === false
+          ? await uploadURLColumn({ ...base, text: url })
+          : await ingestUrlColumn({
+              url,
+              userId: auth.userId,
+              channelId,
+              channelPrivate: channel!.private,
+            });
+      // Only a block that stayed a plain link wants a screenshot; the richer
+      // types render from data fetched during the ingest.
+      if (block.type === "url") triggerScreenshotCapture(url, auth.userId);
     } else if (type === "image") {
       if (typeof body.image !== "string" || !body.image.trim()) {
         return apiError("`image` (a public image URL) is required for an image block.", 400);

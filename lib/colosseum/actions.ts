@@ -71,27 +71,10 @@ import {
   uploadPdfColumn,
   uploadVideoColumn,
   uploadTextColumn,
-  uploadTweetColumn,
-  uploadYouTubeColumn,
-  uploadYouTubeChannelColumn,
-  uploadSpotifyColumn,
-  uploadGitHubColumn,
-  uploadInstagramColumn,
-  uploadURLColumn,
 } from "./column";
-import { ingestTweet } from "./tweet";
-import { fetchYouTubeChannelMeta } from "./youtube-channel";
-import { fetchGitHubMeta } from "./github";
-import { fetchInstagramMeta } from "./instagram";
+
 import { renderEmail, sendEmail } from "@/lib/email";
-import { logError } from "@/lib/log";
-import {
-  githubRef,
-  instagramRef,
-  tweetIdFromUrl,
-  urlBlockKind,
-  youtubeChannelRef,
-} from "@/lib/utils";
+
 import {
   Comment,
   createComment,
@@ -135,6 +118,15 @@ import {
   updateAppSettings,
 } from "./admin";
 import { revokeApiToken } from "./api-token";
+import {
+  ingestGitHubColumn,
+  ingestInstagramColumn,
+  ingestSpotifyColumn,
+  ingestTweetColumn,
+  ingestUrlColumn,
+  ingestYouTubeChannelColumn,
+  ingestYouTubeColumn,
+} from "./ingest";
 import { notifyChannelNested } from "./nest";
 import { getScreenshotsForUrls, ColumnScreenshot } from "./screenshot-data";
 import {
@@ -589,45 +581,16 @@ export async function uploadURLColumnAction(input: {
 }): Promise<Column> {
   const userId = await requireUserId();
   const channel = await requireContributableChannel(input.channelId, userId);
-
   // Every path that accepts a URL ends up here — the channel input, the
-  // quick-add drawer, and anything added later — so this is where a URL's block
-  // type is decided. It used to be decided in the channel input alone, which
-  // meant the same link pasted into the drawer came out a plain link block.
-  //
-  // Each specialised action falls back to a plain URL block on its own when its
-  // lookup fails, so none of them can loop back into this function.
-  const url = input.text;
-  switch (urlBlockKind(url)) {
-    case "tweet":
-      return uploadTweetColumnAction({ channelId: input.channelId, url });
-    case "youtube_channel":
-      return uploadYouTubeChannelColumnAction({ channelId: input.channelId, url });
-    case "youtube":
-      return uploadYouTubeColumnAction({ channelId: input.channelId, url });
-    case "spotify":
-      return uploadSpotifyColumnAction({ channelId: input.channelId, url });
-    case "github":
-      return uploadGitHubColumnAction({ channelId: input.channelId, url });
-    case "instagram":
-      return uploadInstagramColumnAction({ channelId: input.channelId, url });
-    case "image":
-      try {
-        const image = await putImageBlobFromUrl(
-          url,
-          userId,
-          channel.private ? "private" : "public",
-        );
-        return uploadImageColumn({ created_by: userId, channel_id: input.channelId, image });
-      } catch (e) {
-        logError("column.url.image", `image ingest failed for ${url}`, e);
-      }
-      break;
-    case "url":
-      break;
-  }
-
-  return uploadURLColumn({ created_by: userId, channel_id: input.channelId, text: input.text });
+  // quick-add drawer, and anything added later — so a link lands as the same
+  // kind of block whoever adds it. The detection itself lives in ./ingest,
+  // shared with the REST API and the MCP tool, which cannot call this action.
+  return ingestUrlColumn({
+    url: input.text,
+    userId,
+    channelId: input.channelId,
+    channelPrivate: channel.private,
+  });
 }
 
 // Add a tweet block. Captures the tweet's snapshot (data + self-hosted media)
@@ -640,34 +603,12 @@ export async function uploadTweetColumnAction(input: {
 }): Promise<Column> {
   const userId = await requireUserId();
   await requireContributableChannel(input.channelId, userId);
-  const id = tweetIdFromUrl(input.url);
-  if (id && (await ingestTweet(id, userId))) {
-    // Store a canonical id-based permalink, not the pasted URL: the snapshot is
-    // shared per tweet id, so every block for the same tweet must carry the same
-    // url string for the shared-snapshot GC (deleteTweetIfUnreferenced) to see
-    // its siblings. x.com/i/status/<id> redirects to the real tweet.
-    const url = `https://x.com/i/status/${id}`;
-    return uploadTweetColumn({ created_by: userId, channel_id: input.channelId, url });
-  }
-  return uploadURLColumn({ created_by: userId, channel_id: input.channelId, text: input.url });
-}
-
-// The video's title via YouTube's public oEmbed endpoint (no API key, returns
-// only metadata — not the video itself, so it stays within "don't persist the
-// video"). Best-effort: null if the lookup fails, and the block is created
-// untitled rather than failing the add.
-async function youtubeTitle(url: string): Promise<string | undefined> {
-  try {
-    const res = await fetch(
-      `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`,
-    );
-    if (!res.ok) return undefined;
-    const data = (await res.json()) as { title?: string };
-    return data.title || undefined;
-  } catch (e) {
-    logError("youtube.oembed", `title lookup failed for ${url}`, e);
-    return undefined;
-  }
+  return ingestTweetColumn({
+    url: input.url,
+    userId,
+    channelId: input.channelId,
+    channelPrivate: false,
+  });
 }
 
 // Add a YouTube block. Stores the URL and the video's title; the embed renders
@@ -679,12 +620,11 @@ export async function uploadYouTubeColumnAction(input: {
 }): Promise<Column> {
   const userId = await requireUserId();
   await requireContributableChannel(input.channelId, userId);
-  const title = await youtubeTitle(input.url);
-  return uploadYouTubeColumn({
-    created_by: userId,
-    channel_id: input.channelId,
+  return ingestYouTubeColumn({
     url: input.url,
-    title,
+    userId,
+    channelId: input.channelId,
+    channelPrivate: false,
   });
 }
 
@@ -701,34 +641,11 @@ export async function uploadYouTubeChannelColumnAction(input: {
 }): Promise<Column> {
   const userId = await requireUserId();
   const channel = await requireContributableChannel(input.channelId, userId);
-  const ref = youtubeChannelRef(input.url);
-  const meta = ref ? await fetchYouTubeChannelMeta(ref.url) : null;
-  if (!ref || !meta) {
-    return uploadURLColumn({ created_by: userId, channel_id: input.channelId, text: input.url });
-  }
-
-  // Best-effort: a channel with no avatar, or one we can't fetch, still makes a
-  // fine card — it falls back to the channel's initial.
-  let image: string | undefined;
-  if (meta.avatarUrl) {
-    try {
-      image = await putImageBlobFromUrl(
-        meta.avatarUrl,
-        userId,
-        channel.private ? "private" : "public",
-      );
-    } catch (e) {
-      logError("youtube.channel.avatar", `avatar fetch failed for ${meta.url}`, e);
-    }
-  }
-
-  return uploadYouTubeChannelColumn({
-    created_by: userId,
-    channel_id: input.channelId,
-    url: meta.url,
-    title: meta.title || ref.label,
-    description: meta.description || undefined,
-    image,
+  return ingestYouTubeChannelColumn({
+    url: input.url,
+    userId,
+    channelId: input.channelId,
+    channelPrivate: channel.private,
   });
 }
 
@@ -746,35 +663,11 @@ export async function uploadGitHubColumnAction(input: {
 }): Promise<Column> {
   const userId = await requireUserId();
   const channel = await requireContributableChannel(input.channelId, userId);
-  const ref = githubRef(input.url);
-  const meta = ref ? await fetchGitHubMeta(ref) : null;
-  if (!ref || !meta) {
-    return uploadURLColumn({ created_by: userId, channel_id: input.channelId, text: input.url });
-  }
-
-  // Best-effort: an account with no avatar, or one we can't fetch, still makes
-  // a fine card — it falls back to the name's initial.
-  let image: string | undefined;
-  if (meta.avatarUrl) {
-    try {
-      image = await putImageBlobFromUrl(
-        meta.avatarUrl,
-        userId,
-        channel.private ? "private" : "public",
-      );
-    } catch (e) {
-      logError("github.avatar", `avatar fetch failed for ${meta.url}`, e);
-    }
-  }
-
-  return uploadGitHubColumn({
-    created_by: userId,
-    channel_id: input.channelId,
-    url: meta.url,
-    title: meta.title,
-    description: meta.description || undefined,
-    image,
-    language: meta.language || undefined,
+  return ingestGitHubColumn({
+    url: input.url,
+    userId,
+    channelId: input.channelId,
+    channelPrivate: channel.private,
   });
 }
 
@@ -793,53 +686,12 @@ export async function uploadInstagramColumnAction(input: {
 }): Promise<Column> {
   const userId = await requireUserId();
   const channel = await requireContributableChannel(input.channelId, userId);
-  const ref = instagramRef(input.url);
-  if (!ref) {
-    return uploadURLColumn({ created_by: userId, channel_id: input.channelId, text: input.url });
-  }
-  const meta = await fetchInstagramMeta(ref.url);
-
-  let image: string | undefined;
-  if (meta) {
-    try {
-      image = await putImageBlobFromUrl(
-        meta.imageUrl,
-        userId,
-        channel.private ? "private" : "public",
-      );
-    } catch (e) {
-      logError("instagram.image", `image fetch failed for ${meta.url}`, e);
-    }
-  }
-
-  // A failed lookup still makes an Instagram block, not a link block. Instagram
-  // range-blocks whole hosts, and it blocks the screenshot capture the same way,
-  // so a link block for an Instagram URL is a permanently blank card that reads
-  // as a broken scrape. Everything the card needs to stand on its own is already
-  // in the URL — the handle, and whether it points at a post or a profile. The
-  // picture is the only thing missing, and the card draws its mark without one.
-  return uploadInstagramColumn({
-    created_by: userId,
-    channel_id: input.channelId,
-    url: meta?.url ?? ref.url,
-    title: meta?.title || (ref.username ? `@${ref.username}` : "Instagram"),
-    description: meta?.description || undefined,
-    image,
+  return ingestInstagramColumn({
+    url: input.url,
+    userId,
+    channelId: input.channelId,
+    channelPrivate: channel.private,
   });
-}
-
-// Title + cover-art URL via Spotify's public oEmbed endpoint (no API key,
-// metadata only). Best-effort: empty on failure so the block is still created.
-async function spotifyMeta(url: string): Promise<{ title?: string; image?: string }> {
-  try {
-    const res = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(url)}`);
-    if (!res.ok) return {};
-    const data = (await res.json()) as { title?: string; thumbnail_url?: string };
-    return { title: data.title || undefined, image: data.thumbnail_url || undefined };
-  } catch (e) {
-    logError("spotify.oembed", `metadata lookup failed for ${url}`, e);
-    return {};
-  }
 }
 
 // Add a Spotify block. Stores the URL plus the item's title and cover art; the
@@ -850,13 +702,11 @@ export async function uploadSpotifyColumnAction(input: {
 }): Promise<Column> {
   const userId = await requireUserId();
   await requireContributableChannel(input.channelId, userId);
-  const { title, image } = await spotifyMeta(input.url);
-  return uploadSpotifyColumn({
-    created_by: userId,
-    channel_id: input.channelId,
+  return ingestSpotifyColumn({
     url: input.url,
-    title,
-    image,
+    userId,
+    channelId: input.channelId,
+    channelPrivate: false,
   });
 }
 

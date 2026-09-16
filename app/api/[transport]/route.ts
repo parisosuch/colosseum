@@ -16,19 +16,28 @@ import {
   authorizeChannelContribute,
   authorizeChannelManage,
   authorizeChannelRead,
+  addGroupMemberFor,
   addMemberFor,
   copyBlock,
+  createGroupFor,
+  deleteGroupFor,
   createCommentFor,
   deleteCommentFor,
   leaveChannel,
   listCommentsFor,
+  listGroupMembersFor,
   listMembersFor,
   moveBlock,
   nestChannel,
   parseAccess,
+  removeGroupMemberFor,
   removeMemberFor,
   reorderBlock,
   resolveApiToken,
+  setGroupRoleFor,
+  transferChannelFor,
+  transferGroupOwnershipFor,
+  updateGroupFor,
 } from "@/lib/colosseum/api-auth";
 import {
   Channel,
@@ -547,6 +556,194 @@ const handler = createMcpHandler(
           role: g.role,
         })),
       })),
+    );
+
+    server.registerTool(
+      "create_group",
+      {
+        description:
+          "Start a group: a handle several people share, whose channels belong " +
+          "to the group rather than to whoever made them. You become its " +
+          "owner. The handle comes from the same pool people's handles do, so " +
+          "check_handle first.",
+        inputSchema: { handle: z.string(), name: z.string() },
+      },
+      asTool(async ({ handle, name }: { handle: string; name: string }, { userId }) => {
+        const result = await createGroupFor(handle, name, userId);
+        if (result instanceof NextResponse) throw await denialToError(result);
+        return { group: result };
+      }),
+    );
+
+    server.registerTool(
+      "update_group",
+      {
+        description:
+          "Rename a group or change its blurb. Owner or admin. The handle " +
+          "itself is not editable here — it is the group's address, and every " +
+          "link to its channels runs through it.",
+        inputSchema: {
+          handle: z.string(),
+          name: z.string().optional(),
+          about: z.string().optional(),
+        },
+      },
+      asTool(
+        async (
+          { handle, name, about }: { handle: string; name?: string; about?: string },
+          { userId },
+        ) => {
+          const updates: { name?: string; about?: string } = {};
+          if (name !== undefined) updates.name = name;
+          if (about !== undefined) updates.about = about;
+          const result = await updateGroupFor(handle, updates, userId);
+          if (result instanceof NextResponse) throw await denialToError(result);
+          return { group: result };
+        },
+      ),
+    );
+
+    server.registerTool(
+      "delete_group",
+      {
+        description:
+          "Delete a group. Owner only. THIS ALSO DELETES EVERY CHANNEL THE " +
+          "GROUP OWNS, and their blocks, and cannot be undone — the channels " +
+          "belong to the group, so nothing is left holding them. Pass " +
+          "`confirm: true` to go ahead. If you are trying to leave a group, " +
+          "use remove_group_member on your own handle instead.",
+        inputSchema: { handle: z.string(), confirm: z.boolean() },
+      },
+      asTool(async ({ handle, confirm }: { handle: string; confirm: boolean }, { userId }) => {
+        if (!confirm) {
+          throw new Error(
+            "Deleting a group also deletes every channel it owns. Pass confirm: true if that is what you want.",
+          );
+        }
+        const denial = await deleteGroupFor(handle, userId);
+        if (denial) throw await denialToError(denial);
+        return { deleted: handle };
+      }),
+    );
+
+    server.registerTool(
+      "list_group_members",
+      {
+        description: "Who is in a group, and the role each holds. Any member may read it.",
+        inputSchema: { handle: z.string() },
+      },
+      asTool(async ({ handle }: { handle: string }, { userId }) => {
+        const result = await listGroupMembersFor(handle, userId);
+        if (result instanceof NextResponse) throw await denialToError(result);
+        return { members: result };
+      }),
+    );
+
+    server.registerTool(
+      "add_group_member",
+      {
+        description:
+          "Add someone to a group by handle, as `member` (adds blocks to the " +
+          "group's channels) or `admin` (also manages those channels and the " +
+          "roster). Owner or admin. They are notified. `owner` is not a role " +
+          "you can assign — use transfer_group.",
+        inputSchema: {
+          handle: z.string(),
+          memberHandle: z.string(),
+          role: z.enum(["member", "admin"]).optional(),
+        },
+      },
+      asTool(
+        async (
+          args: { handle: string; memberHandle: string; role?: "member" | "admin" },
+          { userId },
+        ) => {
+          const result = await addGroupMemberFor(
+            args.handle,
+            args.memberHandle,
+            args.role ?? "member",
+            userId,
+          );
+          if (result instanceof NextResponse) throw await denialToError(result);
+          return { member: result };
+        },
+      ),
+    );
+
+    server.registerTool(
+      "set_group_role",
+      {
+        description:
+          "Change a member's role between `member` and `admin`. Owner or " +
+          "admin. The owner's own role can't be set here, which is what stops " +
+          "a group being left with nobody able to administer it.",
+        inputSchema: {
+          handle: z.string(),
+          memberHandle: z.string(),
+          role: z.enum(["member", "admin"]),
+        },
+      },
+      asTool(
+        async (
+          args: { handle: string; memberHandle: string; role: "member" | "admin" },
+          { userId },
+        ) => {
+          const denial = await setGroupRoleFor(args.handle, args.memberHandle, args.role, userId);
+          if (denial) throw await denialToError(denial);
+          return { handle: args.memberHandle, role: args.role };
+        },
+      ),
+    );
+
+    server.registerTool(
+      "remove_group_member",
+      {
+        description:
+          "Take someone out of a group, or leave it yourself by naming your " +
+          "own handle. Removing anyone else takes owner or admin. The owner " +
+          "cannot be removed — they transfer the group or delete it.",
+        inputSchema: { handle: z.string(), memberHandle: z.string() },
+      },
+      asTool(
+        async ({ handle, memberHandle }: { handle: string; memberHandle: string }, { userId }) => {
+          const denial = await removeGroupMemberFor(handle, memberHandle, userId);
+          if (denial) throw await denialToError(denial);
+          return { removed: memberHandle };
+        },
+      ),
+    );
+
+    server.registerTool(
+      "transfer_group",
+      {
+        description:
+          "Hand a group to another of its members. Owner only, and you stop " +
+          "being the owner — there is exactly one, and this is the only way it " +
+          "changes hands.",
+        inputSchema: { handle: z.string(), to: z.string() },
+      },
+      asTool(async ({ handle, to }: { handle: string; to: string }, { userId }) => {
+        const denial = await transferGroupOwnershipFor(handle, to, userId);
+        if (denial) throw await denialToError(denial);
+        return { group: handle, owner: to };
+      }),
+    );
+
+    server.registerTool(
+      "transfer_channel",
+      {
+        description:
+          "Move a channel to another owner: a group you administer, or back " +
+          "to yourself. You must own the channel now. Note that ownership is " +
+          "what grants access to a private channel, so this changes who can " +
+          "read it; the channel's own member list is left as it is.",
+        inputSchema: { channelId: z.number().int(), to: z.string() },
+      },
+      asTool(async ({ channelId, to }: { channelId: number; to: string }, { userId }) => {
+        const result = await transferChannelFor(channelId, to, userId);
+        if (result instanceof NextResponse) throw await denialToError(result);
+        return { channel: result };
+      }),
     );
 
     server.registerTool(

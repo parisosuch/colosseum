@@ -25,7 +25,6 @@ import {
 } from "./channel";
 import { getOwner, ownerIdForUser } from "./owner";
 import {
-  addGroupMemberByHandle,
   createGroup,
   deleteGroup,
   getGroup,
@@ -85,7 +84,6 @@ import {
 } from "./blob";
 import { createInviteCode, InviteCode, revokeInviteCode } from "./invite";
 import {
-  createNotification,
   listNotifications,
   markAllNotificationsRead,
   setEmailNotificationPref,
@@ -110,7 +108,7 @@ import {
   setUserLimits,
   updateAppSettings,
 } from "./admin";
-import { addChannelMemberWithNotice } from "./member";
+import { addChannelMemberWithNotice, addGroupMemberWithNotice } from "./member";
 import { isHandleAvailable, updateProfile } from "./profile";
 import { revokeApiToken } from "./api-token";
 import {
@@ -126,7 +124,6 @@ import { notifyChannelNested } from "./nest";
 import { getScreenshotsForUrls, ColumnScreenshot } from "./screenshot-data";
 import {
   createUserProfile,
-  getPublicUserProfile,
   getUserProfile,
   HandleTakenError,
   normalizeHandle,
@@ -381,21 +378,7 @@ export async function addGroupMemberAction(
 ): Promise<GroupMember> {
   const userId = await requireUserId();
   await requireManagedGroup(groupId, userId);
-  // Only notify on a genuine add — re-adding an existing member is a no-op, and
-  // a role change is not something they need telling about. An unknown handle
-  // is left for addGroupMemberByHandle to reject.
-  const profile = await getPublicUserProfile(normalizeHandle(handle));
-  const alreadyMember = profile ? await groupRole(groupId, profile.user_id) : null;
-  const member = await addGroupMemberByHandle(groupId, handle, role);
-  if (!alreadyMember) {
-    await createNotification({
-      recipient_id: member.user_id,
-      actor_id: userId,
-      type: "member",
-      group_id: groupId,
-    });
-  }
-  return member;
+  return addGroupMemberWithNotice({ groupId, handle, role, actorUserId: userId });
 }
 
 export async function setGroupRoleAction(

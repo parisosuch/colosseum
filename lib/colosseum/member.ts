@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { channelMember, owner } from "@/lib/db/schema";
 import { getPublicUserProfile, normalizeHandle } from "./user";
 import { createNotification } from "./notification";
+import { addGroupMemberByHandle, groupRole, type GroupMember, type GroupRole } from "./group";
 
 // A member of a private channel, carrying the profile fields the manage dialog
 // needs to render and link the row.
@@ -129,4 +130,34 @@ export async function removeChannelMemberByHandle(
   const profile = await getPublicUserProfile(normalized);
   if (!profile) throw new Error("No user with that handle.");
   await removeChannelMember(channel_id, profile.user_id);
+}
+
+// The group analogue of addChannelMemberWithNotice: add someone to a group by
+// handle, and tell them, once.
+//
+// Lives here rather than in group.ts because that module is imported by
+// viewer.ts, and `group -> notification -> activity -> viewer -> group` is a
+// cycle. Nothing in the notification chain imports this module, which is what
+// lets the channel version sit here too.
+//
+// A role change on someone already in the group sends nothing — they know they
+// are in it. An unknown handle is left for addGroupMemberByHandle to reject.
+export async function addGroupMemberWithNotice(input: {
+  groupId: string;
+  handle: string;
+  role: Exclude<GroupRole, "owner">;
+  actorUserId: string;
+}): Promise<GroupMember> {
+  const profile = await getPublicUserProfile(normalizeHandle(input.handle));
+  const alreadyMember = profile ? await groupRole(input.groupId, profile.user_id) : null;
+  const member = await addGroupMemberByHandle(input.groupId, input.handle, input.role);
+  if (!alreadyMember) {
+    await createNotification({
+      recipient_id: member.user_id,
+      actor_id: input.actorUserId,
+      type: "member",
+      group_id: input.groupId,
+    });
+  }
+  return member;
 }

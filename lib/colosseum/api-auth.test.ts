@@ -3,19 +3,25 @@ import { NextResponse } from "next/server";
 
 import { seed, USERS } from "@/scripts/seed";
 import {
+  addGroupMemberFor,
   addMemberFor,
   attachPreview,
   attachPreviews,
   copyBlock,
   createCommentFor,
+  createGroupFor,
   deleteCommentFor,
   listCommentsFor,
+  listGroupMembersFor,
   listMembersFor,
   leaveChannel,
   moveBlock,
   nestChannel,
+  removeGroupMemberFor,
   removeMemberFor,
   reorderBlock,
+  setGroupRoleFor,
+  transferChannelFor,
 } from "./api-auth";
 import { createMedia, putBlob } from "./blob";
 import { createChannel } from "./channel";
@@ -599,4 +605,56 @@ test("deleteCommentFor: the author may, a stranger may not, the channel owner ma
 
   // The channel's owner moderates it.
   expect(await deleteCommentFor(theirs.id, USERS.bob.id)).toBeNull();
+});
+
+test("group roster: add, set a role, and remove — all by handle", async () => {
+  const handle = `api-grp-${Date.now().toString(36)}`;
+  const group = await createGroupFor(handle, "API Group", USERS.bob.id);
+  expect(group).not.toBeInstanceOf(NextResponse);
+
+  const added = await addGroupMemberFor(handle, USERS.alice.handle, "member", USERS.bob.id);
+  expect(added).not.toBeInstanceOf(NextResponse);
+
+  expect(await setGroupRoleFor(handle, USERS.alice.handle, "admin", USERS.bob.id)).toBeNull();
+  const listed = await listGroupMembersFor(handle, USERS.alice.id);
+  expect(
+    (listed as { handle: string; role: string }[]).find((m) => m.handle === USERS.alice.handle)
+      ?.role,
+  ).toBe("admin");
+
+  expect(await removeGroupMemberFor(handle, USERS.alice.handle, USERS.bob.id)).toBeNull();
+});
+
+test("a group the caller isn't in is 404, not 403", async () => {
+  const handle = `api-grp-private-${Date.now().toString(36)}`;
+  await createGroupFor(handle, "Not Alice's", USERS.bob.id);
+
+  // A distinguishable refusal would confirm the group exists.
+  expect(((await listGroupMembersFor(handle, USERS.alice.id)) as NextResponse).status).toBe(404);
+  const denied = await addGroupMemberFor(handle, USERS.alice.handle, "member", USERS.alice.id);
+  expect((denied as NextResponse).status).toBe(404);
+});
+
+test("createGroupFor reports a taken handle as a conflict", async () => {
+  const handle = `api-grp-dup-${Date.now().toString(36)}`;
+  await createGroupFor(handle, "First", USERS.bob.id);
+  const second = await createGroupFor(handle, "Second", USERS.alice.id);
+  expect((second as NextResponse).status).toBe(409);
+});
+
+test("transferChannelFor moves a channel to a group the caller administers", async () => {
+  const handle = `api-grp-xfer-${Date.now().toString(36)}`;
+  await createGroupFor(handle, "Receiving", USERS.alice.id);
+  const ch = await createChannel({
+    title: "Handed over",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
+
+  const moved = await transferChannelFor(ch.id, handle, USERS.alice.id);
+  expect(moved).not.toBeInstanceOf(NextResponse);
+
+  // Bob neither owns the channel nor administers anything it could go to.
+  const refused = await transferChannelFor(ch.id, USERS.bob.handle, USERS.bob.id);
+  expect(refused).toBeInstanceOf(NextResponse);
 });

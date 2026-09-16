@@ -197,6 +197,33 @@ pulls most of a collection across the wire to locate one link. To read a whole
 channel rather than find something in it, page
 `GET /api/v1/channels/:id/blocks` instead — search is capped, and deliberately.
 
+### `PATCH /api/v1/me`
+
+Edit your own profile.
+
+```json
+{ "handle": "alice", "about": "collects type specimens", "avatar": "https://.../me.png" }
+```
+
+→ `{ "me": { ... } }`
+
+The avatar is a URL the server fetches, not bytes — the same shape an image
+block takes. `409` if the handle is taken, `400` if it isn't a valid handle,
+`422` if the avatar can't be fetched. Replacing an avatar drops the old one's
+media.
+
+Creating a profile is deliberately absent: a token can only be minted from the
+settings page, which redirects to onboarding when there is no profile, so no
+API caller can hold a token and lack one.
+
+### `GET /api/v1/handles/:handle`
+
+Whether a handle is free. → `{ "available": true }`
+
+`{ "available": null, "reason": ... }` means it isn't a valid handle, which is a
+different answer from taken. People and groups share one namespace, so a handle
+a group holds is not available.
+
 ## Groups
 
 A group is a handle several people share. The channels made in it belong to the

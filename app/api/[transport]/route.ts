@@ -19,6 +19,7 @@ import {
   copyBlock,
   leaveChannel,
   moveBlock,
+  nestChannel,
   parseAccess,
   reorderBlock,
   resolveApiToken,
@@ -338,6 +339,29 @@ const handler = createMcpHandler(
             getChannelColumnCount(channelId),
           ]);
           return { blocks: await attachPreviews(blocks), total };
+        },
+      ),
+    );
+
+    server.registerTool(
+      "nest_channel",
+      {
+        description:
+          "Add a channel as a block inside one of your channels — the " +
+          "Are.na-style link. This is the one block type create_block cannot " +
+          "make. `linkedChannelId` must be a public or open channel (a private " +
+          "one is not found), and cannot be the host itself. You must own the " +
+          "host; its owner is notified unless the host is private.",
+        inputSchema: { linkedChannelId: z.number().int(), hostChannelId: z.number().int() },
+      },
+      asTool(
+        async (
+          { linkedChannelId, hostChannelId }: { linkedChannelId: number; hostChannelId: number },
+          { userId },
+        ) => {
+          const result = await nestChannel(linkedChannelId, hostChannelId, userId);
+          if (result instanceof NextResponse) throw await denialToError(result);
+          return { block: await attachPreview(result) };
         },
       ),
     );

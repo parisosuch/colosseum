@@ -24,7 +24,7 @@ import {
   updateChannel,
   viewerScope,
 } from "./channel";
-import { getOwner, ownerIdForUser, ownerRecipients } from "./owner";
+import { getOwner, ownerIdForUser } from "./owner";
 import {
   addGroupMemberByHandle,
   createGroup,
@@ -135,6 +135,7 @@ import {
   updateAppSettings,
 } from "./admin";
 import { revokeApiToken } from "./api-token";
+import { notifyChannelNested } from "./nest";
 import { getScreenshotsForUrls, ColumnScreenshot } from "./screenshot-data";
 import {
   createUserProfile,
@@ -1054,28 +1055,12 @@ export async function addChannelColumnAction(
     channel_id: hostChannelId,
     linked_channel_id: linkedChannelId,
   });
-  // Tell the linked channel's owner someone nested their channel. The
-  // notification records the *host* — that's where their channel now sits, so
-  // that's where the link should land — plus the column that was created, which
-  // is what names the linked channel in the message.
-  //
-  // Nothing is sent when the host is private: what someone collects into a
-  // private channel is their own business, and the recipient couldn't open it
-  // to see anyway. Privacy runs both ways here.
-  //
-  // Addressed through ownerRecipients rather than the owner id itself: a
-  // notification's recipient is a person, and an owner is not necessarily one.
-  if (!host.private) {
-    for (const recipientId of await ownerRecipients(linked.owned_by)) {
-      await createNotification({
-        recipient_id: recipientId,
-        actor_id: userId,
-        type: "connect",
-        channel_id: hostChannelId,
-        column_id: added.id,
-      });
-    }
-  }
+  await notifyChannelNested({
+    host,
+    linkedOwnerId: linked.owned_by,
+    columnId: added.id,
+    userId,
+  });
 }
 
 // ---------------------------------------------------------------------------

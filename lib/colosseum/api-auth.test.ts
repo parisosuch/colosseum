@@ -8,6 +8,7 @@ import {
   copyBlock,
   leaveChannel,
   moveBlock,
+  nestChannel,
   reorderBlock,
 } from "./api-auth";
 import { createMedia, putBlob } from "./blob";
@@ -183,6 +184,66 @@ test("moveBlock 404s on a missing block or a missing destination channel", async
     status: 404,
     error: "Not found.",
   });
+});
+
+test("nestChannel links a channel as a block in the host", async () => {
+  const host = await createChannel({
+    title: "Host",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
+  const linked = await createChannel({
+    title: "Linked",
+    access: "public",
+    owned_by: USERS.bob.ownerId,
+  });
+
+  const block = (await nestChannel(linked.id, host.id, USERS.alice.id)) as Column;
+  expect(block).not.toBeInstanceOf(NextResponse);
+  expect(block.type).toBe("channel");
+  expect(block.linked_channel_id).toBe(linked.id);
+  expect(block.channel_id).toBe(host.id);
+});
+
+test("nestChannel needs ownership of the host, not just contribute", async () => {
+  // Open, so Alice may add blocks — but nesting puts a permanent link to
+  // someone's collection here and notifies them, which is the owner's call.
+  const host = await createChannel({
+    title: "Bob's open host",
+    access: "open",
+    owned_by: USERS.bob.ownerId,
+  });
+  const linked = await createChannel({
+    title: "Linkable",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
+
+  const { status } = await denial(await nestChannel(linked.id, host.id, USERS.alice.id));
+  expect(status).toBe(403);
+});
+
+test("nestChannel 404s on a private linked channel and refuses a self-nest", async () => {
+  const host = await createChannel({
+    title: "Host",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
+  const secret = await createChannel({
+    title: "Bob's private",
+    access: "private",
+    owned_by: USERS.bob.ownerId,
+  });
+
+  // 404 rather than 403: a distinguishable refusal would confirm it exists.
+  expect(await denial(await nestChannel(secret.id, host.id, USERS.alice.id))).toEqual({
+    status: 404,
+    error: "Not found.",
+  });
+
+  const self = await denial(await nestChannel(host.id, host.id, USERS.alice.id));
+  expect(self.status).toBe(400);
+  expect(self.error).toContain("itself");
 });
 
 test("copyBlock leaves the original and gives the copy its own media", async () => {

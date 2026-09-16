@@ -47,6 +47,12 @@ const EDITABLE_BY_TYPE: Record<string, string[]> = {
   text: ["title", "description", "text"],
   url: ["title", "description", "url"],
   image: ["title", "description", "image"],
+  // The stored file isn't replaceable in place — a new one is a new block — so
+  // these carry only the fields every type has. Without an entry at all they
+  // would fall back to the same pair, but silently, and a reader would have to
+  // know that to trust it.
+  pdf: ["title", "description"],
+  video: ["title", "description"],
 };
 
 // PATCH /api/v1/blocks/:id — channel owner or the block's creator. Partial

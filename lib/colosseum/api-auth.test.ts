@@ -12,6 +12,7 @@ import {
   copyBlock,
   createCommentFor,
   createApiToken,
+  createFileBlock,
   createGroupFor,
   createInviteCodeFor,
   deleteCommentFor,
@@ -29,7 +30,7 @@ import {
   setGroupRoleFor,
   transferChannelFor,
 } from "./api-auth";
-import { createMedia, putBlob } from "./blob";
+import { createMedia, getMedia, mediaIdFromUrl, putBlob } from "./blob";
 import { getMyInviteCodes } from "./invite";
 import { redactSettings } from "./admin";
 import { createChannel } from "./channel";
@@ -768,4 +769,67 @@ test("redactSettings hides mail credentials but says whether one is set", async 
   expect(redacted.email.provider).toBe("resend");
   expect(redacted.email.from).toBe("hi@example.test");
   expect(redacted.max_invites_per_user).toBe(5);
+});
+
+test("createFileBlock stores an uploaded file as the block type its mime says", async () => {
+  const ch = await createChannel({
+    title: "Uploads",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
+
+  // A 1x1 PNG, so sharp has real bytes to work with.
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  const result = await createFileBlock(
+    ch.id,
+    { file: new File([png], "dot.png", { type: "image/png" }) },
+    USERS.alice.id,
+  );
+  expect(result).not.toBeInstanceOf(NextResponse);
+  expect((result as Column).type).toBe("image");
+  expect((result as Column).image).toBeTruthy();
+});
+
+test("createFileBlock rejects a file type that isn't allowed, as the caller's fault", async () => {
+  const ch = await createChannel({
+    title: "Rejects",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
+
+  // An executable declared as one: put*Blob validates the mime and throws, and
+  // a bad file is a 422 rather than a 500.
+  const { status } = await denial(
+    await createFileBlock(
+      ch.id,
+      { file: new File([Buffer.from("MZ")], "x.exe", { type: "application/x-msdownload" }) },
+      USERS.alice.id,
+    ),
+  );
+  expect(status).toBe(422);
+});
+
+test("createFileBlock takes the channel's privacy, not the uploader's", async () => {
+  const ch = await createChannel({
+    title: "Private uploads",
+    access: "private",
+    owned_by: USERS.alice.ownerId,
+  });
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  );
+
+  const block = (await createFileBlock(
+    ch.id,
+    { file: new File([png], "dot.png", { type: "image/png" }) },
+    USERS.alice.id,
+  )) as Column;
+
+  // A file put into a private channel must not stay publicly addressable.
+  const media = await getMedia(mediaIdFromUrl(block.image!)!);
+  expect(media?.visibility).toBe("private");
 });

@@ -22,6 +22,7 @@ import {
   adminDeleteChannel,
   authorizeAdmin,
   copyBlock,
+  createFileBlock,
   createGroupFor,
   createInviteCodeFor,
   deleteGroupFor,
@@ -184,6 +185,12 @@ const EDITABLE_BY_TYPE: Record<string, string[]> = {
   text: ["title", "description", "text"],
   url: ["title", "description", "url"],
   image: ["title", "description", "image"],
+  // The stored file isn't replaceable in place — a new one is a new block — so
+  // these carry only the fields every type has. Without an entry at all they
+  // would fall back to the same pair, but silently, and a reader would have to
+  // know that to trust it.
+  pdf: ["title", "description"],
+  video: ["title", "description"],
 };
 
 const handler = createMcpHandler(
@@ -1204,7 +1211,8 @@ const handler = createMcpHandler(
         description:
           "Add a block to a channel you can contribute to (one you own, any open " +
           "channel, or a public/private channel you're a member of). Exactly one " +
-          "of text/url/image must match `type`. A url block's preview screenshot " +
+          "of text/url/image/pdf/video must match `type`, each a URL for the " +
+          "server to fetch. A url block's preview screenshot " +
           "captures in the background, so it comes back null here — poll get_block " +
           "until `preview` lands. Optional `tags` are alphanumeric with dashes; " +
           "anything else is stripped.\n\n" +
@@ -1216,10 +1224,12 @@ const handler = createMcpHandler(
           "often not `url`. Pass `detect: false` to force a plain link block.",
         inputSchema: {
           channelId: z.number().int(),
-          type: z.enum(["text", "url", "image"]),
+          type: z.enum(["text", "url", "image", "pdf", "video"]),
           text: z.string().optional(),
           url: z.string().optional(),
           image: z.string().optional(),
+          pdf: z.string().optional(),
+          video: z.string().optional(),
           tags: z.array(z.string()).optional(),
           detect: z.boolean().optional(),
         },
@@ -1228,10 +1238,12 @@ const handler = createMcpHandler(
         async (
           args: {
             channelId: number;
-            type: "text" | "url" | "image";
+            type: "text" | "url" | "image" | "pdf" | "video";
             text?: string;
             url?: string;
             image?: string;
+            pdf?: string;
+            video?: string;
             tags?: string[];
             detect?: boolean;
           },
@@ -1266,6 +1278,16 @@ const handler = createMcpHandler(
             // Fire-and-forget, same as the REST create path: the capture is
             // queued and deduped per URL, and the tool result returns now.
             if (created.type === "url") triggerScreenshotCapture(url, userId);
+          } else if (args.type === "pdf" || args.type === "video") {
+            // A URL the server fetches. A tool call is JSON, and base64 would
+            // inflate a 100MB video by a third into the conversation.
+            const source = args.type === "pdf" ? args.pdf : args.video;
+            if (!source?.trim()) {
+              throw new Error(`\`${args.type}\` must be a URL for a ${args.type} block.`);
+            }
+            const result = await createFileBlock(args.channelId, { url: source.trim() }, userId);
+            if (result instanceof NextResponse) throw await denialToError(result);
+            created = result;
           } else {
             if (!args.image?.trim())
               throw new Error("`image` (a public image URL) is required for an image block.");

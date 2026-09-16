@@ -82,6 +82,12 @@ immediately with `preview: null`, and `get_block` reports the same three states
 the REST API documents — `null` while capturing, `{ "failed": true }` after a
 permanent failure, `{ "image_url", "title" }` once it lands.
 
+`create_block` also takes `pdf` and `video`, each a URL the server fetches.
+There is no way to hand bytes to a tool: a tool call is JSON, and base64
+inflates by a third, which on a 100MB video is the whole context window. A REST
+client with a local file posts `multipart/form-data` to
+`POST /api/v1/channels/:id/blocks` instead.
+
 A url passed to `create_block` is ingested as what it points at — tweet,
 YouTube video or channel, Spotify item, GitHub repo or account, Instagram post,
 direct image — each becoming that kind of block with its details fetched and

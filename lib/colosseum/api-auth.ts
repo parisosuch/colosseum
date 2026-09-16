@@ -19,6 +19,13 @@ import {
 } from "./channel";
 import { deleteChannel, getChannel, transferChannel } from "./channel";
 import {
+  putFileBlobFromUrl,
+  putImageBlob,
+  putImageBlobFromUrl,
+  putPdfBlob,
+  putVideoBlob,
+} from "./blob";
+import {
   type Group,
   type GroupMember,
   type GroupRole,
@@ -49,6 +56,9 @@ import {
   addChannelColumn,
   copyColumnInto,
   deleteColumn,
+  uploadImageColumn,
+  uploadPdfColumn,
+  uploadVideoColumn,
   getColumn,
   moveColumn,
   reorderColumn,
@@ -329,6 +339,82 @@ export async function moveBlock(
 
   const moved = await moveColumn(blockId, destinationChannelId);
   return moved ?? apiError("Not found.", 404);
+}
+
+// Extensions that mean a video when a block is added by URL. Kept beside the
+// dispatch rather than imported from the client-side caps, which are a separate
+// copy by design (see blob.ts).
+const VIDEO_EXTENSIONS = [".mp4", ".webm", ".mov", ".ogg", ".ogv"];
+
+// Adding a block that is a file: an uploaded image, a PDF, or a video.
+//
+// Two ways in, because the two clients differ. A REST caller can post
+// multipart and hand over real bytes. An MCP client cannot — a tool call is
+// JSON, and base64 inflates by a third, which on a 100MB video is the whole
+// context window — so it names a URL and the server fetches it.
+//
+// Both land here so the authorization, the quota and the privacy scope are
+// decided once. put*Blob validates the mime and the size and throws; a bad file
+// is the caller's mistake, so it comes back 422 rather than 500 — the same
+// treatment putImageBlobFromUrl already gets on the url path.
+export async function createFileBlock(
+  channelId: number,
+  source: { file: File } | { url: string },
+  userId: string,
+): Promise<Column | NextResponse> {
+  const channel = await getChannel(channelId);
+  const denial = await authorizeChannelContribute(channel, userId);
+  if (denial) return denial;
+
+  try {
+    await assertColumnQuota(userId);
+  } catch (e) {
+    return apiError(e instanceof Error ? e.message : "Block limit reached.", 403);
+  }
+
+  // Media follows the channel's privacy, not the uploader's: a file put into a
+  // private channel must not stay publicly addressable.
+  const visibility = channel!.private ? "private" : "public";
+
+  let kind: "image" | "pdf" | "video";
+  let image: string;
+  try {
+    if ("file" in source) {
+      // The declared mime decides the block type. A `type` parameter beside it
+      // would just be a second, disagreeable copy of the same fact.
+      const mime = source.file.type;
+      kind = mime === "application/pdf" ? "pdf" : mime.startsWith("video/") ? "video" : "image";
+      image =
+        kind === "pdf"
+          ? await putPdfBlob(source.file, userId, visibility)
+          : kind === "video"
+            ? await putVideoBlob(source.file, userId, visibility)
+            : await putImageBlob(source.file, userId, visibility);
+    } else {
+      // Off a URL there is no declared mime until the fetch returns, so the
+      // extension picks the fetcher and the fetched bytes are validated against
+      // it. A mismatch surfaces from put*Blob as a 422.
+      const path = source.url.split("?")[0].toLowerCase();
+      kind = path.endsWith(".pdf")
+        ? "pdf"
+        : VIDEO_EXTENSIONS.some((e) => path.endsWith(e))
+          ? "video"
+          : "image";
+      image =
+        kind === "image"
+          ? await putImageBlobFromUrl(source.url, userId, visibility)
+          : await putFileBlobFromUrl(source.url, kind, userId, visibility);
+    }
+  } catch (e) {
+    return apiError(e instanceof Error ? e.message : "Couldn't store that file.", 422);
+  }
+
+  const base = { created_by: userId, channel_id: channelId, image };
+  return kind === "pdf"
+    ? uploadPdfColumn(base)
+    : kind === "video"
+      ? uploadVideoColumn(base)
+      : uploadImageColumn(base);
 }
 
 // Admin operations, for self-hosters who want to script their instance.

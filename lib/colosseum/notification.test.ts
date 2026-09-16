@@ -2,14 +2,16 @@ import { afterEach, beforeAll, expect, test } from "bun:test";
 
 import { desc, eq } from "drizzle-orm";
 
-import { BLOCKS, CHANNELS, seed, USERS } from "@/scripts/seed";
+import { BLOCKS, CHANNELS, GROUPS, seed, USERS } from "@/scripts/seed";
 import { db } from "@/lib/db";
 import { notification } from "@/lib/db/schema";
-import { createChannel, deleteChannel, getUserChannels } from "./channel";
+import { createChannel, deleteChannel, getOwnerChannels, viewerScope } from "./channel";
 import { addChannelColumn, deleteColumn, getChannelColumns, searchColumns } from "./column";
 import { createComment, deleteComment } from "./comment";
+import { getUserProfile } from "./user";
 import {
   createNotification,
+  setEmailNotificationPref,
   EMAIL_QUIET_PERIOD_MINUTES,
   listNotifications,
   markAllNotificationsRead,
@@ -27,13 +29,13 @@ let otherBlockId: number;
 
 beforeAll(async () => {
   await seed();
-  const channels = await getUserChannels(USERS.alice.id);
+  const channels = await getOwnerChannels(USERS.alice.ownerId);
   // BLOCKS.alicePublic lives in this channel, so one id covers both the
   // channel-level and block-level cases.
   channelId = channels.find((c) => c.title === CHANNELS.aliceDesign.title)!.id;
-  const bobChannels = await getUserChannels(USERS.bob.id);
+  const bobChannels = await getOwnerChannels(USERS.bob.ownerId);
   bobChannelId = bobChannels.find((c) => c.title === CHANNELS.bobPhoto.title)!.id;
-  const [hit] = await searchColumns(USERS.alice.id, BLOCKS.alicePublic);
+  const [hit] = await searchColumns(await viewerScope(USERS.alice.id), BLOCKS.alicePublic);
   blockId = hit.id;
   otherBlockId = (await getChannelColumns(channelId)).find((c) => c.id !== blockId)!.id;
 });
@@ -98,6 +100,18 @@ test("listNotifications resolves actor, message, and a deep link", async () => {
   expect(items[0].read).toBe(false);
 });
 
+test("a group membership notification names the group and links to it", async () => {
+  await createNotification({
+    recipient_id: USERS.bob.id,
+    actor_id: USERS.alice.id,
+    type: "member",
+    group_id: GROUPS.studio.id,
+  });
+  const [item] = await listNotifications(USERS.bob.id);
+  expect(item.message).toContain(`added you to the group @${GROUPS.studio.handle}`);
+  expect(item.href).toBe(`/${GROUPS.studio.handle}`);
+});
+
 test("a connect links to the host channel and names both channels", async () => {
   // Alice adds bob's channel into her own; bob is told where it landed.
   const added = await addChannelColumn({
@@ -128,7 +142,7 @@ test("a connect links to the host channel and names both channels", async () => 
 // can repoint an older connect row onto one, so the rendering still has to keep
 // the host out of the message and the link.
 test("a connect into a private host names neither the host nor links to it", async () => {
-  const channels = await getUserChannels(USERS.alice.id);
+  const channels = await getOwnerChannels(USERS.alice.ownerId);
   const privateId = channels.find((c) => c.title === CHANNELS.alicePrivate.title)!.id;
   const added = await addChannelColumn({
     created_by: USERS.alice.id,
@@ -316,7 +330,7 @@ test("a long title is capped in the rendered message", async () => {
   const host = await createChannel({
     title: "x".repeat(300),
     access: "public",
-    owner_id: USERS.bob.id,
+    owned_by: USERS.bob.ownerId,
   });
   try {
     await createNotification({
@@ -398,4 +412,18 @@ test("markAllNotificationsRead clears the unread count", async () => {
   await markAllNotificationsRead(USERS.bob.id);
   expect(await unreadNotificationCount(USERS.bob.id)).toBe(0);
   expect(await listNotifications(USERS.bob.id)).toHaveLength(1);
+});
+
+test("setEmailNotificationPref flips one kind and leaves the others alone", async () => {
+  const before = (await getUserProfile(USERS.alice.id))!.email_notifications;
+
+  const after = await setEmailNotificationPref(USERS.alice.id, "comment", false);
+  expect(after.comment).toBe(false);
+  // The prefs are one JSON column, so a partial write would drop the rest —
+  // this is the assertion that catches that.
+  expect(after.mention).toBe(before.mention);
+  expect(after.connect).toBe(before.connect);
+  expect(after.member).toBe(before.member);
+
+  expect((await setEmailNotificationPref(USERS.alice.id, "comment", true)).comment).toBe(true);
 });

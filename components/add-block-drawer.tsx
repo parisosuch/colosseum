@@ -22,8 +22,8 @@ export function AddBlockDrawer({ channels }: { channels: PickableChannel[] }) {
   return (
     <Drawer open={flow.open} onOpenChange={flow.onOpenChange}>
       {/* The trigger is one of the bottom bar's tabs, so it wears the same
-          shape as its siblings. "Add" is the visible half of "Add column". */}
-      <DrawerTrigger aria-label="Add column" className={TAB}>
+          shape as its siblings. "Add" is the visible half of "Add block". */}
+      <DrawerTrigger aria-label="Add block" className={TAB}>
         <PlusIcon />
         <TabLabel>Add</TabLabel>
       </DrawerTrigger>
@@ -32,8 +32,15 @@ export function AddBlockDrawer({ channels }: { channels: PickableChannel[] }) {
           back as an inline style when the keyboard closes, so a sheet that
           grows between steps gets pinned to whatever it measured on the first
           step and clips the second. Same height throughout means that cached
-          measurement is always the right one. */}
-      <DrawerContent className="h-[70dvh]">
+          measurement is always the right one.
+
+          Fixed against the *visual* viewport, not dvh. The iOS keyboard shrinks
+          the visual viewport without touching the layout viewport, so 70dvh
+          stays 70% of the full screen with the keyboard over its lower half —
+          which is #490, the focused field pushed off-screen. Still one height
+          per keyboard state, so vaul's cached measurement stays right; it is
+          just a smaller one while the keyboard is up. */}
+      <DrawerContent className="h-[min(70dvh,var(--visual-vh,70dvh))]">
         <DrawerHeader>
           <DrawerTitle>{flow.title}</DrawerTitle>
         </DrawerHeader>

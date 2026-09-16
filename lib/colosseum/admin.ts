@@ -2,7 +2,7 @@ import { eq, sql } from "drizzle-orm";
 
 import { getSessionUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { appSettings, column, inviteCode, user, userProfile } from "@/lib/db/schema";
+import { appSettings, column, inviteCode, owner, user } from "@/lib/db/schema";
 import type { EmailSettings } from "@/lib/db/schema";
 
 // Instance-wide limits. null = unlimited, 0 = none, N = cap. Stored as a single
@@ -59,9 +59,9 @@ export function effectiveLimit(override: number | null, global: number | null): 
 // oldest first. Surfaced in limit messages so a user knows who to ask.
 export async function getAdminHandles(): Promise<string[]> {
   const rows = await db
-    .select({ handle: userProfile.handle })
+    .select({ handle: owner.handle })
     .from(user)
-    .innerJoin(userProfile, eq(userProfile.user_id, user.id))
+    .innerJoin(owner, eq(owner.user_id, user.id))
     .where(eq(user.is_admin, true))
     .orderBy(user.createdAt);
   return rows.map((r) => r.handle);
@@ -70,6 +70,40 @@ export async function getAdminHandles(): Promise<string[]> {
 // The signed-in admin, or a thrown error. Actions that moderate content or
 // change limits gate on this. Non-admins (and banned users, already nulled by
 // getSessionUser) are rejected.
+// Is this user an admin? Keyed on a user id rather than a session, so a
+// bearer-token request can ask the same question the admin pages do — a route
+// handler has no cookie to read.
+//
+// Returns the email too, because the one admin operation that needs an address
+// (the test email) sends to the caller's own, and ApiAuth carries only an id.
+export async function getAdminUser(userId: string): Promise<{ id: string; email: string } | null> {
+  const [u] = await db
+    .select({ id: user.id, email: user.email, is_admin: user.is_admin, banned: user.banned })
+    .from(user)
+    .where(eq(user.id, userId))
+    .limit(1);
+  // Banned is checked here even though an admin can't currently be banned
+  // (setUserBanned refuses), because a bearer token otherwise outlives a ban —
+  // resolveApiToken doesn't look at it — and this is the one place that would
+  // turn that into admin access.
+  if (!u || !u.is_admin || u.banned) return null;
+  return { id: u.id, email: u.email };
+}
+
+// Settings with the mail credentials taken out. The admin page reads the stored
+// values so it can show a configured provider, but they are secrets: anything
+// reachable with a bearer token gets this instead.
+export function redactSettings(settings: AppSettings): AppSettings {
+  return {
+    ...settings,
+    email: {
+      ...settings.email,
+      resend_api_key: settings.email.resend_api_key ? "__set__" : "",
+      smtp_pass: settings.email.smtp_pass ? "__set__" : "",
+    },
+  };
+}
+
 export async function requireAdmin() {
   const u = await getSessionUser();
   if (!u?.is_admin) {
@@ -100,10 +134,10 @@ export async function listUsers(): Promise<AdminUser[]> {
       banned: user.banned,
       invite_limit: user.invite_limit,
       column_limit: user.column_limit,
-      handle: userProfile.handle,
+      handle: owner.handle,
     })
     .from(user)
-    .leftJoin(userProfile, eq(userProfile.user_id, user.id))
+    .leftJoin(owner, eq(owner.user_id, user.id))
     .orderBy(user.createdAt);
 
   // Usage aggregated per user in two grouped scans, then stitched in JS. Invite

@@ -4,6 +4,119 @@ All notable changes to Colosseum are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] - 2026-09-16
+
+### Added
+
+- Groups. A group has a handle of its own, and the channels made in it belong to
+  the group rather than to whoever created them, so they outlive any one
+  account. Everyone in a group can add to its channels and read its private
+  ones; admins can also rename and delete them and manage who's in the group;
+  the single owner can hand the group on or delete it. New groups are made from
+  Groups in the account menu, existing channels can be moved into or out of a
+  group from the channel's manage dialog, and a group's page is /{its handle},
+  the same place a person's is, with its own name, bio and avatar.
+- Blocks can be arranged by hand. Drag a card by its grip, or lift it with the
+  keyboard — space, then the arrow keys — and a channel's order stops being just
+  the order things were added. Channel owners only.
+- Email addresses are verified, and the auth flow's dead ends are closed: an
+  expired reset link says so before you choose a new password, and signing in
+  returns you to the page you were trying to reach.
+- **The API and MCP surface now covers most of what the app can do.** It had
+  been channels and blocks; it is now also people, groups, rosters, comments,
+  notifications, search and administration. Full reference in
+  [docs/api.md](docs/api.md) and [docs/mcp.md](docs/mcp.md), and on /developers.
+- A token can name itself. `whoami` (`GET /api/v1/me`) reports the account it
+  belongs to and the block allowance `create_block` refuses on, so a client
+  adding a batch can tell a quota refusal from a transient failure before it
+  hits one. `update_profile` and `check_handle` edit the profile.
+- A Colosseum link is usable by a client. `resolve` turns a link or a bare
+  handle into the ids everything else takes, and `list_owner_channels` reads
+  channels the caller doesn't own — until now the only reachable channels were
+  ones the caller had made or already knew the number of.
+- Search, over people, channels and blocks, under the caller's own visibility.
+  Finding one link had meant listing every channel and matching client-side,
+  which pulls most of a collection across the wire to locate it.
+- A channel can be read to the end. `list_blocks` takes an `offset` and returns
+  the channel's whole `total`, where before a caller got the newest N and had no
+  way to reach anything older — a sample of a large channel rather than a
+  listing of it.
+- Blocks can be arranged and shared between channels over the API:
+  `reorder_block` places one behind another, `copy_block` puts one in a second
+  channel without taking it out of the first, `nest_channel` adds a channel
+  inside another, and tags can be set on create and update.
+- A private channel made over the API can be opened to someone. `list_members`,
+  `add_member` and `remove_member` manage a roster and `leave_channel` gets out
+  of one — before, a private channel an agent created was a dead end until a
+  person opened the browser.
+- Comments are reachable: `list_comments`, `create_comment` and
+  `delete_comment`. An `@handle` mention notifies that person only if they can
+  read the channel.
+- Groups over the API: creating one, renaming it, the roster and its roles,
+  handing it on, and moving a channel between owners.
+- Notifications over the API: listing them with the unread count, marking one or
+  all read, and turning email on or off per kind.
+- Invite codes can be minted, listed against the allowance, and revoked. API
+  tokens can be listed and revoked, and the one making the request is marked.
+  Minting a token over a token is deliberately not possible: revoking one that
+  has already made others does not take it back.
+- Administration over the API, for self-hosters: the user list, banning,
+  granting admin, per-user and instance-wide limits, and removing a block or
+  channel as moderation. Not-an-admin reads as not-found, and mail credentials
+  come back redacted.
+- Blocks that are files. A PDF, a video, or an image from your own machine can
+  be added over the API by posting multipart, or by naming a URL for the server
+  to fetch, which is how MCP adds them.
+
+### Changed
+
+- A url added over the API or MCP becomes the same block a link pasted into the
+  browser does. A GitHub repo, a tweet, a YouTube video or channel, a Spotify
+  item, an Instagram post and a direct image each ingest as their own type with
+  their details fetched; anything else stays a plain link with a screenshot.
+  The detection had lived in the web app alone, so the same link landed as a
+  rich card or a bare one depending on who added it. Clients reading the
+  returned `type` should expect it often not to be `url`; pass `detect: false`
+  for the old behaviour.
+- Handles moved to a new `owner` table, which is what a channel now belongs to.
+  Nothing changes for anyone using Colosseum; self-hosters get a migration that
+  rewrites channel ownership, as the groundwork for channels that belong to a
+  group rather than a person. It refuses to run, leaving the database untouched,
+  if any channel is owned by an account that never finished onboarding and so
+  has no handle — it prints how many and what to do about them.
+- The design system is the one DESIGN.md describes: one type scale, one
+  destructive red, one panel recipe, one loading vocabulary, and motion on a
+  token scale rather than improvised per component. Text surfaces cap their
+  measure, headings scale with their container, and the board has real empty
+  states.
+- Profile channel grids page instead of sending everything at once, and the
+  command palette holds its size while you type.
+
+### Fixed
+
+- Explore no longer loses blocks. Two separate faults: a cursor read off a
+  millisecond-precision `Date` skipped anything written inside the boundary
+  millisecond, and rows sharing an instant exactly had no tie-break, so the feed
+  either dropped them or repeated them and ordered them differently between
+  requests. The feed now pages on a total order of time, kind and id.
+- A banned account's API tokens stop working. A ban took the browser away and
+  left every token the account held fully working — reading, writing,
+  commenting, minting invite codes into an invite-gated instance.
+- The add-block drawer stays above the iOS keyboard. It was sized in `dvh`,
+  which follows the browser's own chrome but not the software keyboard, so the
+  sheet kept its full height with the field being typed into underneath the
+  keyboard.
+- A block card is a group holding an Open control and a drag grip, rather than a
+  button holding another button. The grip also takes a visible focus ring and a
+  full-size touch target, being the only way to move a block by hand.
+- A one-line text block no longer sits in the corner of a near-viewport surface:
+  the block modal holds text to its measure and centres it.
+- Save failures are reported rather than swallowed, the unread notification
+  count and its filter are the real numbers, and banning, granting admin and
+  revoking a token or an invite all ask first.
+- Mobile navigation reaches a full-size touch target, shows which tab you are
+  on, and carries notifications.
+
 ## [1.12.7] - 2026-09-15
 
 ### Fixed

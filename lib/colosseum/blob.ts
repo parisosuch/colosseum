@@ -188,6 +188,9 @@ export async function putImageBlob(
 // Matches the screenshot capture's navigation timeout, so a slow host costs the
 // same either way.
 const IMAGE_FETCH_TIMEOUT_MS = 15_000;
+// Longer than an image's: a 100MB video off a slow host is a legitimate fetch,
+// and this still bounds a host that accepts the connection and then stalls.
+const FILE_FETCH_TIMEOUT_MS = 120_000;
 
 export async function putImageBlobFromUrl(
   imageUrl: string,
@@ -336,4 +339,54 @@ export async function setMediaVisibilityByUrls(
   if (ids.length > 0) {
     await db.update(media).set({ visibility }).where(inArray(media.id, ids));
   }
+}
+
+// Fetch a PDF or a video from a URL and store it, the way putImageBlobFromUrl
+// does for images.
+//
+// This is what lets the API and MCP add these block types at all. A bearer-token
+// client has no multipart form to post from, and base64 in a JSON tool call
+// inflates by a third — on a 100MB video that is the whole context window. A
+// URL the server fetches sidesteps both, and matches how an image block is
+// already added over the API.
+//
+// The size is checked twice on purpose: once against the declared
+// content-length to hang up on an obviously oversized file before reading it,
+// and again inside put{Pdf,Video}Blob against the bytes that actually arrived,
+// since a content-length can lie or be absent.
+export async function putFileBlobFromUrl(
+  fileUrl: string,
+  kind: "pdf" | "video",
+  createdBy: string,
+  visibility: MediaVisibility,
+): Promise<string> {
+  let url: URL;
+  try {
+    url = new URL(fileUrl);
+  } catch {
+    throw new Error(`Bad ${kind} URL.`);
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error(`Unsupported ${kind} URL.`);
+  }
+
+  const max = kind === "pdf" ? MAX_PDF_BYTES : MAX_VIDEO_BYTES;
+  const accept = kind === "pdf" ? "application/pdf" : "video/*";
+
+  const res = await fetch(url, {
+    headers: { "User-Agent": DESKTOP_UA, Accept: accept },
+    signal: AbortSignal.timeout(FILE_FETCH_TIMEOUT_MS),
+  }).catch(() => {
+    throw new Error(`Couldn't fetch that ${kind}.`);
+  });
+  if (!res.ok) throw new Error(`Couldn't fetch that ${kind}.`);
+  if (Number(res.headers.get("content-length")) > max) {
+    throw new Error(`That ${kind} is too large (max ${Math.round(max / 1024 / 1024)}MB).`);
+  }
+
+  const type = (res.headers.get("content-type") ?? "").split(";")[0].trim();
+  const file = new File([await res.arrayBuffer()], `remote-${kind}`, { type });
+  return kind === "pdf"
+    ? putPdfBlob(file, createdBy, visibility)
+    : putVideoBlob(file, createdBy, visibility);
 }

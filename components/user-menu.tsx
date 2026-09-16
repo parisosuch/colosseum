@@ -11,6 +11,7 @@ import {
   ShieldIcon,
   Sun,
   UserIcon,
+  UsersIcon,
 } from "lucide-react";
 
 import { authClient } from "@/lib/auth-client";
@@ -55,6 +56,11 @@ export function UserMenuItems({ handle, isAdmin }: { handle: string; isAdmin?: b
       <DropdownMenuItem onSelect={() => router.push(`/${handle}`)}>
         <UserIcon />
         Profile
+      </DropdownMenuItem>
+
+      <DropdownMenuItem onSelect={() => router.push("/groups")}>
+        <UsersIcon />
+        Groups
       </DropdownMenuItem>
 
       <DropdownMenuItem onSelect={() => router.push("/settings")}>

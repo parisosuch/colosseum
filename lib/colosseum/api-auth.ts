@@ -7,19 +7,74 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db";
-import { apiToken } from "@/lib/db/schema";
+import { apiToken, user } from "@/lib/db/schema";
 import {
   Channel,
   ChannelAccess,
+  ChannelViewer,
   canContributeChannel,
   canManageChannel,
   canReadChannel,
+  viewerScope,
 } from "./channel";
-import { getChannel } from "./channel";
-import { isChannelMember } from "./member";
-import { Column, getColumn, moveColumn } from "./column";
-import { ApiToken } from "./api-token";
+import { deleteChannel, getChannel, transferChannel } from "./channel";
+import {
+  putFileBlobFromUrl,
+  putImageBlob,
+  putImageBlobFromUrl,
+  putPdfBlob,
+  putVideoBlob,
+} from "./blob";
+import {
+  type Group,
+  type GroupMember,
+  type GroupRole,
+  createGroup,
+  deleteGroup,
+  getGroupByHandle,
+  groupRole,
+  listGroupMembers,
+  removeGroupMember,
+  roleCanManage,
+  setGroupRole,
+  transferGroupOwnership,
+  updateGroup,
+} from "./group";
+import { getOwnerByHandle } from "./owner";
+import { HandleTakenError, getPublicUserProfile } from "./user";
+import {
+  type ChannelMember,
+  addChannelMemberWithNotice,
+  addGroupMemberWithNotice,
+  isChannelMember,
+  listChannelMembers,
+  removeChannelMember,
+  removeChannelMemberByHandle,
+} from "./member";
+import {
+  Column,
+  addChannelColumn,
+  copyColumnInto,
+  deleteColumn,
+  uploadImageColumn,
+  uploadPdfColumn,
+  uploadVideoColumn,
+  getColumn,
+  moveColumn,
+  reorderColumn,
+} from "./column";
+import {
+  type Comment,
+  createCommentWithNotices,
+  deleteComment,
+  getColumnComments,
+  getCommentAuthorization,
+} from "./comment";
+import { ApiToken, getMyApiTokens, revokeApiToken } from "./api-token";
+import { type InviteCode, createInviteCode, revokeInviteCode } from "./invite";
 import { getScreenshot, getScreenshotsForUrls } from "./screenshot-data";
+import { assertColumnQuota, assertInviteQuota, getAdminUser } from "./admin";
+import { notifyChannelNested } from "./nest";
 import { checkRateLimit } from "./rate-limit";
 import { logError, logInfo } from "@/lib/log";
 
@@ -66,7 +121,13 @@ export function parseAccess(body: Record<string, unknown>, fallback: ChannelAcce
 // A bearer token has no user session, so API handlers resolve it to a user id
 // and then authorize every request explicitly (the Drizzle connection bypasses
 // row-level security).
-export type ApiAuth = { userId: string };
+export type ApiAuth = {
+  userId: string;
+  // Which token authenticated this request. Carried so a client listing its
+  // tokens can be told which one it is holding — without it, "revoke token 3"
+  // is a guess that might cut off the caller mid-conversation.
+  tokenId?: string;
+};
 
 // Resolve a raw bearer token to its owning user. Shared by the REST API
 // (authenticateApiToken, below) and the MCP endpoint (app/api/[transport]).
@@ -75,13 +136,26 @@ export type ApiAuth = { userId: string };
 export async function resolveApiToken(token: string): Promise<ApiAuth | null> {
   const hash = hashToken(token);
 
+  // Joined rather than a second read: this runs on every API and MCP request,
+  // and the join is on the user's primary key.
   const [row] = await db
-    .select({ user_id: apiToken.user_id })
+    .select({ id: apiToken.id, user_id: apiToken.user_id, banned: user.banned })
     .from(apiToken)
+    .innerJoin(user, eq(user.id, apiToken.user_id))
     .where(eq(apiToken.token_hash, hash))
     .limit(1);
 
-  if (!row) {
+  // A banned user's tokens stop working here, the same instant getSessionUser
+  // starts treating them as signed out (lib/auth.ts). Without this a ban took
+  // the browser away and left every token they held fully working — reading,
+  // writing, commenting, minting invite codes into an invite-gated instance.
+  //
+  // The rows are left in place rather than deleted, matching how a ban treats
+  // sessions: the row survives and the check rejects it. That keeps a ban
+  // reversible, at the cost that an unban restores whatever was running before.
+  // Deleting them would be the harder kill, and wants to be a deliberate
+  // "revoke everything" rather than a side effect of a flag.
+  if (!row || row.banned) {
     return null;
   }
 
@@ -92,7 +166,7 @@ export async function resolveApiToken(token: string): Promise<ApiAuth | null> {
     .where(eq(apiToken.token_hash, hash))
     .catch(() => {});
 
-  return { userId: row.user_id };
+  return { userId: row.user_id, tokenId: row.id };
 }
 
 // Resolve the `Authorization: Bearer <token>` header to the owning user. On
@@ -174,12 +248,16 @@ export async function createApiToken(params: {
 // skip the query there. Read only needs it for private channels; contribute
 // needs it for public ones too (members can add to a public channel), so callers
 // pass which modes matter.
-async function memberOf(
+async function viewerFor(
   channel: Channel,
   userId: string,
   modes: readonly ChannelAccess[],
-): Promise<boolean> {
-  return modes.includes(channel.access) ? isChannelMember(channel.id, userId) : false;
+): Promise<ChannelViewer> {
+  const scope = await viewerScope(userId);
+  const isMember = modes.includes(channel.access)
+    ? await isChannelMember(channel.id, userId)
+    : false;
+  return { ...scope, isChannelMember: isMember };
 }
 
 // Read authorization: public/open channels are visible to anyone; a private one
@@ -189,7 +267,7 @@ export async function authorizeChannelRead(
   channel: Channel | null,
   userId: string,
 ): Promise<NextResponse | null> {
-  if (!channel || !canReadChannel(channel, userId, await memberOf(channel, userId, ["private"]))) {
+  if (!channel || !canReadChannel(channel, await viewerFor(channel, userId, ["private"]))) {
     return apiError("Not found.", 404);
   }
   return null;
@@ -203,10 +281,10 @@ export async function authorizeChannelManage(
 ): Promise<NextResponse | null> {
   const denied = await authorizeChannelRead(channel, userId);
   if (denied) return denied;
-  if (!canManageChannel(channel!, userId)) {
+  if (!canManageChannel(channel!, await viewerScope(userId))) {
     logInfo(
       "api-auth",
-      `user ${userId} denied manage on channel ${channel!.id} (owned by ${channel!.owner_id})`,
+      `user ${userId} denied manage on channel ${channel!.id} (owned by ${channel!.owned_by})`,
     );
     return apiError("You do not have permission to modify this resource.", 403);
   }
@@ -221,9 +299,9 @@ export async function authorizeChannelContribute(
   userId: string,
 ): Promise<NextResponse | null> {
   if (!channel) return apiError("Not found.", 404);
-  const isMember = await memberOf(channel, userId, ["public", "private"]);
-  if (!canReadChannel(channel, userId, isMember)) return apiError("Not found.", 404);
-  if (!canContributeChannel(channel, userId, isMember)) {
+  const viewer = await viewerFor(channel, userId, ["public", "private"]);
+  if (!canReadChannel(channel, viewer)) return apiError("Not found.", 404);
+  if (!canContributeChannel(channel, viewer)) {
     return apiError("You do not have permission to modify this resource.", 403);
   }
   return null;
@@ -238,7 +316,8 @@ export async function authorizeBlockWrite(
 ): Promise<NextResponse | null> {
   const denied = await authorizeChannelRead(channel, userId);
   if (denied) return denied;
-  if (channel!.owner_id !== userId && block.created_by !== userId) {
+  const viewer = await viewerScope(userId);
+  if (channel!.owned_by !== viewer.ownerId && block.created_by !== userId) {
     return apiError("You do not have permission to modify this resource.", 403);
   }
   return null;
@@ -273,6 +352,635 @@ export async function moveBlock(
 
   const moved = await moveColumn(blockId, destinationChannelId);
   return moved ?? apiError("Not found.", 404);
+}
+
+// Extensions that mean a video when a block is added by URL. Kept beside the
+// dispatch rather than imported from the client-side caps, which are a separate
+// copy by design (see blob.ts).
+const VIDEO_EXTENSIONS = [".mp4", ".webm", ".mov", ".ogg", ".ogv"];
+
+// Adding a block that is a file: an uploaded image, a PDF, or a video.
+//
+// Two ways in, because the two clients differ. A REST caller can post
+// multipart and hand over real bytes. An MCP client cannot — a tool call is
+// JSON, and base64 inflates by a third, which on a 100MB video is the whole
+// context window — so it names a URL and the server fetches it.
+//
+// Both land here so the authorization, the quota and the privacy scope are
+// decided once. put*Blob validates the mime and the size and throws; a bad file
+// is the caller's mistake, so it comes back 422 rather than 500 — the same
+// treatment putImageBlobFromUrl already gets on the url path.
+export async function createFileBlock(
+  channelId: number,
+  source: { file: File } | { url: string },
+  userId: string,
+): Promise<Column | NextResponse> {
+  const channel = await getChannel(channelId);
+  const denial = await authorizeChannelContribute(channel, userId);
+  if (denial) return denial;
+
+  try {
+    await assertColumnQuota(userId);
+  } catch (e) {
+    return apiError(e instanceof Error ? e.message : "Block limit reached.", 403);
+  }
+
+  // Media follows the channel's privacy, not the uploader's: a file put into a
+  // private channel must not stay publicly addressable.
+  const visibility = channel!.private ? "private" : "public";
+
+  let kind: "image" | "pdf" | "video";
+  let image: string;
+  try {
+    if ("file" in source) {
+      // The declared mime decides the block type. A `type` parameter beside it
+      // would just be a second, disagreeable copy of the same fact.
+      const mime = source.file.type;
+      kind = mime === "application/pdf" ? "pdf" : mime.startsWith("video/") ? "video" : "image";
+      image =
+        kind === "pdf"
+          ? await putPdfBlob(source.file, userId, visibility)
+          : kind === "video"
+            ? await putVideoBlob(source.file, userId, visibility)
+            : await putImageBlob(source.file, userId, visibility);
+    } else {
+      // Off a URL there is no declared mime until the fetch returns, so the
+      // extension picks the fetcher and the fetched bytes are validated against
+      // it. A mismatch surfaces from put*Blob as a 422.
+      const path = source.url.split("?")[0].toLowerCase();
+      kind = path.endsWith(".pdf")
+        ? "pdf"
+        : VIDEO_EXTENSIONS.some((e) => path.endsWith(e))
+          ? "video"
+          : "image";
+      image =
+        kind === "image"
+          ? await putImageBlobFromUrl(source.url, userId, visibility)
+          : await putFileBlobFromUrl(source.url, kind, userId, visibility);
+    }
+  } catch (e) {
+    return apiError(e instanceof Error ? e.message : "Couldn't store that file.", 422);
+  }
+
+  const base = { created_by: userId, channel_id: channelId, image };
+  return kind === "pdf"
+    ? uploadPdfColumn(base)
+    : kind === "video"
+      ? uploadVideoColumn(base)
+      : uploadImageColumn(base);
+}
+
+// Admin operations, for self-hosters who want to script their instance.
+//
+// requireAdmin in ./admin reads the session cookie, which a bearer-token
+// request does not have, so this asks getAdminUser instead — the same question,
+// keyed on the user id the token resolved to.
+//
+// Not-an-admin is a 404 rather than a 403. There is no reason to tell an
+// ordinary token that an admin surface exists at all.
+export async function authorizeAdmin(
+  userId: string,
+): Promise<{ id: string; email: string } | NextResponse> {
+  const admin = await getAdminUser(userId);
+  if (!admin) {
+    logInfo("api-auth", `user ${userId} denied an admin operation`);
+    return apiError("Not found.", 404);
+  }
+  return admin;
+}
+
+// Admin delete of a block or a channel, which is moderation: it reaches into
+// things the admin does not own.
+//
+// Both refuse a private channel, which is the policy the web actions carry —
+// moderation covers what is public, and an admin is not a passkey into
+// someone's private collection. Keeping it here rather than in each surface is
+// the point: it was in the action bodies alone, so every new caller had to
+// remember it.
+export async function adminDeleteBlock(
+  blockId: number,
+  userId: string,
+): Promise<NextResponse | null> {
+  const admin = await authorizeAdmin(userId);
+  if (admin instanceof NextResponse) return admin;
+
+  const block = await getColumn(blockId, { html: false });
+  if (!block) return apiError("Not found.", 404);
+  const channel = await getChannel(block.channel_id);
+  if (!channel || channel.private) return apiError("Not found.", 404);
+
+  await deleteColumn(blockId);
+  return null;
+}
+
+export async function adminDeleteChannel(
+  channelId: number,
+  userId: string,
+): Promise<NextResponse | null> {
+  const admin = await authorizeAdmin(userId);
+  if (admin instanceof NextResponse) return admin;
+
+  const channel = await getChannel(channelId);
+  if (!channel || channel.private) return apiError("Not found.", 404);
+
+  await deleteChannel(channelId);
+  return null;
+}
+
+// Invite codes and API tokens — the two pieces of account administration that
+// were web-only.
+//
+// Minting an API token is deliberately NOT here. A token that can mint tokens
+// makes revocation unrecoverable: revoke the one you know about and it may
+// already have made three more, each as capable as the first. That matters more
+// here than it might elsewhere, because resolveApiToken above doesn't consult
+// `user.banned` — a token already outlives a ban on its owner. Creating one
+// stays in app/api/tokens, behind a browser session.
+//
+// Listing and revoking are safe in the other direction: they only ever take
+// capability away.
+export async function listApiTokensFor(userId: string, currentTokenId?: string) {
+  const tokens = await getMyApiTokens(userId);
+  // Flag the one making this request, so "revoke the others" is expressible
+  // and revoking yourself is a choice rather than an accident.
+  return tokens.map((t) => ({ ...t, current: t.id === currentTokenId }));
+}
+
+export async function revokeApiTokenFor(
+  tokenId: string,
+  userId: string,
+): Promise<NextResponse | null> {
+  // Scoped to the caller: someone else's token id matches nothing rather than
+  // reporting whether it exists.
+  await revokeApiToken(tokenId, userId);
+  return null;
+}
+
+export async function createInviteCodeFor(
+  userId: string,
+  maxUses: number,
+  note: string | null,
+): Promise<InviteCode | NextResponse> {
+  try {
+    await assertInviteQuota(userId, maxUses);
+  } catch (e) {
+    return apiError(e instanceof Error ? e.message : "Invite limit reached.", 403);
+  }
+  return createInviteCode({ created_by: userId, max_uses: maxUses, note });
+}
+
+export async function revokeInviteCodeFor(
+  code: string,
+  userId: string,
+): Promise<NextResponse | null> {
+  // Scoped to codes the caller made and that nobody has used, so a spent or
+  // foreign code matches nothing. The audit rows behind a used code survive.
+  await revokeInviteCode(code, userId);
+  return null;
+}
+
+// Group authorization, mirroring the channel matrix above. A group the caller
+// may not administer is a 404 rather than a 403, for the same reason a private
+// channel is: a distinguishable refusal confirms it exists.
+//
+// Addressed by handle over the API, since that is what GET /api/v1/groups
+// returns and what a person would paste. `getGroupByHandle` resolves it.
+async function requireGroupBy(
+  handle: string,
+  userId: string,
+  need: "manage" | "own",
+): Promise<Group | NextResponse> {
+  const group = await getGroupByHandle(handle);
+  if (!group) return apiError("Not found.", 404);
+  const role = await groupRole(group.id, userId);
+  const ok = need === "own" ? role === "owner" : roleCanManage(role);
+  if (!ok) return apiError("Not found.", 404);
+  return group;
+}
+
+// A group's roster. Any member may read it — knowing who else is in a group you
+// belong to is not privileged.
+export async function listGroupMembersFor(
+  handle: string,
+  userId: string,
+): Promise<GroupMember[] | NextResponse> {
+  const group = await getGroupByHandle(handle);
+  if (!group) return apiError("Not found.", 404);
+  if (!(await groupRole(group.id, userId))) return apiError("Not found.", 404);
+  return listGroupMembers(group.id);
+}
+
+export async function addGroupMemberFor(
+  handle: string,
+  memberHandle: string,
+  role: Exclude<GroupRole, "owner">,
+  userId: string,
+): Promise<GroupMember | NextResponse> {
+  const group = await requireGroupBy(handle, userId, "manage");
+  if (group instanceof NextResponse) return group;
+  try {
+    return await addGroupMemberWithNotice({
+      groupId: group.id,
+      handle: memberHandle,
+      role,
+      actorUserId: userId,
+    });
+  } catch (e) {
+    return apiError(e instanceof Error ? e.message : "Could not add that member.", 400);
+  }
+}
+
+export async function setGroupRoleFor(
+  handle: string,
+  memberHandle: string,
+  role: Exclude<GroupRole, "owner">,
+  userId: string,
+): Promise<NextResponse | null> {
+  const group = await requireGroupBy(handle, userId, "manage");
+  if (group instanceof NextResponse) return group;
+  const profile = await getPublicUserProfile(memberHandle);
+  if (!profile) return apiError("No user with that handle.", 400);
+  try {
+    // setGroupRole refuses to touch the owner, which is what keeps a group from
+    // ending up with nobody able to administer it.
+    await setGroupRole(group.id, profile.user_id, role);
+    return null;
+  } catch (e) {
+    return apiError(e instanceof Error ? e.message : "Could not set that role.", 400);
+  }
+}
+
+export async function removeGroupMemberFor(
+  handle: string,
+  memberHandle: string,
+  userId: string,
+): Promise<NextResponse | null> {
+  const group = await getGroupByHandle(handle);
+  if (!group) return apiError("Not found.", 404);
+  const profile = await getPublicUserProfile(memberHandle);
+  if (!profile) return apiError("No user with that handle.", 400);
+
+  // Leaving is a member's own business; removing someone else takes manage.
+  if (profile.user_id !== userId) {
+    const managed = await requireGroupBy(handle, userId, "manage");
+    if (managed instanceof NextResponse) return managed;
+  } else if (!(await groupRole(group.id, userId))) {
+    return apiError("Not found.", 404);
+  }
+
+  try {
+    // removeGroupMember refuses the owner — they transfer or delete instead.
+    await removeGroupMember(group.id, profile.user_id);
+    return null;
+  } catch (e) {
+    return apiError(e instanceof Error ? e.message : "Could not remove that member.", 400);
+  }
+}
+
+export async function transferGroupOwnershipFor(
+  handle: string,
+  toHandle: string,
+  userId: string,
+): Promise<NextResponse | null> {
+  const group = await requireGroupBy(handle, userId, "own");
+  if (group instanceof NextResponse) return group;
+  const profile = await getPublicUserProfile(toHandle);
+  if (!profile) return apiError("No user with that handle.", 400);
+  try {
+    await transferGroupOwnership(group.id, userId, profile.user_id);
+    return null;
+  } catch (e) {
+    return apiError(e instanceof Error ? e.message : "Could not transfer the group.", 400);
+  }
+}
+
+export async function updateGroupFor(
+  handle: string,
+  updates: { name?: string; about?: string },
+  userId: string,
+): Promise<Group | NextResponse> {
+  const group = await requireGroupBy(handle, userId, "manage");
+  if (group instanceof NextResponse) return group;
+  if (Object.keys(updates).length === 0) {
+    return apiError("Nothing to update. Allowed: name, about.", 400);
+  }
+  return updateGroup(group.id, updates);
+}
+
+// Delete a group. Owner only, and its channels go with it — the cascade is why
+// this is the one group operation restricted to the single owner.
+export async function deleteGroupFor(handle: string, userId: string): Promise<NextResponse | null> {
+  const group = await requireGroupBy(handle, userId, "own");
+  if (group instanceof NextResponse) return group;
+  await deleteGroup(group.id);
+  return null;
+}
+
+// Hand a channel to another owner — yourself, or a group you administer.
+//
+// Both ends are checked: you must own the channel now, and be able to manage
+// where it is going. Note that ownership is what grants access to a private
+// channel, so a transfer silently changes who can read it; the per-channel
+// member roster is deliberately left alone.
+export async function transferChannelFor(
+  channelId: number,
+  toHandle: string,
+  userId: string,
+): Promise<Channel | NextResponse> {
+  const denial = await authorizeChannelManage(await getChannel(channelId), userId);
+  if (denial) return denial;
+
+  const target = await getOwnerByHandle(toHandle);
+  if (!target) return apiError("Not found.", 404);
+
+  const scope = await viewerScope(userId);
+  const mayReceive =
+    target.id === scope.ownerId || roleCanManage(await groupRole(target.id, userId));
+  if (!mayReceive) {
+    return apiError("You do not have permission to modify this resource.", 403);
+  }
+
+  const moved = await transferChannel(channelId, target.id);
+  return moved ?? apiError("Not found.", 404);
+}
+
+// Create a group. Anyone signed in may, as in the app — a group is a handle
+// plus a roster, and claiming one costs nothing anyone else holds.
+//
+// The handle comes from the same pool people draw from, so a taken one is a
+// 409 naming the reason rather than a generic failure.
+export async function createGroupFor(
+  handle: string,
+  name: string,
+  userId: string,
+): Promise<Group | NextResponse> {
+  try {
+    return await createGroup({ handle, name, created_by: userId });
+  } catch (e) {
+    if (e instanceof HandleTakenError) return apiError("That handle is already taken.", 409);
+    return apiError(e instanceof Error ? e.message : "Could not create that group.", 400);
+  }
+}
+
+// A channel's roster. Read-authorized rather than manage: the channel page
+// already lists members to anyone who can see the channel, so gating the API
+// harder would tell a different story about the same fact.
+export async function listMembersFor(
+  channelId: number,
+  userId: string,
+): Promise<ChannelMember[] | NextResponse> {
+  const denial = await authorizeChannelRead(await getChannel(channelId), userId);
+  if (denial) return denial;
+  return listChannelMembers(channelId);
+}
+
+// Add someone by handle. Manage-authorized: who may read a private channel is
+// the owner's decision, and an add sends the new member a notification.
+export async function addMemberFor(
+  channelId: number,
+  handle: string,
+  userId: string,
+): Promise<ChannelMember | NextResponse> {
+  const channel = await getChannel(channelId);
+  const denial = await authorizeChannelManage(channel, userId);
+  if (denial) return denial;
+  try {
+    return await addChannelMemberWithNotice({
+      channelId,
+      handle,
+      actorUserId: userId,
+      channelOwnedBy: channel!.owned_by,
+    });
+  } catch (e) {
+    // A bad handle, or the owner's own, is the caller's mistake rather than a
+    // server fault — surface the reason instead of a 500.
+    return apiError(e instanceof Error ? e.message : "Could not add that member.", 400);
+  }
+}
+
+// Remove someone by handle. Manage-authorized. Giving up your *own* membership
+// is leaveChannel, which a member may do without managing anything.
+export async function removeMemberFor(
+  channelId: number,
+  handle: string,
+  userId: string,
+): Promise<NextResponse | null> {
+  const denial = await authorizeChannelManage(await getChannel(channelId), userId);
+  if (denial) return denial;
+  try {
+    await removeChannelMemberByHandle(channelId, handle);
+    return null;
+  } catch (e) {
+    return apiError(e instanceof Error ? e.message : "Could not remove that member.", 400);
+  }
+}
+
+// A block's comments. Read-authorized: anyone who can see the block can see
+// what was said about it, which is what the block modal shows.
+export async function listCommentsFor(
+  blockId: number,
+  userId: string,
+): Promise<Comment[] | NextResponse> {
+  const block = await getColumn(blockId, { html: false });
+  if (!block) return apiError("Not found.", 404);
+  const denial = await authorizeChannelRead(await getChannel(block.channel_id), userId);
+  if (denial) return denial;
+  return getColumnComments(blockId);
+}
+
+// Post a comment. Read-authorized too — commenting is what a reader does, and
+// an open channel's whole point is that others join in. The notices owed to the
+// block's author and to anyone @mentioned are sent by createCommentWithNotices,
+// which filters both to people who can actually read the channel.
+export async function createCommentFor(
+  blockId: number,
+  body: string,
+  userId: string,
+): Promise<Comment | NextResponse> {
+  const block = await getColumn(blockId, { html: false });
+  if (!block) return apiError("Not found.", 404);
+  const channel = await getChannel(block.channel_id);
+  const denial = await authorizeChannelRead(channel, userId);
+  if (denial) return denial;
+  try {
+    return await createCommentWithNotices({
+      column: block,
+      channel: channel!,
+      authorId: userId,
+      body,
+    });
+  } catch (e) {
+    // Empty or over-length is the caller's mistake, not a server fault.
+    return apiError(e instanceof Error ? e.message : "Could not post that comment.", 400);
+  }
+}
+
+// Delete a comment. The author may always remove their own; otherwise the
+// block's channel owner may moderate it — the same two-way rule the web app
+// applies. A comment the caller can neither author nor moderate is a 404 rather
+// than a 403, so this never confirms one exists on a channel they cannot see.
+export async function deleteCommentFor(
+  commentId: number,
+  userId: string,
+): Promise<NextResponse | null> {
+  const target = await getCommentAuthorization(commentId);
+  if (!target) return apiError("Not found.", 404);
+
+  if (target.author_id !== userId) {
+    const block = await getColumn(target.column_id, { html: false });
+    if (!block) return apiError("Not found.", 404);
+    const denial = await authorizeChannelManage(await getChannel(block.channel_id), userId);
+    if (denial) return denial;
+  }
+  await deleteComment(commentId);
+  return null;
+}
+
+// Nest a channel inside another as a block (the Are.na-style link), the one
+// block type create_block can't produce.
+//
+// Manage on the host, not merely contribute: nesting puts a permanent link to
+// someone else's collection in this channel and notifies its owner, which is an
+// owner's call rather than a contributor's — matching addChannelColumnAction.
+//
+// The linked channel must be non-private, and a private one is a 404 rather
+// than a 403 for the same reason every read is: a distinguishable refusal would
+// confirm it exists. A channel can't be nested in itself.
+export async function nestChannel(
+  linkedChannelId: number,
+  hostChannelId: number,
+  userId: string,
+): Promise<Column | NextResponse> {
+  const host = await getChannel(hostChannelId);
+  const denial = await authorizeChannelManage(host, userId);
+  if (denial) return denial;
+
+  if (linkedChannelId === hostChannelId) {
+    return apiError("A channel can't be added to itself.", 400);
+  }
+
+  const linked = await getChannel(linkedChannelId);
+  if (!linked || linked.private) return apiError("Not found.", 404);
+
+  try {
+    await assertColumnQuota(userId);
+  } catch (e) {
+    return apiError(e instanceof Error ? e.message : "Block limit reached.", 403);
+  }
+
+  const added = await addChannelColumn({
+    created_by: userId,
+    channel_id: hostChannelId,
+    linked_channel_id: linkedChannelId,
+  });
+  await notifyChannelNested({
+    host: host!,
+    linkedOwnerId: linked.owned_by,
+    columnId: added.id,
+    userId,
+  });
+  return added;
+}
+
+// Copy a block into another channel, leaving the original where it is.
+//
+// Asymmetric on purpose, and looser than moveBlock: copying only *reads* the
+// source, so any block in a channel you can see may be copied, while the target
+// must be one you can contribute to. Moving needs manage on both because it
+// takes the block away from the channel it was in.
+//
+// A copy is a new block, so it is charged to the caller's quota — the same
+// charge contributing makes on the web side.
+export async function copyBlock(
+  blockId: number,
+  destinationChannelId: number,
+  userId: string,
+): Promise<Column | NextResponse> {
+  const source = await getColumn(blockId, { html: false });
+  if (!source) return apiError("Not found.", 404);
+
+  const readDenial = await authorizeChannelRead(await getChannel(source.channel_id), userId);
+  if (readDenial) return readDenial;
+
+  const destination = await getChannel(destinationChannelId);
+  const writeDenial = await authorizeChannelContribute(destination, userId);
+  if (writeDenial) return writeDenial;
+
+  try {
+    await assertColumnQuota(userId);
+  } catch (e) {
+    return apiError(e instanceof Error ? e.message : "Block limit reached.", 403);
+  }
+
+  return copyColumnInto({
+    source,
+    channel_id: destinationChannelId,
+    created_by: userId,
+    targetPrivate: destination!.private,
+  });
+}
+
+// Place a block after another one in its channel's manual order, or at the head
+// when `afterId` is null. Returns the moved block, or a denial to hand back.
+//
+// Owner-only, which is stricter than every other block write here: a
+// contributor may add a block to an open channel and edit or delete the one
+// they added, but a reorder rearranges everyone's blocks at once. A channel's
+// arrangement belongs to the channel, so it follows ownership rather than the
+// contributor rule — the same call the board makes (reorderColumnAction).
+//
+// The anchor is a block id rather than an index because an index only means
+// something on the board that produced it; see reorderColumn. It must live in
+// the same channel, and reorderColumn returns null when it doesn't, which is a
+// 404 here rather than a 400: from outside, a block in someone else's channel
+// and a block that doesn't exist are the same thing.
+export async function reorderBlock(
+  blockId: number,
+  afterId: number | null,
+  userId: string,
+): Promise<Column | NextResponse> {
+  const block = await getColumn(blockId, { html: false });
+  if (!block) return apiError("Not found.", 404);
+
+  const denial = await authorizeChannelManage(await getChannel(block.channel_id), userId);
+  if (denial) return denial;
+
+  const moved = await reorderColumn(blockId, afterId);
+  return moved ?? apiError("Not found.", 404);
+}
+
+// Leaving a channel someone else owns: the caller drops their own membership.
+// Composed here beside the rest of the matrix, since both surfaces need the
+// same three guards.
+//
+// An owner cannot leave. Ownership is `channel.owned_by`, not a membership row,
+// so removeChannelMember would delete nothing and report success while the
+// channel stayed exactly as it was — the caller has to delete the channel, or
+// hand it on, and should be told so rather than silently no-op'd. The same
+// holds for a group's admins, who manage its channels through the group.
+//
+// A channel the caller cannot read is a 404, so this never confirms that
+// someone else's private channel exists.
+export async function leaveChannel(
+  channelId: number,
+  userId: string,
+): Promise<NextResponse | null> {
+  const channel = await getChannel(channelId);
+  const denial = await authorizeChannelRead(channel, userId);
+  if (denial) return denial;
+
+  if (canManageChannel(channel!, await viewerScope(userId))) {
+    return apiError(
+      "You manage this channel, so there is no membership to give up. Delete it or transfer it instead.",
+      409,
+    );
+  }
+  if (!(await isChannelMember(channelId, userId))) {
+    return apiError("You are not a member of this channel.", 409);
+  }
+
+  await removeChannelMember(channelId, userId);
+  return null;
 }
 
 // url blocks capture a preview asynchronously (see triggerScreenshotCapture in

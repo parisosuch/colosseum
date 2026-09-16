@@ -12,20 +12,35 @@ import {
   ChannelAccess,
   ChannelSearchResult,
   canContributeChannel,
+  canManageChannel,
   canReadChannel,
-  channelReaders,
   createChannel,
   deleteChannel,
   getChannel,
+  resolveChannelViewer,
+  transferChannel,
   searchChannels,
   updateChannel,
+  viewerScope,
 } from "./channel";
+import { getOwner, ownerIdForUser } from "./owner";
 import {
-  ChannelMember,
-  addChannelMemberByHandle,
-  isChannelMember,
-  removeChannelMember,
-} from "./member";
+  createGroup,
+  deleteGroup,
+  getGroup,
+  Group,
+  GroupMember,
+  GroupRole,
+  groupRole,
+  listGroupMembers,
+  listUserGroups,
+  removeGroupMember,
+  roleCanManage,
+  setGroupRole,
+  transferGroupOwnership,
+  updateGroup,
+} from "./group";
+import { ChannelMember, removeChannelMember } from "./member";
 import {
   Column,
   ColumnQuery,
@@ -37,7 +52,7 @@ import {
   getChannelColumns,
   getColumn,
   moveColumn,
-  copyColumn,
+  copyColumnInto,
   reorderColumn,
   searchColumns,
   updateColumnDescription,
@@ -49,40 +64,19 @@ import {
   uploadPdfColumn,
   uploadVideoColumn,
   uploadTextColumn,
-  uploadTweetColumn,
-  uploadYouTubeColumn,
-  uploadYouTubeChannelColumn,
-  uploadSpotifyColumn,
-  uploadGitHubColumn,
-  uploadInstagramColumn,
-  uploadURLColumn,
 } from "./column";
-import { ingestTweet } from "./tweet";
-import { fetchYouTubeChannelMeta } from "./youtube-channel";
-import { fetchGitHubMeta } from "./github";
-import { fetchInstagramMeta } from "./instagram";
+
 import { renderEmail, sendEmail } from "@/lib/email";
-import { logError } from "@/lib/log";
-import {
-  githubRef,
-  instagramRef,
-  tweetIdFromUrl,
-  urlBlockKind,
-  youtubeChannelRef,
-} from "@/lib/utils";
+
 import {
   Comment,
-  createComment,
   deleteComment,
   getColumnComments,
+  createCommentWithNotices,
   getCommentAuthorization,
-  MAX_COMMENT_LENGTH,
 } from "./comment";
 import {
-  createMedia,
   deleteMediaByUrl,
-  getMedia,
-  mediaIdFromUrl,
   putImageBlob,
   putImageBlobFromUrl,
   putPdfBlob,
@@ -90,14 +84,13 @@ import {
 } from "./blob";
 import { createInviteCode, InviteCode, revokeInviteCode } from "./invite";
 import {
-  createNotification,
   listNotifications,
   markAllNotificationsRead,
+  setEmailNotificationPref,
   markNotificationRead,
   NotificationItem,
   NotificationType,
 } from "./notification";
-import { parseMentions } from "./mentions";
 import type { EmailNotificationPrefs, EmailSettings } from "@/lib/db/schema";
 import {
   AdminUser,
@@ -115,17 +108,27 @@ import {
   setUserLimits,
   updateAppSettings,
 } from "./admin";
+import { addChannelMemberWithNotice, addGroupMemberWithNotice } from "./member";
+import { isHandleAvailable, updateProfile } from "./profile";
 import { revokeApiToken } from "./api-token";
+import {
+  ingestGitHubColumn,
+  ingestInstagramColumn,
+  ingestSpotifyColumn,
+  ingestTweetColumn,
+  ingestUrlColumn,
+  ingestYouTubeChannelColumn,
+  ingestYouTubeColumn,
+} from "./ingest";
+import { notifyChannelNested } from "./nest";
 import { getScreenshotsForUrls, ColumnScreenshot } from "./screenshot-data";
 import {
   createUserProfile,
-  getPublicUserProfile,
   getUserProfile,
   HandleTakenError,
   normalizeHandle,
   ProfileSearchResult,
   searchProfiles,
-  updateUserProfile,
   UserProfile,
   validateHandle,
 } from "./user";
@@ -149,7 +152,7 @@ async function requireUserId(): Promise<string> {
 // Throws "Not found." otherwise so a private channel's existence never leaks.
 async function requireOwnedChannel(channelId: number, userId: string): Promise<Channel> {
   const channel = await getChannel(channelId);
-  if (!channel || channel.owner_id !== userId) {
+  if (!channel || !canManageChannel(channel, await viewerScope(userId))) {
     throw new Error("Not found.");
   }
   return channel;
@@ -163,11 +166,11 @@ async function requireContributableChannel(channelId: number, userId: string): P
   if (!channel) {
     throw new Error("Not found.");
   }
-  const isMember = channel.access === "open" ? false : await isChannelMember(channelId, userId);
-  if (!canReadChannel(channel, userId, isMember)) {
+  const viewer = await resolveChannelViewer(channel, userId);
+  if (!canReadChannel(channel, viewer)) {
     throw new Error("Not found.");
   }
-  if (!canContributeChannel(channel, userId, isMember)) {
+  if (!canContributeChannel(channel, viewer)) {
     throw new Error("You do not have permission to add to this channel.");
   }
   // Every content upload routes through here, so the per-user block quota is
@@ -186,7 +189,8 @@ async function requireWritableBlock(columnId: number, userId: string): Promise<C
     throw new Error("Not found.");
   }
   const channel = await requireReadableChannel(column.channel_id);
-  if (channel.owner_id !== userId && column.created_by !== userId) {
+  const viewer = await viewerScope(userId);
+  if (!canManageChannel(channel, viewer) && column.created_by !== userId) {
     throw new Error("You do not have permission to modify this block.");
   }
   return column;
@@ -200,9 +204,7 @@ async function requireReadableChannel(channelId: number): Promise<Channel> {
     throw new Error("Not found.");
   }
   const userId = await currentUserId();
-  const isMember =
-    channel.access === "private" && userId ? await isChannelMember(channelId, userId) : false;
-  if (!canReadChannel(channel, userId, isMember)) {
+  if (!canReadChannel(channel, await resolveChannelViewer(channel, userId))) {
     throw new Error("Not found.");
   }
   return channel;
@@ -233,10 +235,11 @@ export async function searchAction(query: string): Promise<{
   if (!userId) {
     return { profiles: [], channels: [], columns: [] };
   }
+  const viewer = await viewerScope(userId);
   const [profiles, channels, columns] = await Promise.all([
     searchProfiles(query),
-    searchChannels(userId, query),
-    searchColumns(userId, query),
+    searchChannels(viewer, query),
+    searchColumns(viewer, query),
   ]);
   return { profiles, channels, columns };
 }
@@ -258,7 +261,11 @@ export async function createChannelAction(input: {
   access: ChannelAccess;
 }): Promise<Channel> {
   const userId = await requireUserId();
-  return createChannel({ ...input, owner_id: userId });
+  const ownerId = await ownerIdForUser(userId);
+  if (!ownerId) {
+    throw new Error("Finish setting up your profile first.");
+  }
+  return createChannel({ ...input, owned_by: ownerId });
 }
 
 export async function updateChannelAction(
@@ -287,29 +294,12 @@ export async function addChannelMemberAction(
 ): Promise<ChannelMember> {
   const userId = await requireUserId();
   const channel = await requireOwnedChannel(channelId, userId);
-  const normalized = normalizeHandle(handle);
-  if (!normalized) {
-    throw new Error("Enter a handle.");
-  }
-  const profile = await getPublicUserProfile(normalized);
-  if (!profile) {
-    throw new Error("No user with that handle.");
-  }
-  if (profile.user_id === channel.owner_id) {
-    throw new Error("You're already the owner of this channel.");
-  }
-  // Only notify on a genuine add — re-adding an existing member is a no-op.
-  const alreadyMember = await isChannelMember(channelId, profile.user_id);
-  const member = await addChannelMemberByHandle(channelId, normalized);
-  if (!alreadyMember) {
-    await createNotification({
-      recipient_id: profile.user_id,
-      actor_id: userId,
-      type: "member",
-      channel_id: channelId,
-    });
-  }
-  return member;
+  return addChannelMemberWithNotice({
+    channelId,
+    handle,
+    actorUserId: userId,
+    channelOwnedBy: channel.owned_by,
+  });
 }
 
 export async function removeChannelMemberAction(
@@ -319,6 +309,177 @@ export async function removeChannelMemberAction(
   const userId = await requireUserId();
   await requireOwnedChannel(channelId, userId);
   await removeChannelMember(channelId, memberUserId);
+}
+
+// ---------------------------------------------------------------------------
+// Groups — a shared handle, and the roster that says who may do what with the
+// channels it owns. Roster changes are owner/admin-gated; role changes and
+// removals additionally refuse to touch the owner, which is what keeps a group
+// from ending up with nobody able to administer it (see ./group).
+// ---------------------------------------------------------------------------
+
+// A group the caller may administer, or "Not found." — the same shape the
+// channel guards use, so a group they can't manage never confirms it exists.
+async function requireManagedGroup(groupId: string, userId: string): Promise<Group> {
+  const group = await getGroup(groupId);
+  if (!group || !roleCanManage(await groupRole(groupId, userId))) {
+    throw new Error("Not found.");
+  }
+  return group;
+}
+
+async function requireOwnedGroup(groupId: string, userId: string): Promise<Group> {
+  const group = await getGroup(groupId);
+  if (!group || (await groupRole(groupId, userId)) !== "owner") {
+    throw new Error("Not found.");
+  }
+  return group;
+}
+
+export type GroupResult =
+  | { ok: true; group: Group }
+  | { ok: false; handleTaken?: boolean; message: string };
+
+// Handles are shared with people, so a taken one comes back as data the form can
+// show rather than a thrown error that production would sanitize away.
+export async function createGroupAction(input: {
+  handle: string;
+  name: string;
+}): Promise<GroupResult> {
+  const userId = await requireUserId();
+  try {
+    return { ok: true, group: await createGroup({ ...input, created_by: userId }) };
+  } catch (e) {
+    if (e instanceof HandleTakenError) {
+      return { ok: false, handleTaken: true, message: "That handle is already taken." };
+    }
+    return { ok: false, message: e instanceof Error ? e.message : "Could not create the group." };
+  }
+}
+
+export async function listMyGroupsAction(): Promise<(Group & { role: GroupRole })[]> {
+  const userId = await currentUserId();
+  return userId ? listUserGroups(userId) : [];
+}
+
+export async function listGroupMembersAction(groupId: string): Promise<GroupMember[]> {
+  const userId = await requireUserId();
+  // Any member may see who else is in the group; only managers change it.
+  if (!(await groupRole(groupId, userId))) {
+    throw new Error("Not found.");
+  }
+  return listGroupMembers(groupId);
+}
+
+export async function addGroupMemberAction(
+  groupId: string,
+  handle: string,
+  role: Exclude<GroupRole, "owner"> = "member",
+): Promise<GroupMember> {
+  const userId = await requireUserId();
+  await requireManagedGroup(groupId, userId);
+  return addGroupMemberWithNotice({ groupId, handle, role, actorUserId: userId });
+}
+
+export async function setGroupRoleAction(
+  groupId: string,
+  memberUserId: string,
+  role: Exclude<GroupRole, "owner">,
+): Promise<void> {
+  const userId = await requireUserId();
+  await requireManagedGroup(groupId, userId);
+  await setGroupRole(groupId, memberUserId, role);
+}
+
+export async function removeGroupMemberAction(
+  groupId: string,
+  memberUserId: string,
+): Promise<void> {
+  const userId = await requireUserId();
+  // Leaving is your own business; removing someone else needs a manager.
+  if (memberUserId !== userId) {
+    await requireManagedGroup(groupId, userId);
+  } else if (!(await groupRole(groupId, userId))) {
+    throw new Error("Not found.");
+  }
+  await removeGroupMember(groupId, memberUserId);
+}
+
+export async function transferGroupOwnershipAction(
+  groupId: string,
+  toUserId: string,
+): Promise<void> {
+  const userId = await requireUserId();
+  await requireOwnedGroup(groupId, userId);
+  await transferGroupOwnership(groupId, userId, toUserId);
+}
+
+export async function updateGroupAction(
+  groupId: string,
+  updates: { name?: string; about?: string; avatar_url?: string },
+): Promise<Group> {
+  const userId = await requireUserId();
+  const group = await requireManagedGroup(groupId, userId);
+  const updated = await updateGroup(groupId, updates);
+  // A new avatar orphans the old one's media reference; drop it after the write
+  // lands so the blob is GC'd once nothing else points at it. Same as the
+  // profile editor does — without it, every avatar change leaks a blob.
+  if (
+    updates.avatar_url !== undefined &&
+    group.avatar_url &&
+    group.avatar_url !== updates.avatar_url
+  ) {
+    await deleteMediaByUrl(group.avatar_url);
+  }
+  return updated;
+}
+
+// Deleting a group takes its channels with it, so it is the owner's call alone.
+export async function deleteGroupAction(groupId: string): Promise<void> {
+  const userId = await requireUserId();
+  await requireOwnedGroup(groupId, userId);
+  await deleteGroup(groupId);
+}
+
+// Move a channel to another owner: from you to a group you manage, or back.
+// Both ends are checked — you must be able to manage the channel now, and to
+// manage whatever it is going to — so this can neither give a channel away to a
+// group you are not in nor take one out of a group you only belong to.
+//
+// Ownership is what grants access, so this changes who can read a private
+// channel. The per-channel `channel_member` roster is left alone: those are
+// people invited to this channel specifically, and they keep their invitation.
+export async function transferChannelAction(
+  channelId: number,
+  toOwnerId: string,
+): Promise<Channel> {
+  const userId = await requireUserId();
+  const channel = await requireOwnedChannel(channelId, userId);
+  if (channel.owned_by === toOwnerId) return channel;
+
+  const viewer = await viewerScope(userId);
+  const target = await getOwner(toOwnerId);
+  if (!target) {
+    throw new Error("Not found.");
+  }
+  // Moving it to yourself needs no role beyond it being your own owner row;
+  // moving it into a group needs the manage tier there.
+  const allowed = target.id === viewer.ownerId || roleCanManage(await groupRole(toOwnerId, userId));
+  if (!allowed) {
+    throw new Error("You do not have permission to move this channel there.");
+  }
+  return transferChannel(channelId, toOwnerId);
+}
+
+// Create a channel the group owns rather than you. Gated on the same
+// owner/admin tier that may manage the group's existing channels.
+export async function createGroupChannelAction(
+  groupId: string,
+  input: { title: string; description?: string; access: ChannelAccess },
+): Promise<Channel> {
+  const userId = await requireUserId();
+  await requireManagedGroup(groupId, userId);
+  return createChannel({ ...input, owned_by: groupId });
 }
 
 // Leave a channel you're a member of — a self-service remove, so it needs no
@@ -337,7 +498,7 @@ export async function getChannelColumnsAction(
   query: ColumnQuery = {},
 ): Promise<Column[]> {
   await requireReadableChannel(channelId);
-  return getChannelColumns(channelId, query, await currentUserId());
+  return getChannelColumns(channelId, query, await viewerScope(await currentUserId()));
 }
 
 // How many blocks match the board's current search/type filter, for the result
@@ -360,7 +521,12 @@ export async function getColumnNeighboursAction(
   query: ColumnQuery = {},
 ): Promise<{ prev: Column | null; next: Column | null }> {
   await requireReadableChannel(channelId);
-  return getChannelColumnNeighbours(channelId, columnId, query, await currentUserId());
+  return getChannelColumnNeighbours(
+    channelId,
+    columnId,
+    query,
+    await viewerScope(await currentUserId()),
+  );
 }
 
 // Add a link block. A URL that points straight at an image file becomes an
@@ -375,45 +541,16 @@ export async function uploadURLColumnAction(input: {
 }): Promise<Column> {
   const userId = await requireUserId();
   const channel = await requireContributableChannel(input.channelId, userId);
-
   // Every path that accepts a URL ends up here — the channel input, the
-  // quick-add drawer, and anything added later — so this is where a URL's block
-  // type is decided. It used to be decided in the channel input alone, which
-  // meant the same link pasted into the drawer came out a plain link block.
-  //
-  // Each specialised action falls back to a plain URL block on its own when its
-  // lookup fails, so none of them can loop back into this function.
-  const url = input.text;
-  switch (urlBlockKind(url)) {
-    case "tweet":
-      return uploadTweetColumnAction({ channelId: input.channelId, url });
-    case "youtube_channel":
-      return uploadYouTubeChannelColumnAction({ channelId: input.channelId, url });
-    case "youtube":
-      return uploadYouTubeColumnAction({ channelId: input.channelId, url });
-    case "spotify":
-      return uploadSpotifyColumnAction({ channelId: input.channelId, url });
-    case "github":
-      return uploadGitHubColumnAction({ channelId: input.channelId, url });
-    case "instagram":
-      return uploadInstagramColumnAction({ channelId: input.channelId, url });
-    case "image":
-      try {
-        const image = await putImageBlobFromUrl(
-          url,
-          userId,
-          channel.private ? "private" : "public",
-        );
-        return uploadImageColumn({ created_by: userId, channel_id: input.channelId, image });
-      } catch (e) {
-        logError("column.url.image", `image ingest failed for ${url}`, e);
-      }
-      break;
-    case "url":
-      break;
-  }
-
-  return uploadURLColumn({ created_by: userId, channel_id: input.channelId, text: input.text });
+  // quick-add drawer, and anything added later — so a link lands as the same
+  // kind of block whoever adds it. The detection itself lives in ./ingest,
+  // shared with the REST API and the MCP tool, which cannot call this action.
+  return ingestUrlColumn({
+    url: input.text,
+    userId,
+    channelId: input.channelId,
+    channelPrivate: channel.private,
+  });
 }
 
 // Add a tweet block. Captures the tweet's snapshot (data + self-hosted media)
@@ -426,34 +563,12 @@ export async function uploadTweetColumnAction(input: {
 }): Promise<Column> {
   const userId = await requireUserId();
   await requireContributableChannel(input.channelId, userId);
-  const id = tweetIdFromUrl(input.url);
-  if (id && (await ingestTweet(id, userId))) {
-    // Store a canonical id-based permalink, not the pasted URL: the snapshot is
-    // shared per tweet id, so every block for the same tweet must carry the same
-    // url string for the shared-snapshot GC (deleteTweetIfUnreferenced) to see
-    // its siblings. x.com/i/status/<id> redirects to the real tweet.
-    const url = `https://x.com/i/status/${id}`;
-    return uploadTweetColumn({ created_by: userId, channel_id: input.channelId, url });
-  }
-  return uploadURLColumn({ created_by: userId, channel_id: input.channelId, text: input.url });
-}
-
-// The video's title via YouTube's public oEmbed endpoint (no API key, returns
-// only metadata — not the video itself, so it stays within "don't persist the
-// video"). Best-effort: null if the lookup fails, and the block is created
-// untitled rather than failing the add.
-async function youtubeTitle(url: string): Promise<string | undefined> {
-  try {
-    const res = await fetch(
-      `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`,
-    );
-    if (!res.ok) return undefined;
-    const data = (await res.json()) as { title?: string };
-    return data.title || undefined;
-  } catch (e) {
-    logError("youtube.oembed", `title lookup failed for ${url}`, e);
-    return undefined;
-  }
+  return ingestTweetColumn({
+    url: input.url,
+    userId,
+    channelId: input.channelId,
+    channelPrivate: false,
+  });
 }
 
 // Add a YouTube block. Stores the URL and the video's title; the embed renders
@@ -465,12 +580,11 @@ export async function uploadYouTubeColumnAction(input: {
 }): Promise<Column> {
   const userId = await requireUserId();
   await requireContributableChannel(input.channelId, userId);
-  const title = await youtubeTitle(input.url);
-  return uploadYouTubeColumn({
-    created_by: userId,
-    channel_id: input.channelId,
+  return ingestYouTubeColumn({
     url: input.url,
-    title,
+    userId,
+    channelId: input.channelId,
+    channelPrivate: false,
   });
 }
 
@@ -487,34 +601,11 @@ export async function uploadYouTubeChannelColumnAction(input: {
 }): Promise<Column> {
   const userId = await requireUserId();
   const channel = await requireContributableChannel(input.channelId, userId);
-  const ref = youtubeChannelRef(input.url);
-  const meta = ref ? await fetchYouTubeChannelMeta(ref.url) : null;
-  if (!ref || !meta) {
-    return uploadURLColumn({ created_by: userId, channel_id: input.channelId, text: input.url });
-  }
-
-  // Best-effort: a channel with no avatar, or one we can't fetch, still makes a
-  // fine card — it falls back to the channel's initial.
-  let image: string | undefined;
-  if (meta.avatarUrl) {
-    try {
-      image = await putImageBlobFromUrl(
-        meta.avatarUrl,
-        userId,
-        channel.private ? "private" : "public",
-      );
-    } catch (e) {
-      logError("youtube.channel.avatar", `avatar fetch failed for ${meta.url}`, e);
-    }
-  }
-
-  return uploadYouTubeChannelColumn({
-    created_by: userId,
-    channel_id: input.channelId,
-    url: meta.url,
-    title: meta.title || ref.label,
-    description: meta.description || undefined,
-    image,
+  return ingestYouTubeChannelColumn({
+    url: input.url,
+    userId,
+    channelId: input.channelId,
+    channelPrivate: channel.private,
   });
 }
 
@@ -532,35 +623,11 @@ export async function uploadGitHubColumnAction(input: {
 }): Promise<Column> {
   const userId = await requireUserId();
   const channel = await requireContributableChannel(input.channelId, userId);
-  const ref = githubRef(input.url);
-  const meta = ref ? await fetchGitHubMeta(ref) : null;
-  if (!ref || !meta) {
-    return uploadURLColumn({ created_by: userId, channel_id: input.channelId, text: input.url });
-  }
-
-  // Best-effort: an account with no avatar, or one we can't fetch, still makes
-  // a fine card — it falls back to the name's initial.
-  let image: string | undefined;
-  if (meta.avatarUrl) {
-    try {
-      image = await putImageBlobFromUrl(
-        meta.avatarUrl,
-        userId,
-        channel.private ? "private" : "public",
-      );
-    } catch (e) {
-      logError("github.avatar", `avatar fetch failed for ${meta.url}`, e);
-    }
-  }
-
-  return uploadGitHubColumn({
-    created_by: userId,
-    channel_id: input.channelId,
-    url: meta.url,
-    title: meta.title,
-    description: meta.description || undefined,
-    image,
-    language: meta.language || undefined,
+  return ingestGitHubColumn({
+    url: input.url,
+    userId,
+    channelId: input.channelId,
+    channelPrivate: channel.private,
   });
 }
 
@@ -579,53 +646,12 @@ export async function uploadInstagramColumnAction(input: {
 }): Promise<Column> {
   const userId = await requireUserId();
   const channel = await requireContributableChannel(input.channelId, userId);
-  const ref = instagramRef(input.url);
-  if (!ref) {
-    return uploadURLColumn({ created_by: userId, channel_id: input.channelId, text: input.url });
-  }
-  const meta = await fetchInstagramMeta(ref.url);
-
-  let image: string | undefined;
-  if (meta) {
-    try {
-      image = await putImageBlobFromUrl(
-        meta.imageUrl,
-        userId,
-        channel.private ? "private" : "public",
-      );
-    } catch (e) {
-      logError("instagram.image", `image fetch failed for ${meta.url}`, e);
-    }
-  }
-
-  // A failed lookup still makes an Instagram block, not a link block. Instagram
-  // range-blocks whole hosts, and it blocks the screenshot capture the same way,
-  // so a link block for an Instagram URL is a permanently blank card that reads
-  // as a broken scrape. Everything the card needs to stand on its own is already
-  // in the URL — the handle, and whether it points at a post or a profile. The
-  // picture is the only thing missing, and the card draws its mark without one.
-  return uploadInstagramColumn({
-    created_by: userId,
-    channel_id: input.channelId,
-    url: meta?.url ?? ref.url,
-    title: meta?.title || (ref.username ? `@${ref.username}` : "Instagram"),
-    description: meta?.description || undefined,
-    image,
+  return ingestInstagramColumn({
+    url: input.url,
+    userId,
+    channelId: input.channelId,
+    channelPrivate: channel.private,
   });
-}
-
-// Title + cover-art URL via Spotify's public oEmbed endpoint (no API key,
-// metadata only). Best-effort: empty on failure so the block is still created.
-async function spotifyMeta(url: string): Promise<{ title?: string; image?: string }> {
-  try {
-    const res = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(url)}`);
-    if (!res.ok) return {};
-    const data = (await res.json()) as { title?: string; thumbnail_url?: string };
-    return { title: data.title || undefined, image: data.thumbnail_url || undefined };
-  } catch (e) {
-    logError("spotify.oembed", `metadata lookup failed for ${url}`, e);
-    return {};
-  }
 }
 
 // Add a Spotify block. Stores the URL plus the item's title and cover art; the
@@ -636,13 +662,11 @@ export async function uploadSpotifyColumnAction(input: {
 }): Promise<Column> {
   const userId = await requireUserId();
   await requireContributableChannel(input.channelId, userId);
-  const { title, image } = await spotifyMeta(input.url);
-  return uploadSpotifyColumn({
-    created_by: userId,
-    channel_id: input.channelId,
+  return ingestSpotifyColumn({
     url: input.url,
-    title,
-    image,
+    userId,
+    channelId: input.channelId,
+    channelPrivate: false,
   });
 }
 
@@ -810,16 +834,12 @@ export async function copyColumnAction(columnId: number, targetChannelId: number
   const { column: source } = await requireReadableBlock(columnId);
   const channel = await requireContributableChannel(targetChannelId, userId);
 
-  let image = source.image ?? null;
-  const mediaId = image ? mediaIdFromUrl(image) : null;
-  if (mediaId) {
-    const media = await getMedia(mediaId);
-    if (media) {
-      image = await createMedia(media.sha256, userId, channel.private ? "private" : "public");
-    }
-  }
-
-  return copyColumn({ source, channel_id: targetChannelId, created_by: userId, image });
+  return copyColumnInto({
+    source,
+    channel_id: targetChannelId,
+    created_by: userId,
+    targetPrivate: channel.private,
+  });
 }
 
 // Add a channel as a column inside one of the caller's channels (Are.na-style).
@@ -845,23 +865,12 @@ export async function addChannelColumnAction(
     channel_id: hostChannelId,
     linked_channel_id: linkedChannelId,
   });
-  // Tell the linked channel's owner someone nested their channel. The
-  // notification records the *host* — that's where their channel now sits, so
-  // that's where the link should land — plus the column that was created, which
-  // is what names the linked channel in the message.
-  //
-  // Nothing is sent when the host is private: what someone collects into a
-  // private channel is their own business, and the recipient couldn't open it
-  // to see anyway. Privacy runs both ways here.
-  if (!host.private) {
-    await createNotification({
-      recipient_id: linked.owner_id,
-      actor_id: userId,
-      type: "connect",
-      channel_id: hostChannelId,
-      column_id: added.id,
-    });
-  }
+  await notifyChannelNested({
+    host,
+    linkedOwnerId: linked.owned_by,
+    columnId: added.id,
+    userId,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -876,59 +885,7 @@ export async function getColumnCommentsAction(columnId: number): Promise<Comment
 export async function createCommentAction(columnId: number, body: string): Promise<Comment> {
   const userId = await requireUserId();
   const { column, channel } = await requireReadableBlock(columnId);
-  const trimmed = body.trim();
-  if (!trimmed) {
-    throw new Error("Comment can't be empty.");
-  }
-  if (trimmed.length > MAX_COMMENT_LENGTH) {
-    throw new Error(`Comment is too long (max ${MAX_COMMENT_LENGTH} characters).`);
-  }
-  const created = await createComment({ column_id: columnId, author_id: userId, body: trimmed });
-
-  // Notify the block's author, then anyone @mentioned (resolved to a real user,
-  // deduped, and excluding the author who already gets the comment notification).
-  //
-  // Both are filtered to users who can read the channel. The notification names
-  // the block and its channel and quotes the comment, and a mention resolves any
-  // handle whether or not they're a member — so without this, mentioning a
-  // stranger from a private channel hands them its contents. A block's author
-  // can lose access too, when an open channel is later made private. Same rule
-  // connect applies to a private host: private runs in both directions.
-  const handles = [
-    ...new Set(parseMentions(trimmed).flatMap((s) => (s.type === "mention" ? [s.handle] : []))),
-  ];
-  const mentioned = (await Promise.all(handles.map((h) => getPublicUserProfile(h)))).filter(
-    (p): p is NonNullable<typeof p> => p !== null && p.user_id !== column.created_by,
-  );
-  const readers = new Set(
-    await channelReaders(channel, [column.created_by, ...mentioned.map((p) => p.user_id)]),
-  );
-
-  if (readers.has(column.created_by)) {
-    await createNotification({
-      recipient_id: column.created_by,
-      actor_id: userId,
-      type: "comment",
-      channel_id: column.channel_id,
-      column_id: columnId,
-      comment_id: created.id,
-    });
-  }
-  await Promise.all(
-    mentioned
-      .filter((p) => readers.has(p.user_id))
-      .map((p) =>
-        createNotification({
-          recipient_id: p.user_id,
-          actor_id: userId,
-          type: "mention",
-          channel_id: column.channel_id,
-          column_id: columnId,
-          comment_id: created.id,
-        }),
-      ),
-  );
-  return created;
+  return createCommentWithNotices({ column, channel, authorId: userId, body });
 }
 
 export async function deleteCommentAction(commentId: number): Promise<void> {
@@ -1036,11 +993,7 @@ export async function getMyProfileAction(): Promise<UserProfile | null> {
 // (every profile lives at /{handle}), so this discloses nothing a caller
 // couldn't get by loading that page.
 export async function isHandleAvailableAction(rawHandle: string): Promise<boolean | null> {
-  const handle = normalizeHandle(rawHandle);
-  if (validateHandle(handle)) {
-    return null;
-  }
-  return (await getPublicUserProfile(handle)) === null;
+  return isHandleAvailable(rawHandle);
 }
 
 export async function createUserProfileAction(rawHandle: string): Promise<ProfileResult> {
@@ -1089,15 +1042,13 @@ export async function updateUserProfileAction(updates: {
       return { ok: false, message: validationError };
     }
   }
-  // A new avatar orphans the old one's media reference; capture it so it can
-  // be dropped (and its blob GC'd) after the update lands.
-  const previous = updates.avatar_url !== undefined ? await getUserProfile(userId) : null;
+  const previous = await getUserProfile(userId);
+  if (!previous) {
+    return { ok: false, message: "Finish setting up your profile first." };
+  }
   try {
-    const profile = await updateUserProfile(userId, updates);
-    if (previous?.avatar_url && previous.avatar_url !== updates.avatar_url) {
-      await deleteMediaByUrl(previous.avatar_url);
-    }
-    return { ok: true, profile };
+    // updateProfile drops the replaced avatar's media once the write lands.
+    return { ok: true, profile: await updateProfile(userId, previous, updates) };
   } catch (e) {
     if (e instanceof HandleTakenError) {
       return { ok: false, handleTaken: true, message: "That handle is already taken." };
@@ -1136,14 +1087,7 @@ export async function setEmailNotificationPrefAction(
   enabled: boolean,
 ): Promise<EmailNotificationPrefs> {
   const userId = await requireUserId();
-  const current = await getUserProfile(userId);
-  if (!current) {
-    throw new Error("Profile not found.");
-  }
-  const profile = await updateUserProfile(userId, {
-    email_notifications: { ...current.email_notifications, [type]: enabled },
-  });
-  return profile.email_notifications;
+  return setEmailNotificationPref(userId, type, enabled);
 }
 
 // ---------------------------------------------------------------------------

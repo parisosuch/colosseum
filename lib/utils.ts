@@ -439,6 +439,11 @@ export const CARD_BADGE_CLASS =
 // Escapes ilike wildcards so a literal `%`/`_` in a search term isn't treated
 // as one, and strips the characters PostgREST uses to delimit an `.or(...)`
 // filter so a search term can't break out of it.
+// How many hits each search surface returns by default. Sized for the nav
+// search box, which is what search was built for; the API lets a caller ask for
+// more, within its own bound.
+export const SEARCH_LIMIT = 10;
+
 export function sanitizeSearch(term: string): string {
   return term
     .replace(/[%_]/g, (m) => `\\${m}`)

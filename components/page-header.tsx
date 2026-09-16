@@ -14,7 +14,7 @@ export default function PageHeader({ crumbs }: { crumbs: Crumb[] }) {
       {crumbs.map((crumb, i) => (
         <span key={i}>
           {" "}
-          <span className="font-extralight">/</span>{" "}
+          <span className="text-muted-foreground">/</span>{" "}
           {crumb.href ? (
             <Link href={crumb.href} className="link-subtle">
               {crumb.label}

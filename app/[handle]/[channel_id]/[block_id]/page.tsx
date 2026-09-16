@@ -14,6 +14,7 @@ import PageHeader from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { blockLabel, blockPreviewMeta } from "@/lib/colosseum/block-meta";
 import { loadVisibleBlock } from "@/lib/colosseum/block-access";
+import { canManageChannel, viewerScope } from "@/lib/colosseum/channel";
 import { getScreenshot } from "@/lib/colosseum/screenshot-data";
 import { getSessionUser } from "@/lib/auth";
 import { screenshotSrc, spotifyEmbedRef, youtubeIdFromUrl } from "@/lib/utils";
@@ -207,7 +208,7 @@ export default async function BlockPage({ params }: BlockPageParams) {
             <ColumnComments
               columnId={column.id}
               viewerId={viewer?.id ?? null}
-              isOwner={channel.owner_id === viewer?.id}
+              isOwner={canManageChannel(channel, await viewerScope(viewer?.id ?? null))}
             />
           </div>
         </aside>

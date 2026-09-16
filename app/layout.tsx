@@ -9,6 +9,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
 import { NoZoomGuard } from "@/components/no-zoom-guard";
+import { VisualViewportVar } from "@/components/visual-viewport-var";
 import SiteFooter from "@/components/site-footer";
 import MobileBottomNav from "@/components/mobile-bottom-nav";
 
@@ -94,10 +95,18 @@ const geistSans = Geist({
 });
 
 // Serif for the wordmark + headings; body stays sans (Geist).
+//
+// `axes` is what pulls the optical-size axis into the served file. Without it
+// next/font requests weights only and the browser gets Fraunces pinned at
+// opsz 14 — a face cut for body text — which is then used at 36px in
+// .text-display. Italic is listed because the family has a real one; left off,
+// emphasis inside a heading is a synthesized slant.
 const fraunces = Fraunces({
   variable: "--font-serif",
   display: "swap",
   subsets: ["latin"],
+  axes: ["opsz"],
+  style: ["normal", "italic"],
 });
 
 export default async function RootLayout({
@@ -107,8 +116,11 @@ export default async function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.className} ${fraunces.variable} antialiased`}>
+      <body
+        className={`${geistSans.className} ${geistSans.variable} ${fraunces.variable} antialiased`}
+      >
         <NoZoomGuard />
+        <VisualViewportVar />
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

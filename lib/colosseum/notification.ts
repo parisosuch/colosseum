@@ -10,6 +10,7 @@ import {
   column,
   comment,
   notification,
+  owner,
   user,
   userProfile,
   type EmailNotificationPrefs,
@@ -18,6 +19,7 @@ import { renderEmail, sendEmail } from "@/lib/email";
 import { logError } from "@/lib/log";
 
 import { blockLabel } from "./activity";
+import { getUserProfile, updateUserProfile } from "./user";
 
 export const NOTIFICATION_PAGE = 30;
 
@@ -56,9 +58,9 @@ export type NotificationItem = {
 type NotificationRow = typeof notification.$inferSelect;
 
 // One notification joined to everything needed to render it: the actor, the
-// channel it points at and that channel's owner, the subject block, the linked
-// channel behind a `channel` block, the comment body, and the recipient's own
-// address and email toggles.
+// channel it points at and that channel's owner, the group it points at
+// instead, the subject block, the linked channel behind a `channel` block, the
+// comment body, and the recipient's own address and email toggles.
 type JoinedNotification = {
   n: NotificationRow;
   actor_handle: string;
@@ -68,6 +70,7 @@ type JoinedNotification = {
   channel_title: string | null;
   channel_access: string | null;
   owner_handle: string | null;
+  group_handle: string | null;
   block_type: string | null;
   block_title: string | null;
   block_url: string | null;
@@ -85,11 +88,14 @@ async function joinNotifications(
   where: SQL | undefined,
   limit: number,
 ): Promise<JoinedNotification[]> {
-  const actor = alias(userProfile, "actor_profile");
+  // The actor is always a person, so their handle comes from their own owner
+  // row; the channel owners are owner rows outright and may be groups.
+  const actor = alias(owner, "actor_owner");
   const recipient = alias(userProfile, "recipient_profile");
-  const owner = alias(userProfile, "owner_profile");
+  const channelOwner = alias(owner, "channel_owner");
+  const groupOwner = alias(owner, "group_owner");
   const linkedChannel = alias(channel, "linked_channel");
-  const linkedOwner = alias(userProfile, "linked_owner_profile");
+  const linkedOwner = alias(owner, "linked_channel_owner");
   return db
     .select({
       n: notification,
@@ -99,7 +105,8 @@ async function joinNotifications(
       recipient_prefs: recipient.email_notifications,
       channel_title: channel.title,
       channel_access: channel.access,
-      owner_handle: owner.handle,
+      owner_handle: channelOwner.handle,
+      group_handle: groupOwner.handle,
       block_type: column.type,
       block_title: column.title,
       block_url: column.url,
@@ -115,10 +122,11 @@ async function joinNotifications(
     .leftJoin(user, eq(user.id, notification.recipient_id))
     .leftJoin(recipient, eq(recipient.user_id, notification.recipient_id))
     .leftJoin(channel, eq(channel.id, notification.channel_id))
-    .leftJoin(owner, eq(owner.user_id, channel.owner_id))
+    .leftJoin(channelOwner, eq(channelOwner.id, channel.owned_by))
+    .leftJoin(groupOwner, eq(groupOwner.id, notification.group_id))
     .leftJoin(column, eq(column.id, notification.column_id))
     .leftJoin(linkedChannel, eq(linkedChannel.id, column.linked_channel_id))
-    .leftJoin(linkedOwner, eq(linkedOwner.user_id, linkedChannel.owner_id))
+    .leftJoin(linkedOwner, eq(linkedOwner.id, linkedChannel.owned_by))
     .leftJoin(comment, eq(comment.id, notification.comment_id))
     .where(where)
     .orderBy(desc(notification.created_at))
@@ -181,13 +189,19 @@ function messageFor(r: JoinedNotification): string {
         : `connected your channel ${yours} into ${quoted(r.channel_title)}`;
     }
     case "member":
-      return `added you to ${quoted(r.channel_title)}`;
+      // Being added to a group names the handle, since that is what the group
+      // is known by and where the link lands; a channel names its title.
+      return r.group_handle
+        ? `added you to the group @${r.group_handle}`
+        : `added you to ${quoted(r.channel_title)}`;
   }
 }
 
 // Deep link to the subject. Blocks live under the channel owner's handle; a
 // notification without a resolvable channel falls back to the home page.
 function hrefFor(r: JoinedNotification): string {
+  // A group notification points at the group's page, which is its handle alone.
+  if (r.group_handle) return `/${r.group_handle}`;
   // A connect lands on the host channel, where the recipient's channel now sits
   // as a column. A private host would put the recipient on a not-found page, so
   // those fall back to the recipient's own channel — where the notification used
@@ -245,8 +259,10 @@ async function inEmailQuietPeriod(n: NotificationRow): Promise<boolean> {
       and(
         eq(notification.recipient_id, n.recipient_id),
         eq(notification.type, n.type),
-        eq(notification.channel_id, n.channel_id),
-        // A null column_id (channel-level notifications) matches another null.
+        // Nulls have to match nulls here: only one of channel/group is ever set,
+        // and a null column_id (channel-level notifications) matches another null.
+        sql`${notification.channel_id} IS NOT DISTINCT FROM ${n.channel_id}`,
+        sql`${notification.group_id} IS NOT DISTINCT FROM ${n.group_id}`,
         sql`${notification.column_id} IS NOT DISTINCT FROM ${n.column_id}`,
         lt(notification.id, n.id),
         gt(notification.email_sent_at, since),
@@ -273,7 +289,11 @@ async function emailNotification(n: NotificationRow): Promise<boolean> {
     // The excerpt is user-written; renderEmail escapes what it interpolates.
     body: excerpt ? `${message}\n\n“${excerpt}”` : message,
     // Mirrors hrefFor: only a non-connect row with a block lands on one.
-    buttonLabel: n.type !== "connect" && n.column_id !== null ? "View block" : "View channel",
+    buttonLabel: n.group_id
+      ? "View group"
+      : n.type !== "connect" && n.column_id !== null
+        ? "View block"
+        : "View channel",
     buttonUrl: base + hrefFor(row),
     footnote: "Turn these off anytime in your Colosseum settings.",
   });
@@ -285,14 +305,15 @@ async function emailNotification(n: NotificationRow): Promise<boolean> {
 // Record a notification and (best-effort) email it. Self-notifications are
 // skipped. Notifications are never allowed to break the action that triggered
 // them, so all failures are swallowed and logged.
-export async function createNotification(input: {
-  recipient_id: string;
-  actor_id: string;
-  type: NotificationType;
-  channel_id: number;
-  column_id?: number;
-  comment_id?: number;
-}): Promise<void> {
+export async function createNotification(
+  input: {
+    recipient_id: string;
+    actor_id: string;
+    type: NotificationType;
+    column_id?: number;
+    comment_id?: number;
+  } & ({ channel_id: number } | { group_id: string }),
+): Promise<void> {
   if (input.recipient_id === input.actor_id) return;
   try {
     const [row] = await db
@@ -301,7 +322,8 @@ export async function createNotification(input: {
         recipient_id: input.recipient_id,
         actor_id: input.actor_id,
         type: input.type,
-        channel_id: input.channel_id,
+        channel_id: "channel_id" in input ? input.channel_id : null,
+        group_id: "group_id" in input ? input.group_id : null,
         column_id: input.column_id ?? null,
         comment_id: input.comment_id ?? null,
       })
@@ -370,4 +392,22 @@ export async function markAllNotificationsRead(userId: string): Promise<void> {
     .update(notification)
     .set({ read_at: new Date() })
     .where(and(eq(notification.recipient_id, userId), isNull(notification.read_at)));
+}
+
+// Flip one email-notification preference and hand back the whole set.
+//
+// A read-modify-write rather than a partial update: the prefs are one JSON
+// column, so writing a single key would drop the others. Lives here rather than
+// in user.ts because the type it keys on is this module's.
+export async function setEmailNotificationPref(
+  userId: string,
+  type: NotificationType,
+  enabled: boolean,
+): Promise<EmailNotificationPrefs> {
+  const profile = await getUserProfile(userId);
+  if (!profile) throw new Error("This account has not finished onboarding.");
+  const updated = await updateUserProfile(userId, {
+    email_notifications: { ...profile.email_notifications, [type]: enabled },
+  });
+  return updated.email_notifications;
 }

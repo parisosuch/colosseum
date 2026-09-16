@@ -77,8 +77,7 @@ export const REORDER_HELP_ID = "block-reorder-help";
 // so following the pointer costs no renders; the card carries `group`, which is
 // what lets a child react to an attribute on its parent.
 function DropIndicator({ axis }: { axis: "grid" | "list" }) {
-  const shared =
-    "pointer-events-none absolute z-10 rounded-full bg-primary opacity-0 transition-opacity";
+  const shared = "pointer-events-none absolute z-10 rounded-full bg-primary opacity-0";
   if (axis === "list") {
     return (
       <>
@@ -151,7 +150,9 @@ const ColumnComponent = memo(function ColumnComponent({
   const thumbnail =
     column.type === "channel" ? (
       <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center">
-        <span className="max-w-full text-heading">{column.linked_channel?.title ?? "Channel"}</span>
+        <span className="line-clamp-2 max-w-full break-words text-heading">
+          {column.linked_channel?.title ?? "Channel"}
+        </span>
         {column.linked_channel?.description ? (
           <p className="line-clamp-4 break-words text-sm text-muted-foreground">
             {column.linked_channel.description}
@@ -263,7 +264,12 @@ const ColumnComponent = memo(function ColumnComponent({
       }}
       // touch-none, or a drag on a phone scrolls the page instead of moving
       // the card. Confined to the grip so the rest of the card still scrolls.
-      className={`z-20 grid size-9 shrink-0 touch-none place-items-center rounded-md border bg-background/90 text-muted-foreground shadow-sm ${
+      // focus-ring like every other control here: the UA outline it fell back
+      // to isn't replaced by the `ring-2` below, which only marks the held
+      // state. coarse: raises it to the 44px touch floor Button/Input/Select
+      // already keep, which matters more for this one than for most — it is
+      // the only way to move a block by hand.
+      className={`focus-ring z-20 grid size-9 shrink-0 touch-none place-items-center rounded-md border bg-background/90 text-muted-foreground shadow-sm coarse:size-11 ${
         heldHere ? "ring-2 ring-ring" : ""
       } cursor-grab active:cursor-grabbing`}
     >
@@ -274,20 +280,46 @@ const ColumnComponent = memo(function ColumnComponent({
   // A card being dragged follows the pointer and its old slot reads as empty;
   // one held by the keyboard stays put and is outlined instead, because there
   // is no pointer to say where it currently is.
-  const activeClass = !reorderActive ? "" : heldHere ? "ring-2 ring-ring rounded-lg" : "opacity-60";
+  const activeClass = !reorderActive
+    ? ""
+    : heldHere
+      ? "rounded-lg shadow-lg ring-2 ring-ring"
+      : "opacity-60";
 
   // A real <button> can't contain the grip (or a tweet embed's own buttons)
   // without nesting interactive elements, so those cases become a role=button
   // div. Keyed on the card element itself so a keypress inside the grip isn't
   // read as "open this block".
   const asDiv = column.type === "tweet" || reorderable;
-  const openOnKey = (e: React.KeyboardEvent<HTMLElement>) => {
-    if (e.target !== e.currentTarget) return;
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      onOpen(column.id);
-    }
-  };
+  // What both views call a card. A fixed "Open column" made every row in a list
+  // the same control to anything reading names, and hid the title, URL and
+  // author the row is showing. Capped so a long text block doesn't become a
+  // paragraph-length name.
+  const openLabel = `Open ${
+    (column.title || urlTitle || column.text || "block").trim().slice(0, 80) || "block"
+  }`;
+  // Where the card can't be a <button> — it holds the grip, or a tweet embed's
+  // own controls — it is a group holding real controls instead of a role=button
+  // holding presentational ones.
+  //
+  // ARIA makes a button's children presentational, so inside one the grip's
+  // name, its aria-pressed state and its help text need not reach the
+  // accessibility tree at all. That grip is the whole keyboard reorder path,
+  // which was built to be keyboard-reachable, so losing it there is the bug.
+  //
+  // This button is stretched across the card rather than wrapping it: the whole
+  // surface still opens the block on click, while the grip sits above it at
+  // z-20 and keeps its own hit area. Being a real button, it needs no tabIndex
+  // or key handling of its own.
+  const openButton = (
+    <button
+      type="button"
+      aria-label={openLabel}
+      data-open-block=""
+      onClick={() => onOpen(column.id)}
+      className="focus-ring absolute inset-0 z-10 rounded-lg"
+    />
+  );
 
   if (view === "list") {
     // Content column: the domain/path for a link, the text itself for a text
@@ -338,15 +370,13 @@ const ColumnComponent = memo(function ColumnComponent({
       return (
         <div
           ref={cardRef}
-          role="button"
-          tabIndex={0}
-          aria-label="Open column"
+          role="group"
+          aria-label={openLabel}
           data-column-id={column.id}
-          onClick={() => onOpen(column.id)}
-          onKeyDown={openOnKey}
           {...prefetch}
-          className={rowClass}
+          className={`relative ${rowClass}`}
         >
+          {openButton}
           {rowInner}
         </div>
       );
@@ -356,7 +386,7 @@ const ColumnComponent = memo(function ColumnComponent({
       <button
         ref={cardRef}
         type="button"
-        aria-label="Open column"
+        aria-label={openLabel}
         data-column-id={column.id}
         onClick={() => onOpen(column.id)}
         {...prefetch}
@@ -401,16 +431,15 @@ const ColumnComponent = memo(function ColumnComponent({
     return (
       <div
         ref={cardRef}
-        role="button"
-        tabIndex={0}
+        role="group"
+        aria-label={openLabel}
         data-column-id={column.id}
-        onClick={() => onOpen(column.id)}
-        onKeyDown={openOnKey}
         {...prefetch}
-        className={`cv-card group w-full text-left ${
+        className={`cv-card group relative w-full text-left ${
           column.type === "tweet" ? "aspect-square overflow-hidden" : ""
         } ${cardPress} ${activeClass}`}
       >
+        {openButton}
         {gridInner}
       </div>
     );
@@ -420,6 +449,7 @@ const ColumnComponent = memo(function ColumnComponent({
     <button
       ref={cardRef}
       type="button"
+      aria-label={openLabel}
       data-column-id={column.id}
       onClick={() => onOpen(column.id)}
       {...prefetch}

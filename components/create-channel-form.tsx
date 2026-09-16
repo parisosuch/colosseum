@@ -1,13 +1,20 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import React, { useId, useState } from "react";
+import React, { useEffect, useId, useState } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { Select } from "./ui/select";
 import { PlusIcon } from "lucide-react";
-import { createChannelAction, getMyProfileAction } from "@/lib/colosseum/actions";
+import {
+  createChannelAction,
+  createGroupChannelAction,
+  getMyProfileAction,
+  listMyGroupsAction,
+} from "@/lib/colosseum/actions";
 import type { Channel, ChannelAccess } from "@/lib/colosseum/channel";
+import type { Group, GroupRole } from "@/lib/colosseum/group";
 import AccessSelect from "./access-select";
 
 // The channel metadata form. Standalone on /new it creates the channel and
@@ -24,6 +31,11 @@ export default function CreateChannelForm({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [access, setAccess] = useState<ChannelAccess>("public");
+  // Which owner the channel belongs to: "" is you, otherwise a group id. Only
+  // groups you can manage are offered — a plain member adds to a group's
+  // channels but doesn't start new ones.
+  const [ownerId, setOwnerId] = useState("");
+  const [groups, setGroups] = useState<(Group & { role: GroupRole })[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
@@ -31,23 +43,46 @@ export default function CreateChannelForm({
   // mounted (the nav's desktop modal and mobile drawer both render one).
   const uid = useId();
 
+  // Loaded rather than passed in: this form is mounted from four places (the
+  // /new page, the nav modal, the mobile drawer, the connect picker) and none of
+  // them otherwise needs the caller's groups.
+  useEffect(() => {
+    let stale = false;
+    listMyGroupsAction()
+      .then((gs) => {
+        if (!stale) setGroups(gs.filter((g) => g.role !== "member"));
+      })
+      .catch(() => {
+        // A failed lookup just means no group option; creating for yourself,
+        // which is what the form did before groups existed, still works.
+      });
+    return () => {
+      stale = true;
+    };
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
 
     try {
-      // create the channel (the action resolves the owner from the session)
-      const channel = await createChannelAction({
-        title: title,
-        description: description,
-        access: access,
-      });
+      // Either action resolves the owner server-side; the id here only picks
+      // which one, and the group action re-checks that you may manage it.
+      const channel = ownerId
+        ? await createGroupChannelAction(ownerId, { title, description, access })
+        : await createChannelAction({ title, description, access });
       if (onCreated) {
         await onCreated(channel);
         return;
       }
-      // reroute to channel that was just created
+      // A channel lives under its owner's handle, which for a group is the
+      // group's, not yours.
+      const group = groups.find((g) => g.id === ownerId);
+      if (group) {
+        router.push(`/${group.handle}/${channel.id}`);
+        return;
+      }
       const userProfile = await getMyProfileAction();
       if (!userProfile) {
         router.push("/auth/onboarding");
@@ -81,6 +116,23 @@ export default function CreateChannelForm({
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
+          {groups.length > 0 ? (
+            <>
+              <Label htmlFor={`${uid}-owner`}>Belongs to</Label>
+              <Select
+                id={`${uid}-owner`}
+                value={ownerId}
+                onChange={(e) => setOwnerId(e.target.value)}
+              >
+                <option value="">You</option>
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name} (@{g.handle})
+                  </option>
+                ))}
+              </Select>
+            </>
+          ) : null}
           <div className="mt-2">
             <AccessSelect value={access} onChange={setAccess} idPrefix={`${uid}-access`} />
           </div>

@@ -2,6 +2,11 @@ import { asc, eq } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { comment, owner } from "@/lib/db/schema";
+import { parseMentions } from "./mentions";
+import { channelReaders, type Channel } from "./channel";
+import type { Column } from "./column";
+import { createNotification } from "./notification";
+import { getPublicUserProfile } from "./user";
 
 // Longest comment we accept. Generous for a note; a hard cap so the column
 // can't be used to store arbitrarily large blobs.
@@ -81,4 +86,69 @@ export async function getCommentAuthorization(
 
 export async function deleteComment(comment_id: number): Promise<void> {
   await db.delete(comment).where(eq(comment.id, comment_id));
+}
+
+// Post a comment and send the notices it owes: one to the block's author, and
+// one to each handle @mentioned in it. Shared by the web action and the API,
+// which authorize the read differently but owe the same notices.
+//
+// Both lists are filtered to people who can actually read the channel. A
+// mention resolves any handle whether or not they're a member, so without that
+// filter, mentioning a stranger from a private channel would hand them its
+// contents — the notification names the block and its channel and quotes the
+// comment. A block's author can lose access too, when an open channel is later
+// made private. Privacy runs in both directions.
+//
+// The author is excluded from the mention list: they already get the comment
+// notification, and two for one comment is noise.
+//
+// Authorization is the caller's: they must be able to read the block.
+export async function createCommentWithNotices(input: {
+  column: Column;
+  channel: Channel;
+  authorId: string;
+  body: string;
+}): Promise<Comment> {
+  const trimmed = input.body.trim();
+  if (!trimmed) throw new Error("Comment can't be empty.");
+  if (trimmed.length > MAX_COMMENT_LENGTH) {
+    throw new Error(`Comment is too long (max ${MAX_COMMENT_LENGTH} characters).`);
+  }
+
+  const created = await createComment({
+    column_id: input.column.id,
+    author_id: input.authorId,
+    body: trimmed,
+  });
+
+  const handles = [
+    ...new Set(parseMentions(trimmed).flatMap((s) => (s.type === "mention" ? [s.handle] : []))),
+  ];
+  const mentioned = (await Promise.all(handles.map((h) => getPublicUserProfile(h)))).filter(
+    (p): p is NonNullable<typeof p> => p !== null && p.user_id !== input.column.created_by,
+  );
+  const readers = new Set(
+    await channelReaders(input.channel, [
+      input.column.created_by,
+      ...mentioned.map((p) => p.user_id),
+    ]),
+  );
+
+  const notice = (recipient_id: string, type: "comment" | "mention") =>
+    createNotification({
+      recipient_id,
+      actor_id: input.authorId,
+      type,
+      channel_id: input.column.channel_id,
+      column_id: input.column.id,
+      comment_id: created.id,
+    });
+
+  if (readers.has(input.column.created_by)) {
+    await notice(input.column.created_by, "comment");
+  }
+  await Promise.all(
+    mentioned.filter((p) => readers.has(p.user_id)).map((p) => notice(p.user_id, "mention")),
+  );
+  return created;
 }

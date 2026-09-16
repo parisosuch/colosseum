@@ -14,7 +14,6 @@ import {
   canContributeChannel,
   canManageChannel,
   canReadChannel,
-  channelReaders,
   createChannel,
   deleteChannel,
   getChannel,
@@ -72,11 +71,10 @@ import { renderEmail, sendEmail } from "@/lib/email";
 
 import {
   Comment,
-  createComment,
   deleteComment,
   getColumnComments,
+  createCommentWithNotices,
   getCommentAuthorization,
-  MAX_COMMENT_LENGTH,
 } from "./comment";
 import {
   deleteMediaByUrl,
@@ -94,7 +92,6 @@ import {
   NotificationItem,
   NotificationType,
 } from "./notification";
-import { parseMentions } from "./mentions";
 import type { EmailNotificationPrefs, EmailSettings } from "@/lib/db/schema";
 import {
   AdminUser,
@@ -904,59 +901,7 @@ export async function getColumnCommentsAction(columnId: number): Promise<Comment
 export async function createCommentAction(columnId: number, body: string): Promise<Comment> {
   const userId = await requireUserId();
   const { column, channel } = await requireReadableBlock(columnId);
-  const trimmed = body.trim();
-  if (!trimmed) {
-    throw new Error("Comment can't be empty.");
-  }
-  if (trimmed.length > MAX_COMMENT_LENGTH) {
-    throw new Error(`Comment is too long (max ${MAX_COMMENT_LENGTH} characters).`);
-  }
-  const created = await createComment({ column_id: columnId, author_id: userId, body: trimmed });
-
-  // Notify the block's author, then anyone @mentioned (resolved to a real user,
-  // deduped, and excluding the author who already gets the comment notification).
-  //
-  // Both are filtered to users who can read the channel. The notification names
-  // the block and its channel and quotes the comment, and a mention resolves any
-  // handle whether or not they're a member — so without this, mentioning a
-  // stranger from a private channel hands them its contents. A block's author
-  // can lose access too, when an open channel is later made private. Same rule
-  // connect applies to a private host: private runs in both directions.
-  const handles = [
-    ...new Set(parseMentions(trimmed).flatMap((s) => (s.type === "mention" ? [s.handle] : []))),
-  ];
-  const mentioned = (await Promise.all(handles.map((h) => getPublicUserProfile(h)))).filter(
-    (p): p is NonNullable<typeof p> => p !== null && p.user_id !== column.created_by,
-  );
-  const readers = new Set(
-    await channelReaders(channel, [column.created_by, ...mentioned.map((p) => p.user_id)]),
-  );
-
-  if (readers.has(column.created_by)) {
-    await createNotification({
-      recipient_id: column.created_by,
-      actor_id: userId,
-      type: "comment",
-      channel_id: column.channel_id,
-      column_id: columnId,
-      comment_id: created.id,
-    });
-  }
-  await Promise.all(
-    mentioned
-      .filter((p) => readers.has(p.user_id))
-      .map((p) =>
-        createNotification({
-          recipient_id: p.user_id,
-          actor_id: userId,
-          type: "mention",
-          channel_id: column.channel_id,
-          column_id: columnId,
-          comment_id: created.id,
-        }),
-      ),
-  );
-  return created;
+  return createCommentWithNotices({ column, channel, authorId: userId, body });
 }
 
 export async function deleteCommentAction(commentId: number): Promise<void> {

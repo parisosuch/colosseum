@@ -537,6 +537,60 @@ Remove a comment. → `{ "success": true }`
 Its author always may; otherwise the block's channel owner may moderate it.
 Addressed by comment id, which is what the list hands back.
 
+## Admin
+
+For self-hosters. Every route here is `404` for a non-admin rather than `403` —
+an ordinary token has no reason to learn the admin surface exists.
+
+### `GET /api/v1/admin/users`
+
+Every account, with its limits and flags. → `{ "users": [...] }`
+
+### `PATCH /api/v1/admin/users/:id`
+
+Ban, promote, or set limits. → `{ "success": true, "updated": [...] }`
+
+```json
+{ "banned": true }
+{ "is_admin": true }
+{ "invite_limit": 5, "column_limit": null }
+```
+
+The limits are written as a pair, so send both or neither — one alone would
+reset the other. `null` is unlimited. An admin can't be banned and the last
+admin can't be demoted; both come back `400` with the reason.
+
+**A ban doesn't end that user's sessions or revoke their API tokens.** That's
+existing behaviour, worth knowing before relying on this to cut someone off
+quickly.
+
+### `GET /api/v1/admin/settings`
+
+Instance settings. → `{ "settings": { ... } }`
+
+Mail credentials are redacted to `"__set__"` or `""`: you can see whether a
+provider is configured, not what the key is. The admin page reads the real
+values behind a browser session; a bearer token is longer-lived and may sit in
+an agent's context.
+
+### `PATCH /api/v1/admin/settings`
+
+Set the default per-user limits. `null` is unlimited.
+
+```json
+{ "max_invites_per_user": 5, "max_columns_per_user": null }
+```
+
+Email configuration isn't settable here — it would mean accepting secrets over
+the API and being able to repoint the instance's outbound mail.
+
+### `DELETE /api/v1/admin/blocks/:id` and `/admin/channels/:id`
+
+Moderation: remove something you don't own. → `{ "success": true }`
+
+A private channel, or a block inside one, is a `404`. Moderation covers what is
+public; being an admin is not a way into someone's private collection.
+
 ## Example
 
 ```bash

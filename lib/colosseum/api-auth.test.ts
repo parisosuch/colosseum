@@ -5,6 +5,8 @@ import { seed, USERS } from "@/scripts/seed";
 import {
   addGroupMemberFor,
   addMemberFor,
+  adminDeleteBlock,
+  authorizeAdmin,
   attachPreview,
   attachPreviews,
   copyBlock,
@@ -29,10 +31,12 @@ import {
 } from "./api-auth";
 import { createMedia, putBlob } from "./blob";
 import { getMyInviteCodes } from "./invite";
+import { redactSettings } from "./admin";
 import { createChannel } from "./channel";
 import {
   Column,
   getChannelColumns,
+  getColumn,
   uploadImageColumn,
   uploadTextColumn,
   uploadURLColumn,
@@ -696,4 +700,72 @@ test("listApiTokensFor marks the token making the request", async () => {
   expect(byId.get(second.id)).toBe(false);
   // Secrets never come back.
   expect(Object.keys(tokens[0])).not.toContain("token_hash");
+});
+
+test("the admin surface is 404 for an ordinary user, not 403", async () => {
+  // Bob is an ordinary account; the seed makes alice the admin.
+  // A 403 would tell an ordinary token that an admin surface exists at all.
+  expect(((await authorizeAdmin(USERS.bob.id)) as NextResponse).status).toBe(404);
+  // And the admin gets through.
+  expect(await authorizeAdmin(USERS.alice.id)).not.toBeInstanceOf(NextResponse);
+});
+
+test("adminDeleteBlock refuses a block in a private channel", async () => {
+  const ch = await createChannel({
+    title: "Private",
+    access: "private",
+    owned_by: USERS.bob.ownerId,
+  });
+  const block = await uploadTextColumn({
+    created_by: USERS.bob.id,
+    channel_id: ch.id,
+    text: "private thing",
+  });
+
+  // Alice is the seed's admin; nothing is toggled here because she is the only
+  // one, and setUserAdmin refuses to demote the last admin.
+  {
+    // Moderation covers what is public; being an admin is not a way into
+    // someone's private collection.
+    const result = await adminDeleteBlock(block.id, USERS.alice.id);
+    expect((result as NextResponse).status).toBe(404);
+    expect(await getColumn(block.id)).not.toBeNull();
+
+    // The same admin can remove a public one.
+    const open = await createChannel({
+      title: "Public",
+      access: "public",
+      owned_by: USERS.bob.ownerId,
+    });
+    const visible = await uploadTextColumn({
+      created_by: USERS.bob.id,
+      channel_id: open.id,
+      text: "public thing",
+    });
+    expect(await adminDeleteBlock(visible.id, USERS.alice.id)).toBeNull();
+    expect(await getColumn(visible.id)).toBeNull();
+  }
+});
+
+test("redactSettings hides mail credentials but says whether one is set", async () => {
+  const redacted = redactSettings({
+    max_invites_per_user: 5,
+    max_columns_per_user: null,
+    email: {
+      provider: "resend",
+      from: "hi@example.test",
+      resend_api_key: "re_supersecret",
+      smtp_host: "",
+      smtp_port: null,
+      smtp_user: "",
+      smtp_pass: "",
+    },
+  });
+  expect(redacted.email.resend_api_key).toBe("__set__");
+  expect(redacted.email.smtp_pass).toBe("");
+  // Everything that isn't a secret survives, so a client can still tell how the
+  // instance is configured.
+  expect(redacted.email.provider).toBe("resend");
+  expect(redacted.email.from).toBe("hi@example.test");
+  expect(redacted.max_invites_per_user).toBe(5);
 });

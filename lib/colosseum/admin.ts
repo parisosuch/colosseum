@@ -70,6 +70,40 @@ export async function getAdminHandles(): Promise<string[]> {
 // The signed-in admin, or a thrown error. Actions that moderate content or
 // change limits gate on this. Non-admins (and banned users, already nulled by
 // getSessionUser) are rejected.
+// Is this user an admin? Keyed on a user id rather than a session, so a
+// bearer-token request can ask the same question the admin pages do — a route
+// handler has no cookie to read.
+//
+// Returns the email too, because the one admin operation that needs an address
+// (the test email) sends to the caller's own, and ApiAuth carries only an id.
+export async function getAdminUser(userId: string): Promise<{ id: string; email: string } | null> {
+  const [u] = await db
+    .select({ id: user.id, email: user.email, is_admin: user.is_admin, banned: user.banned })
+    .from(user)
+    .where(eq(user.id, userId))
+    .limit(1);
+  // Banned is checked here even though an admin can't currently be banned
+  // (setUserBanned refuses), because a bearer token otherwise outlives a ban —
+  // resolveApiToken doesn't look at it — and this is the one place that would
+  // turn that into admin access.
+  if (!u || !u.is_admin || u.banned) return null;
+  return { id: u.id, email: u.email };
+}
+
+// Settings with the mail credentials taken out. The admin page reads the stored
+// values so it can show a configured provider, but they are secrets: anything
+// reachable with a bearer token gets this instead.
+export function redactSettings(settings: AppSettings): AppSettings {
+  return {
+    ...settings,
+    email: {
+      ...settings.email,
+      resend_api_key: settings.email.resend_api_key ? "__set__" : "",
+      smtp_pass: settings.email.smtp_pass ? "__set__" : "",
+    },
+  };
+}
+
 export async function requireAdmin() {
   const u = await getSessionUser();
   if (!u?.is_admin) {

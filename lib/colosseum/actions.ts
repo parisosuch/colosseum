@@ -42,12 +42,7 @@ import {
   transferGroupOwnership,
   updateGroup,
 } from "./group";
-import {
-  ChannelMember,
-  addChannelMemberByHandle,
-  isChannelMember,
-  removeChannelMember,
-} from "./member";
+import { ChannelMember, removeChannelMember } from "./member";
 import {
   Column,
   ColumnQuery,
@@ -117,6 +112,7 @@ import {
   setUserLimits,
   updateAppSettings,
 } from "./admin";
+import { addChannelMemberWithNotice } from "./member";
 import { revokeApiToken } from "./api-token";
 import {
   ingestGitHubColumn,
@@ -303,29 +299,12 @@ export async function addChannelMemberAction(
 ): Promise<ChannelMember> {
   const userId = await requireUserId();
   const channel = await requireOwnedChannel(channelId, userId);
-  const normalized = normalizeHandle(handle);
-  if (!normalized) {
-    throw new Error("Enter a handle.");
-  }
-  const profile = await getPublicUserProfile(normalized);
-  if (!profile) {
-    throw new Error("No user with that handle.");
-  }
-  if (profile.owner_id === channel.owned_by) {
-    throw new Error("You're already the owner of this channel.");
-  }
-  // Only notify on a genuine add — re-adding an existing member is a no-op.
-  const alreadyMember = await isChannelMember(channelId, profile.user_id);
-  const member = await addChannelMemberByHandle(channelId, normalized);
-  if (!alreadyMember) {
-    await createNotification({
-      recipient_id: profile.user_id,
-      actor_id: userId,
-      type: "member",
-      channel_id: channelId,
-    });
-  }
-  return member;
+  return addChannelMemberWithNotice({
+    channelId,
+    handle,
+    actorUserId: userId,
+    channelOwnedBy: channel.owned_by,
+  });
 }
 
 export async function removeChannelMemberAction(

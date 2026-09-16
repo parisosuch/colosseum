@@ -16,11 +16,14 @@ import {
   authorizeChannelContribute,
   authorizeChannelManage,
   authorizeChannelRead,
+  addMemberFor,
   copyBlock,
   leaveChannel,
+  listMembersFor,
   moveBlock,
   nestChannel,
   parseAccess,
+  removeMemberFor,
   reorderBlock,
   resolveApiToken,
 } from "@/lib/colosseum/api-auth";
@@ -263,6 +266,54 @@ const handler = createMcpHandler(
             blocks: { used: blocks.used, limit: blocks.limit },
           },
         };
+      }),
+    );
+
+    server.registerTool(
+      "list_members",
+      {
+        description:
+          "Who is on a channel's roster. Visible to anyone who can read the " +
+          "channel — the channel page shows the same list.",
+        inputSchema: { channelId: z.number().int() },
+      },
+      asTool(async ({ channelId }: { channelId: number }, { userId }) => {
+        const result = await listMembersFor(channelId, userId);
+        if (result instanceof NextResponse) throw await denialToError(result);
+        return { members: result };
+      }),
+    );
+
+    server.registerTool(
+      "add_member",
+      {
+        description:
+          "Add someone to a channel by handle, which is how a private channel " +
+          "gets shared. Channel owners only; the person added is notified. " +
+          "Adding someone already on the roster changes nothing and sends no " +
+          "second notification.",
+        inputSchema: { channelId: z.number().int(), handle: z.string() },
+      },
+      asTool(async ({ channelId, handle }: { channelId: number; handle: string }, { userId }) => {
+        const result = await addMemberFor(channelId, handle, userId);
+        if (result instanceof NextResponse) throw await denialToError(result);
+        return { member: result };
+      }),
+    );
+
+    server.registerTool(
+      "remove_member",
+      {
+        description:
+          "Take someone off a channel's roster, by handle. Channel owners " +
+          "only. To give up your own membership use leave_channel instead, " +
+          "which any member may do.",
+        inputSchema: { channelId: z.number().int(), handle: z.string() },
+      },
+      asTool(async ({ channelId, handle }: { channelId: number; handle: string }, { userId }) => {
+        const denial = await removeMemberFor(channelId, handle, userId);
+        if (denial) throw await denialToError(denial);
+        return { removed: handle };
       }),
     );
 

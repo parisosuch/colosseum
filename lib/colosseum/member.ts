@@ -2,7 +2,8 @@ import { and, asc, eq } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { channelMember, owner } from "@/lib/db/schema";
-import { getPublicUserProfile } from "./user";
+import { getPublicUserProfile, normalizeHandle } from "./user";
+import { createNotification } from "./notification";
 
 // A member of a private channel, carrying the profile fields the manage dialog
 // needs to render and link the row.
@@ -76,4 +77,56 @@ export async function removeChannelMember(channel_id: number, user_id: string): 
   await db
     .delete(channelMember)
     .where(and(eq(channelMember.channel_id, channel_id), eq(channelMember.user_id, user_id)));
+}
+
+// Add someone to a channel by handle and tell them about it. Shared by the web
+// action and the API, which authorize it differently but owe the same notice.
+//
+// The notification fires only on a genuine add: re-adding an existing member is
+// a no-op on the roster, and pinging them again for it would be noise.
+//
+// Authorization is the caller's — this assumes they may manage the channel.
+// `channelOwnedBy` is the channel's owner id, used only to refuse adding the
+// owner to their own channel, which would be a membership row that means
+// nothing.
+export async function addChannelMemberWithNotice(input: {
+  channelId: number;
+  handle: string;
+  actorUserId: string;
+  channelOwnedBy: string;
+}): Promise<ChannelMember> {
+  const normalized = normalizeHandle(input.handle);
+  if (!normalized) throw new Error("Enter a handle.");
+
+  const profile = await getPublicUserProfile(normalized);
+  if (!profile) throw new Error("No user with that handle.");
+  if (profile.owner_id === input.channelOwnedBy) {
+    throw new Error("They already own this channel.");
+  }
+
+  const alreadyMember = await isChannelMember(input.channelId, profile.user_id);
+  const member = await addChannelMemberByHandle(input.channelId, normalized);
+  if (!alreadyMember) {
+    await createNotification({
+      recipient_id: profile.user_id,
+      actor_id: input.actorUserId,
+      type: "member",
+      channel_id: input.channelId,
+    });
+  }
+  return member;
+}
+
+// Resolve a handle to the user behind it, for removing them from a channel.
+// The API addresses people by handle the way the rest of it does; the web app
+// already holds the user id from the roster it rendered.
+export async function removeChannelMemberByHandle(
+  channel_id: number,
+  handle: string,
+): Promise<void> {
+  const normalized = normalizeHandle(handle);
+  if (!normalized) throw new Error("Enter a handle.");
+  const profile = await getPublicUserProfile(normalized);
+  if (!profile) throw new Error("No user with that handle.");
+  await removeChannelMember(channel_id, profile.user_id);
 }

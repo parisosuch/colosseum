@@ -3,12 +3,15 @@ import { NextResponse } from "next/server";
 
 import { seed, USERS } from "@/scripts/seed";
 import {
+  addMemberFor,
   attachPreview,
   attachPreviews,
   copyBlock,
+  listMembersFor,
   leaveChannel,
   moveBlock,
   nestChannel,
+  removeMemberFor,
   reorderBlock,
 } from "./api-auth";
 import { createMedia, putBlob } from "./blob";
@@ -481,4 +484,53 @@ test("API block payloads carry the markdown source, not the rendered HTML", asyn
   const [listed] = await attachPreviews([block]);
   expect(listed.text).toBe("# hi");
   expect("html" in listed).toBe(false);
+});
+
+test("addMemberFor puts someone on the roster; listMembersFor needs only read", async () => {
+  const ch = await createChannel({
+    title: "Roster",
+    access: "private",
+    owned_by: USERS.bob.ownerId,
+  });
+
+  const added = await addMemberFor(ch.id, USERS.alice.handle, USERS.bob.id);
+  expect(added).not.toBeInstanceOf(NextResponse);
+  expect(await isChannelMember(ch.id, USERS.alice.id)).toBe(true);
+
+  // Alice can now read the channel, so she can see who else is on it.
+  const listed = await listMembersFor(ch.id, USERS.alice.id);
+  expect(listed).not.toBeInstanceOf(NextResponse);
+  expect((listed as { handle: string }[]).map((m) => m.handle)).toContain(USERS.alice.handle);
+});
+
+test("addMemberFor refuses a non-owner and reports a bad handle as a 400", async () => {
+  const ch = await createChannel({
+    title: "Bob's roster",
+    access: "public",
+    owned_by: USERS.bob.ownerId,
+  });
+
+  const notOwner = await addMemberFor(ch.id, USERS.alice.handle, USERS.alice.id);
+  expect((notOwner as NextResponse).status).toBe(403);
+
+  // A handle nobody has is the caller's mistake, not a server fault.
+  const badHandle = await addMemberFor(ch.id, "nobody-by-that-name", USERS.bob.id);
+  expect((badHandle as NextResponse).status).toBe(400);
+});
+
+test("removeMemberFor takes someone off, and is owner-only", async () => {
+  const ch = await createChannel({
+    title: "Removable",
+    access: "private",
+    owned_by: USERS.bob.ownerId,
+  });
+  await addMemberFor(ch.id, USERS.alice.handle, USERS.bob.id);
+
+  // A member can't clear the roster — that's leaveChannel's job for themselves.
+  const byMember = await removeMemberFor(ch.id, USERS.alice.handle, USERS.alice.id);
+  expect((byMember as NextResponse).status).toBe(403);
+  expect(await isChannelMember(ch.id, USERS.alice.id)).toBe(true);
+
+  expect(await removeMemberFor(ch.id, USERS.alice.handle, USERS.bob.id)).toBeNull();
+  expect(await isChannelMember(ch.id, USERS.alice.id)).toBe(false);
 });

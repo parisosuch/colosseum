@@ -91,6 +91,32 @@ owner. The linked channel only has to be visible, and a private one is a `404`
 rather than a `403`, so this never confirms one exists. A channel cannot be
 nested in itself (`400`). Charged to your block quota.
 
+### `GET /api/v1/channels/:id/members`
+
+The channel's roster. → `{ "members": [...] }`
+
+Readable by anyone who can see the channel — the channel page shows the same
+list.
+
+### `POST /api/v1/channels/:id/members`
+
+Add someone by handle. Owner only.
+
+```json
+{ "handle": "alice" }
+```
+
+→ `201 { "member": { ... } }`
+
+This is how a private channel gets shared: a channel an API client creates as
+private is otherwise a dead end until a person opens the app. The person added
+is notified, once — re-adding an existing member changes nothing and sends no
+second notice. `400` for a handle nobody has, or the channel's own owner.
+
+### `DELETE /api/v1/channels/:id/members/:handle`
+
+Take someone off the roster. Owner only. → `{ "success": true }`
+
 ### `DELETE /api/v1/channels/:id/members/me`
 
 Give up your own membership of a channel someone else owns. → `204`, no body.

@@ -108,6 +108,12 @@ be deleted independently. It also asks less — read on the source rather than
 ownership — so a block from anyone's channel you can see may be copied into
 yours.
 
+There is no tool to mint an API token, and that is deliberate rather than an
+oversight: a token able to mint tokens makes revocation unreliable, since
+revoking the one you know about does nothing about the ones it already made.
+Creating a token stays in the web app. Listing and revoking are here, because
+they only ever take capability away.
+
 `delete_group` takes a `confirm` flag the other tools don't. Deleting a group
 deletes every channel it owns and every block in them, and nothing else in this
 API cascades that far — the flag is there so a model has to mean it.

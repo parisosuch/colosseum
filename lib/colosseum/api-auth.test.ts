@@ -9,9 +9,12 @@ import {
   attachPreviews,
   copyBlock,
   createCommentFor,
+  createApiToken,
   createGroupFor,
+  createInviteCodeFor,
   deleteCommentFor,
   listCommentsFor,
+  listApiTokensFor,
   listGroupMembersFor,
   listMembersFor,
   leaveChannel,
@@ -20,10 +23,12 @@ import {
   removeGroupMemberFor,
   removeMemberFor,
   reorderBlock,
+  revokeInviteCodeFor,
   setGroupRoleFor,
   transferChannelFor,
 } from "./api-auth";
 import { createMedia, putBlob } from "./blob";
+import { getMyInviteCodes } from "./invite";
 import { createChannel } from "./channel";
 import {
   Column,
@@ -657,4 +662,38 @@ test("transferChannelFor moves a channel to a group the caller administers", asy
   // Bob neither owns the channel nor administers anything it could go to.
   const refused = await transferChannelFor(ch.id, USERS.bob.handle, USERS.bob.id);
   expect(refused).toBeInstanceOf(NextResponse);
+});
+
+test("invite codes: mint, list with the quota, then revoke", async () => {
+  const minted = await createInviteCodeFor(USERS.alice.id, 2, "for a friend");
+  expect(minted).not.toBeInstanceOf(NextResponse);
+  const code = (minted as { code: string }).code;
+
+  const listed = await getMyInviteCodes(USERS.alice.id);
+  expect(listed.map((i) => i.code)).toContain(code);
+
+  expect(await revokeInviteCodeFor(code, USERS.alice.id)).toBeNull();
+  expect((await getMyInviteCodes(USERS.alice.id)).map((i) => i.code)).not.toContain(code);
+});
+
+test("revoking someone else's invite code does nothing to it", async () => {
+  const minted = (await createInviteCodeFor(USERS.alice.id, 1, null)) as { code: string };
+
+  // Scoped to the caller's own codes, so this matches nothing rather than
+  // reporting whether the code exists.
+  expect(await revokeInviteCodeFor(minted.code, USERS.bob.id)).toBeNull();
+  expect((await getMyInviteCodes(USERS.alice.id)).map((i) => i.code)).toContain(minted.code);
+});
+
+test("listApiTokensFor marks the token making the request", async () => {
+  const { row: first } = await createApiToken({ userId: USERS.alice.id, name: "one" });
+  const { row: second } = await createApiToken({ userId: USERS.alice.id, name: "two" });
+
+  const tokens = await listApiTokensFor(USERS.alice.id, first.id);
+  const byId = new Map(tokens.map((t) => [t.id, t.current]));
+  // Without this flag, "revoke token X" is a guess that might cut off the caller.
+  expect(byId.get(first.id)).toBe(true);
+  expect(byId.get(second.id)).toBe(false);
+  // Secrets never come back.
+  expect(Object.keys(tokens[0])).not.toContain("token_hash");
 });

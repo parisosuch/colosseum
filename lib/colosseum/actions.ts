@@ -111,6 +111,7 @@ import {
   updateAppSettings,
 } from "./admin";
 import { addChannelMemberWithNotice } from "./member";
+import { isHandleAvailable, updateProfile } from "./profile";
 import { revokeApiToken } from "./api-token";
 import {
   ingestGitHubColumn,
@@ -131,7 +132,6 @@ import {
   normalizeHandle,
   ProfileSearchResult,
   searchProfiles,
-  updateUserProfile,
   UserProfile,
   validateHandle,
 } from "./user";
@@ -1010,11 +1010,7 @@ export async function getMyProfileAction(): Promise<UserProfile | null> {
 // (every profile lives at /{handle}), so this discloses nothing a caller
 // couldn't get by loading that page.
 export async function isHandleAvailableAction(rawHandle: string): Promise<boolean | null> {
-  const handle = normalizeHandle(rawHandle);
-  if (validateHandle(handle)) {
-    return null;
-  }
-  return (await getPublicUserProfile(handle)) === null;
+  return isHandleAvailable(rawHandle);
 }
 
 export async function createUserProfileAction(rawHandle: string): Promise<ProfileResult> {
@@ -1063,15 +1059,13 @@ export async function updateUserProfileAction(updates: {
       return { ok: false, message: validationError };
     }
   }
-  // A new avatar orphans the old one's media reference; capture it so it can
-  // be dropped (and its blob GC'd) after the update lands.
-  const previous = updates.avatar_url !== undefined ? await getUserProfile(userId) : null;
+  const previous = await getUserProfile(userId);
+  if (!previous) {
+    return { ok: false, message: "Finish setting up your profile first." };
+  }
   try {
-    const profile = await updateUserProfile(userId, updates);
-    if (previous?.avatar_url && previous.avatar_url !== updates.avatar_url) {
-      await deleteMediaByUrl(previous.avatar_url);
-    }
-    return { ok: true, profile };
+    // updateProfile drops the replaced avatar's media once the write lands.
+    return { ok: true, profile: await updateProfile(userId, previous, updates) };
   } catch (e) {
     if (e instanceof HandleTakenError) {
       return { ok: false, handleTaken: true, message: "That handle is already taken." };

@@ -43,7 +43,14 @@ import {
 } from "@/lib/colosseum/channel";
 import { getOwnerByHandle, resolveCreateOwner } from "@/lib/colosseum/owner";
 import { getColumnQuota } from "@/lib/colosseum/admin";
-import { getUserProfile, searchProfiles } from "@/lib/colosseum/user";
+import { isHandleAvailable, updateProfile } from "@/lib/colosseum/profile";
+import {
+  HandleTakenError,
+  getUserProfile,
+  normalizeHandle,
+  searchProfiles,
+  validateHandle,
+} from "@/lib/colosseum/user";
 import { listUserGroups } from "@/lib/colosseum/group";
 import {
   listNotifications,
@@ -277,6 +284,76 @@ const handler = createMcpHandler(
             blocks: { used: blocks.used, limit: blocks.limit },
           },
         };
+      }),
+    );
+
+    server.registerTool(
+      "update_profile",
+      {
+        description:
+          "Edit your own profile: `handle`, `about` (the bio), and `avatar` " +
+          "as a URL the server fetches. Changing your handle changes every " +
+          "link to you, since a profile lives at /{handle} — check " +
+          "check_handle first. Nothing here touches anyone else's account.",
+        inputSchema: {
+          handle: z.string().optional(),
+          about: z.string().optional(),
+          avatar: z.string().optional(),
+        },
+      },
+      asTool(async (args: { handle?: string; about?: string; avatar?: string }, { userId }) => {
+        const updates: { handle?: string; about?: string; avatar_url?: string } = {};
+        if (args.handle !== undefined) {
+          const handle = normalizeHandle(args.handle);
+          const invalid = validateHandle(handle);
+          if (invalid) throw new Error(invalid);
+          updates.handle = handle;
+        }
+        if (args.about !== undefined) updates.about = args.about;
+
+        const previous = await getUserProfile(userId);
+        if (!previous) throw new Error("This account has not finished onboarding.");
+
+        if (args.avatar?.trim()) {
+          // Public scope: an avatar shows wherever the account is named.
+          updates.avatar_url = await putImageBlobFromUrl(args.avatar.trim(), userId, "public");
+        }
+        if (Object.keys(updates).length === 0) {
+          throw new Error("Nothing to update. Allowed: handle, about, avatar.");
+        }
+
+        try {
+          const profile = await updateProfile(userId, previous, updates);
+          return {
+            me: {
+              handle: profile.handle,
+              about: profile.about,
+              avatar_url: profile.avatar_url,
+              created_at: profile.created_at,
+            },
+          };
+        } catch (e) {
+          if (e instanceof HandleTakenError) throw new Error("That handle is already taken.");
+          throw e;
+        }
+      }),
+    );
+
+    server.registerTool(
+      "check_handle",
+      {
+        description:
+          "Whether a handle is free to claim. `available: null` means it isn't " +
+          "a valid handle at all, which is a different answer from taken. " +
+          "People and groups share one namespace, so a handle a group holds is " +
+          "not available to you.",
+        inputSchema: { handle: z.string() },
+      },
+      asTool(async ({ handle }: { handle: string }) => {
+        const available = await isHandleAvailable(handle);
+        return available === null
+          ? { available: null, reason: "Not a valid handle." }
+          : { available };
       }),
     );
 

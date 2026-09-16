@@ -7,6 +7,7 @@ import {
   attachPreviews,
   authorizeChannelContribute,
   authorizeChannelRead,
+  createFileBlock,
   json,
 } from "@/lib/colosseum/api-auth";
 import { assertColumnQuota } from "@/lib/colosseum/admin";
@@ -105,6 +106,34 @@ export async function POST(req: Request, { params }: Ctx) {
     return apiError(e instanceof Error ? e.message : "Block limit reached.", 403);
   }
 
+  // A multipart body means real bytes: an uploaded image, a PDF, or a video.
+  // Checked before req.json(), which would otherwise consume the stream and
+  // fail. The file's own mime picks the block type.
+  if ((req.headers.get("content-type") ?? "").startsWith("multipart/form-data")) {
+    let form: FormData;
+    try {
+      form = await req.formData();
+    } catch {
+      return apiError("Invalid multipart body.", 400);
+    }
+    const file = form.get("file");
+    if (!(file instanceof File)) {
+      return apiError("`file` is required for a multipart upload.", 400);
+    }
+    try {
+      const result = await createFileBlock(channelId, { file }, auth.userId);
+      if (result instanceof NextResponse) return result;
+      logInfo(
+        "channels.id.blocks.POST",
+        `created ${result.type} block ${result.id} in channel ${channelId} from an upload`,
+      );
+      return json({ block: await attachPreview(result) }, 201);
+    } catch (e) {
+      logError("channels.id.blocks.POST", `upload failed for channel ${channelId}`, e);
+      return apiError("Failed to store that file.", 500);
+    }
+  }
+
   let body: Record<string, unknown>;
   try {
     body = (await req.json()) as Record<string, unknown>;
@@ -167,8 +196,18 @@ export async function POST(req: Request, { params }: Ctx) {
         return apiError(e instanceof Error ? e.message : "Couldn't fetch that image.", 422);
       }
       block = await uploadImageColumn({ ...base, image });
+    } else if (type === "pdf" || type === "video") {
+      // Given as a URL the server fetches, not bytes — the JSON path stays
+      // JSON. Post multipart to hand over a local file instead.
+      const source = body[type];
+      if (typeof source !== "string" || !source.trim()) {
+        return apiError(`\`${type}\` must be a URL for a ${type} block.`, 400);
+      }
+      const result = await createFileBlock(channelId, { url: source.trim() }, auth.userId);
+      if (result instanceof NextResponse) return result;
+      block = result;
     } else {
-      return apiError("`type` must be one of: text, url, image.", 400);
+      return apiError("`type` must be one of: text, url, image, pdf, video.", 400);
     }
     // The upload helpers take no tags, so this is a second write — the same two
     // steps the web app makes when adding a block and then tagging it.

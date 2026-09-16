@@ -374,7 +374,19 @@ Add a block to a channel you own. One of:
 { "type": "text",  "text": "a note" }
 { "type": "url",   "url": "https://example.com", "detect": true }
 { "type": "image", "image": "https://.../public-image.png" }
+{ "type": "pdf",   "pdf": "https://.../paper.pdf" }
+{ "type": "video", "video": "https://.../clip.mp4" }
 ```
+
+Or post `multipart/form-data` with a `file` field to upload a local image, PDF
+or video directly. The file's own mime picks the block type — there is no
+`type` field to disagree with it. Limits are the app's: 10MB image, 25MB PDF,
+100MB video, and the same accepted formats. A file that fails either check is a
+`422`.
+
+Media follows the channel's privacy, not yours: a file added to a private
+channel is stored private, and its URL needs your token (or a session) to
+fetch.
 
 Optional `tags` on any of them: `{ "type": "url", "url": "...", "tags": ["reading", "css"] }`.
 
@@ -415,7 +427,8 @@ Fetch a block (visible if its channel is public or owned).
 
 Update a block in a channel you own. Editable fields by type: `title`,
 `description`, plus `text` / `url` / `image` for that block's type, and `tags`
-on any type. → `{ "block": { ... } }`
+on any type. A `pdf` or `video` block takes `title`, `description` and `tags`
+only — the stored file isn't replaceable in place, a new one is a new block. → `{ "block": { ... } }`
 
 `tags` replaces the whole list rather than adding to it, so send the tags you
 want to keep; `[]` clears them.

@@ -17,7 +17,7 @@ import {
   canReadChannel,
   viewerScope,
 } from "./channel";
-import { getChannel, transferChannel } from "./channel";
+import { deleteChannel, getChannel, transferChannel } from "./channel";
 import {
   type Group,
   type GroupMember,
@@ -48,6 +48,7 @@ import {
   Column,
   addChannelColumn,
   copyColumnInto,
+  deleteColumn,
   getColumn,
   moveColumn,
   reorderColumn,
@@ -62,7 +63,7 @@ import {
 import { ApiToken, getMyApiTokens, revokeApiToken } from "./api-token";
 import { type InviteCode, createInviteCode, revokeInviteCode } from "./invite";
 import { getScreenshot, getScreenshotsForUrls } from "./screenshot-data";
-import { assertColumnQuota, assertInviteQuota } from "./admin";
+import { assertColumnQuota, assertInviteQuota, getAdminUser } from "./admin";
 import { notifyChannelNested } from "./nest";
 import { checkRateLimit } from "./rate-limit";
 import { logError, logInfo } from "@/lib/log";
@@ -328,6 +329,63 @@ export async function moveBlock(
 
   const moved = await moveColumn(blockId, destinationChannelId);
   return moved ?? apiError("Not found.", 404);
+}
+
+// Admin operations, for self-hosters who want to script their instance.
+//
+// requireAdmin in ./admin reads the session cookie, which a bearer-token
+// request does not have, so this asks getAdminUser instead — the same question,
+// keyed on the user id the token resolved to.
+//
+// Not-an-admin is a 404 rather than a 403. There is no reason to tell an
+// ordinary token that an admin surface exists at all.
+export async function authorizeAdmin(
+  userId: string,
+): Promise<{ id: string; email: string } | NextResponse> {
+  const admin = await getAdminUser(userId);
+  if (!admin) {
+    logInfo("api-auth", `user ${userId} denied an admin operation`);
+    return apiError("Not found.", 404);
+  }
+  return admin;
+}
+
+// Admin delete of a block or a channel, which is moderation: it reaches into
+// things the admin does not own.
+//
+// Both refuse a private channel, which is the policy the web actions carry —
+// moderation covers what is public, and an admin is not a passkey into
+// someone's private collection. Keeping it here rather than in each surface is
+// the point: it was in the action bodies alone, so every new caller had to
+// remember it.
+export async function adminDeleteBlock(
+  blockId: number,
+  userId: string,
+): Promise<NextResponse | null> {
+  const admin = await authorizeAdmin(userId);
+  if (admin instanceof NextResponse) return admin;
+
+  const block = await getColumn(blockId, { html: false });
+  if (!block) return apiError("Not found.", 404);
+  const channel = await getChannel(block.channel_id);
+  if (!channel || channel.private) return apiError("Not found.", 404);
+
+  await deleteColumn(blockId);
+  return null;
+}
+
+export async function adminDeleteChannel(
+  channelId: number,
+  userId: string,
+): Promise<NextResponse | null> {
+  const admin = await authorizeAdmin(userId);
+  if (admin instanceof NextResponse) return admin;
+
+  const channel = await getChannel(channelId);
+  if (!channel || channel.private) return apiError("Not found.", 404);
+
+  await deleteChannel(channelId);
+  return null;
 }
 
 // Invite codes and API tokens — the two pieces of account administration that

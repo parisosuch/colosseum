@@ -18,6 +18,9 @@ import {
   authorizeChannelRead,
   addGroupMemberFor,
   addMemberFor,
+  adminDeleteBlock,
+  adminDeleteChannel,
+  authorizeAdmin,
   copyBlock,
   createGroupFor,
   createInviteCodeFor,
@@ -55,7 +58,17 @@ import {
   viewerScope,
 } from "@/lib/colosseum/channel";
 import { getOwnerByHandle, resolveCreateOwner } from "@/lib/colosseum/owner";
-import { getColumnQuota, getInviteQuota } from "@/lib/colosseum/admin";
+import {
+  getAppSettings,
+  getColumnQuota,
+  getInviteQuota,
+  listUsers,
+  redactSettings,
+  setUserAdmin,
+  setUserBanned,
+  setUserLimits,
+  updateAppSettings,
+} from "@/lib/colosseum/admin";
 import { getMyInviteCodes } from "@/lib/colosseum/invite";
 import { isHandleAvailable, updateProfile } from "@/lib/colosseum/profile";
 import {
@@ -561,6 +574,160 @@ const handler = createMcpHandler(
           role: g.role,
         })),
       })),
+    );
+
+    server.registerTool(
+      "admin_list_users",
+      {
+        description:
+          "Every account on this instance, with its limits and flags. Admins " +
+          "only — for anyone else this tool reports not-found rather than " +
+          "refusing, so an ordinary token learns nothing about the admin " +
+          "surface. Self-hosters are who this is for.",
+        inputSchema: {},
+      },
+      asTool(async (_args: Record<string, never>, { userId }) => {
+        const admin = await authorizeAdmin(userId);
+        if (admin instanceof NextResponse) throw await denialToError(admin);
+        return { users: await listUsers() };
+      }),
+    );
+
+    server.registerTool(
+      "admin_update_user",
+      {
+        description:
+          "Ban or unban an account, grant or remove admin, or set its invite " +
+          "and block limits (null means unlimited; set both together, since " +
+          "they are written as a pair). Admins only. An admin cannot be " +
+          "banned and the last admin cannot be demoted. Note a ban does not " +
+          "end that user's sessions or revoke their API tokens.",
+        inputSchema: {
+          userId: z.string(),
+          banned: z.boolean().optional(),
+          isAdmin: z.boolean().optional(),
+          inviteLimit: z.number().int().nonnegative().nullable().optional(),
+          columnLimit: z.number().int().nonnegative().nullable().optional(),
+        },
+      },
+      asTool(
+        async (
+          args: {
+            userId: string;
+            banned?: boolean;
+            isAdmin?: boolean;
+            inviteLimit?: number | null;
+            columnLimit?: number | null;
+          },
+          auth,
+        ) => {
+          const admin = await authorizeAdmin(auth.userId);
+          if (admin instanceof NextResponse) throw await denialToError(admin);
+
+          const applied: string[] = [];
+          if (args.banned !== undefined) {
+            await setUserBanned(args.userId, args.banned);
+            applied.push("banned");
+          }
+          if (args.isAdmin !== undefined) {
+            await setUserAdmin(args.userId, args.isAdmin);
+            applied.push("is_admin");
+          }
+          if (args.inviteLimit !== undefined || args.columnLimit !== undefined) {
+            if (args.inviteLimit === undefined || args.columnLimit === undefined) {
+              throw new Error(
+                "Set inviteLimit and columnLimit together — they are written as a pair.",
+              );
+            }
+            await setUserLimits(args.userId, {
+              invite_limit: args.inviteLimit,
+              column_limit: args.columnLimit,
+            });
+            applied.push("invite_limit", "column_limit");
+          }
+          if (applied.length === 0) throw new Error("Nothing to update.");
+          return { updated: applied };
+        },
+      ),
+    );
+
+    server.registerTool(
+      "admin_get_settings",
+      {
+        description:
+          "This instance's settings: the default per-user invite and block " +
+          "limits. Admins only. Mail credentials come back as `__set__` or " +
+          "empty rather than their values — you can see whether a provider is " +
+          "configured, not what the key is.",
+        inputSchema: {},
+      },
+      asTool(async (_args: Record<string, never>, { userId }) => {
+        const admin = await authorizeAdmin(userId);
+        if (admin instanceof NextResponse) throw await denialToError(admin);
+        return { settings: redactSettings(await getAppSettings()) };
+      }),
+    );
+
+    server.registerTool(
+      "admin_set_limits",
+      {
+        description:
+          "Set this instance's default per-user limits, which apply to anyone " +
+          "without their own override. null means unlimited. Admins only. " +
+          "Email configuration is not settable here — it would mean handing " +
+          "secrets over the API and being able to repoint the instance's mail.",
+        inputSchema: {
+          maxInvitesPerUser: z.number().int().nonnegative().nullable(),
+          maxColumnsPerUser: z.number().int().nonnegative().nullable(),
+        },
+      },
+      asTool(
+        async (
+          args: { maxInvitesPerUser: number | null; maxColumnsPerUser: number | null },
+          { userId },
+        ) => {
+          const admin = await authorizeAdmin(userId);
+          if (admin instanceof NextResponse) throw await denialToError(admin);
+          // `email` omitted, so the stored block is preserved.
+          await updateAppSettings({
+            max_invites_per_user: args.maxInvitesPerUser,
+            max_columns_per_user: args.maxColumnsPerUser,
+          });
+          return { settings: redactSettings(await getAppSettings()) };
+        },
+      ),
+    );
+
+    server.registerTool(
+      "admin_delete_block",
+      {
+        description:
+          "Remove a block you don't own — moderation. Admins only. A block in " +
+          "a private channel reports not-found: moderation covers what is " +
+          "public, and being an admin is not a way into someone's private " +
+          "collection.",
+        inputSchema: { id: z.number().int() },
+      },
+      asTool(async ({ id }: { id: number }, { userId }) => {
+        const denial = await adminDeleteBlock(id, userId);
+        if (denial) throw await denialToError(denial);
+        return { deleted: id };
+      }),
+    );
+
+    server.registerTool(
+      "admin_delete_channel",
+      {
+        description:
+          "Remove a channel you don't own, and its blocks — moderation. " +
+          "Admins only, and a private channel reports not-found.",
+        inputSchema: { id: z.number().int() },
+      },
+      asTool(async ({ id }: { id: number }, { userId }) => {
+        const denial = await adminDeleteChannel(id, userId);
+        if (denial) throw await denialToError(denial);
+        return { deleted: id };
+      }),
     );
 
     server.registerTool(

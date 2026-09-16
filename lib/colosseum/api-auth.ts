@@ -59,9 +59,10 @@ import {
   getColumnComments,
   getCommentAuthorization,
 } from "./comment";
-import { ApiToken } from "./api-token";
+import { ApiToken, getMyApiTokens, revokeApiToken } from "./api-token";
+import { type InviteCode, createInviteCode, revokeInviteCode } from "./invite";
 import { getScreenshot, getScreenshotsForUrls } from "./screenshot-data";
-import { assertColumnQuota } from "./admin";
+import { assertColumnQuota, assertInviteQuota } from "./admin";
 import { notifyChannelNested } from "./nest";
 import { checkRateLimit } from "./rate-limit";
 import { logError, logInfo } from "@/lib/log";
@@ -109,7 +110,13 @@ export function parseAccess(body: Record<string, unknown>, fallback: ChannelAcce
 // A bearer token has no user session, so API handlers resolve it to a user id
 // and then authorize every request explicitly (the Drizzle connection bypasses
 // row-level security).
-export type ApiAuth = { userId: string };
+export type ApiAuth = {
+  userId: string;
+  // Which token authenticated this request. Carried so a client listing its
+  // tokens can be told which one it is holding — without it, "revoke token 3"
+  // is a guess that might cut off the caller mid-conversation.
+  tokenId?: string;
+};
 
 // Resolve a raw bearer token to its owning user. Shared by the REST API
 // (authenticateApiToken, below) and the MCP endpoint (app/api/[transport]).
@@ -119,7 +126,7 @@ export async function resolveApiToken(token: string): Promise<ApiAuth | null> {
   const hash = hashToken(token);
 
   const [row] = await db
-    .select({ user_id: apiToken.user_id })
+    .select({ id: apiToken.id, user_id: apiToken.user_id })
     .from(apiToken)
     .where(eq(apiToken.token_hash, hash))
     .limit(1);
@@ -135,7 +142,7 @@ export async function resolveApiToken(token: string): Promise<ApiAuth | null> {
     .where(eq(apiToken.token_hash, hash))
     .catch(() => {});
 
-  return { userId: row.user_id };
+  return { userId: row.user_id, tokenId: row.id };
 }
 
 // Resolve the `Authorization: Bearer <token>` header to the owning user. On
@@ -321,6 +328,58 @@ export async function moveBlock(
 
   const moved = await moveColumn(blockId, destinationChannelId);
   return moved ?? apiError("Not found.", 404);
+}
+
+// Invite codes and API tokens — the two pieces of account administration that
+// were web-only.
+//
+// Minting an API token is deliberately NOT here. A token that can mint tokens
+// makes revocation unrecoverable: revoke the one you know about and it may
+// already have made three more, each as capable as the first. That matters more
+// here than it might elsewhere, because resolveApiToken above doesn't consult
+// `user.banned` — a token already outlives a ban on its owner. Creating one
+// stays in app/api/tokens, behind a browser session.
+//
+// Listing and revoking are safe in the other direction: they only ever take
+// capability away.
+export async function listApiTokensFor(userId: string, currentTokenId?: string) {
+  const tokens = await getMyApiTokens(userId);
+  // Flag the one making this request, so "revoke the others" is expressible
+  // and revoking yourself is a choice rather than an accident.
+  return tokens.map((t) => ({ ...t, current: t.id === currentTokenId }));
+}
+
+export async function revokeApiTokenFor(
+  tokenId: string,
+  userId: string,
+): Promise<NextResponse | null> {
+  // Scoped to the caller: someone else's token id matches nothing rather than
+  // reporting whether it exists.
+  await revokeApiToken(tokenId, userId);
+  return null;
+}
+
+export async function createInviteCodeFor(
+  userId: string,
+  maxUses: number,
+  note: string | null,
+): Promise<InviteCode | NextResponse> {
+  try {
+    await assertInviteQuota(userId, maxUses);
+  } catch (e) {
+    return apiError(e instanceof Error ? e.message : "Invite limit reached.", 403);
+  }
+  return createInviteCode({ created_by: userId, max_uses: maxUses, note });
+}
+
+export async function revokeInviteCodeFor(
+  code: string,
+  userId: string,
+): Promise<NextResponse | null> {
+  // Scoped to codes the caller made and that nobody has used, so a spent or
+  // foreign code matches nothing. The audit rows behind a used code survive.
+  await revokeInviteCode(code, userId);
+  return null;
 }
 
 // Group authorization, mirroring the channel matrix above. A group the caller

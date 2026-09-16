@@ -20,11 +20,13 @@ import {
   addMemberFor,
   copyBlock,
   createGroupFor,
+  createInviteCodeFor,
   deleteGroupFor,
   createCommentFor,
   deleteCommentFor,
   leaveChannel,
   listCommentsFor,
+  listApiTokensFor,
   listGroupMembersFor,
   listMembersFor,
   moveBlock,
@@ -34,6 +36,8 @@ import {
   removeMemberFor,
   reorderBlock,
   resolveApiToken,
+  revokeApiTokenFor,
+  revokeInviteCodeFor,
   setGroupRoleFor,
   transferChannelFor,
   transferGroupOwnershipFor,
@@ -51,7 +55,8 @@ import {
   viewerScope,
 } from "@/lib/colosseum/channel";
 import { getOwnerByHandle, resolveCreateOwner } from "@/lib/colosseum/owner";
-import { getColumnQuota } from "@/lib/colosseum/admin";
+import { getColumnQuota, getInviteQuota } from "@/lib/colosseum/admin";
+import { getMyInviteCodes } from "@/lib/colosseum/invite";
 import { isHandleAvailable, updateProfile } from "@/lib/colosseum/profile";
 import {
   HandleTakenError,
@@ -556,6 +561,91 @@ const handler = createMcpHandler(
           role: g.role,
         })),
       })),
+    );
+
+    server.registerTool(
+      "list_invites",
+      {
+        description:
+          "The invite codes you have minted, and your allowance. Colosseum is " +
+          "invite-gated, so a code is how someone new gets in. `quota.used` " +
+          "counts capacity minted, not people who joined — it moves when you " +
+          "create or revoke a code, not when someone signs up with one.",
+        inputSchema: {},
+      },
+      asTool(async (_args: Record<string, never>, { userId }) => {
+        const [invites, quota] = await Promise.all([
+          getMyInviteCodes(userId),
+          getInviteQuota(userId),
+        ]);
+        return { invites, quota };
+      }),
+    );
+
+    server.registerTool(
+      "create_invite",
+      {
+        description:
+          "Mint an invite code. `maxUses` is how many people it will let in " +
+          "(default 1) and counts against your allowance in full the moment " +
+          "it is created. Check list_invites first if you are near the limit.",
+        inputSchema: {
+          maxUses: z.number().int().positive().optional(),
+          note: z.string().optional(),
+        },
+      },
+      asTool(async ({ maxUses, note }: { maxUses?: number; note?: string }, { userId }) => {
+        const result = await createInviteCodeFor(userId, maxUses ?? 1, note ?? null);
+        if (result instanceof NextResponse) throw await denialToError(result);
+        return { invite: result };
+      }),
+    );
+
+    server.registerTool(
+      "revoke_invite",
+      {
+        description:
+          "Revoke an unused invite code of yours, giving its capacity back. A " +
+          "code someone has already used cannot be revoked, and the record of " +
+          "who joined through it is never touched.",
+        inputSchema: { code: z.string() },
+      },
+      asTool(async ({ code }: { code: string }, { userId }) => {
+        const denial = await revokeInviteCodeFor(code, userId);
+        if (denial) throw await denialToError(denial);
+        return { revoked: code };
+      }),
+    );
+
+    server.registerTool(
+      "list_api_tokens",
+      {
+        description:
+          "Your API tokens, without their secrets. The one you are using is " +
+          "marked `current`. There is no tool to create a token: minting one " +
+          "over a token would make revoking it unreliable, so that stays in " +
+          "the web app.",
+        inputSchema: {},
+      },
+      asTool(async (_args: Record<string, never>, auth) => ({
+        tokens: await listApiTokensFor(auth.userId, auth.tokenId),
+      })),
+    );
+
+    server.registerTool(
+      "revoke_api_token",
+      {
+        description:
+          "Revoke one of your API tokens. Revoking the one marked `current` " +
+          "is allowed and is how you hand back your own access — it takes " +
+          "effect at once, so every call after it fails to authenticate.",
+        inputSchema: { id: z.string() },
+      },
+      asTool(async ({ id }: { id: string }, auth) => {
+        const denial = await revokeApiTokenFor(id, auth.userId);
+        if (denial) throw await denialToError(denial);
+        return { revoked: id, revokedCurrent: id === auth.tokenId };
+      }),
     );
 
     server.registerTool(

@@ -180,6 +180,54 @@ Scoped through the viewer exactly as the profile page is: public and open
 channels, plus any private ones you can already reach. `GET /channels` stays
 what it is — yours — and this is how anyone else's become reachable.
 
+## Invites and tokens
+
+### `GET /api/v1/invites`
+
+The invite codes you've minted, and your allowance.
+→ `{ "invites": [...], "quota": { "used", "limit" } }`
+
+Colosseum is invite-gated, so a code is how someone new gets in. `quota.used`
+counts capacity minted rather than redemptions: it moves when a code is created
+or revoked, not when someone signs up with one. A `null` limit is unlimited.
+
+### `POST /api/v1/invites`
+
+Mint a code. → `201 { "invite": { ... } }`
+
+```json
+{ "max_uses": 1, "note": "for a friend" }
+```
+
+`max_uses` counts against your allowance in full the moment the code exists, not
+as people use it. `403` with the reason when it would exceed it.
+
+### `DELETE /api/v1/invites/:code`
+
+Revoke an unused code of yours, giving its capacity back. → `{ "success": true }`
+
+Scoped to your own, unused codes: a spent or foreign code matches nothing and
+still comes back successful, rather than reporting whether it exists. The record
+of who joined through a used code is never touched.
+
+### `GET /api/v1/tokens`
+
+Your API tokens, without their secrets. → `{ "tokens": [...] }`
+
+The token making the request is marked `"current": true`.
+
+### `DELETE /api/v1/tokens/:id`
+
+Revoke one of your tokens. → `{ "success": true, "revoked_current": false }`
+
+Revoking the current token is allowed — it's the honest way to hand back access
+— and takes effect immediately, so the next call with it gets a `401`.
+
+**There is no `POST /api/v1/tokens`.** Minting a token over a token would make
+revocation unreliable: revoking the one you know about doesn't help if it has
+already made more. Creation stays at `POST /api/tokens`, behind a browser
+session.
+
 ## Search
 
 ### `GET /api/v1/search`

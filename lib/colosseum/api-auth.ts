@@ -19,7 +19,7 @@ import {
 } from "./channel";
 import { getChannel } from "./channel";
 import { isChannelMember, removeChannelMember } from "./member";
-import { Column, getColumn, moveColumn } from "./column";
+import { Column, getColumn, moveColumn, reorderColumn } from "./column";
 import { ApiToken } from "./api-token";
 import { getScreenshot, getScreenshotsForUrls } from "./screenshot-data";
 import { checkRateLimit } from "./rate-limit";
@@ -279,6 +279,35 @@ export async function moveBlock(
   if (block.channel_id === destinationChannelId) return block;
 
   const moved = await moveColumn(blockId, destinationChannelId);
+  return moved ?? apiError("Not found.", 404);
+}
+
+// Place a block after another one in its channel's manual order, or at the head
+// when `afterId` is null. Returns the moved block, or a denial to hand back.
+//
+// Owner-only, which is stricter than every other block write here: a
+// contributor may add a block to an open channel and edit or delete the one
+// they added, but a reorder rearranges everyone's blocks at once. A channel's
+// arrangement belongs to the channel, so it follows ownership rather than the
+// contributor rule — the same call the board makes (reorderColumnAction).
+//
+// The anchor is a block id rather than an index because an index only means
+// something on the board that produced it; see reorderColumn. It must live in
+// the same channel, and reorderColumn returns null when it doesn't, which is a
+// 404 here rather than a 400: from outside, a block in someone else's channel
+// and a block that doesn't exist are the same thing.
+export async function reorderBlock(
+  blockId: number,
+  afterId: number | null,
+  userId: string,
+): Promise<Column | NextResponse> {
+  const block = await getColumn(blockId, { html: false });
+  if (!block) return apiError("Not found.", 404);
+
+  const denial = await authorizeChannelManage(await getChannel(block.channel_id), userId);
+  if (denial) return denial;
+
+  const moved = await reorderColumn(blockId, afterId);
   return moved ?? apiError("Not found.", 404);
 }
 

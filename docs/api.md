@@ -183,6 +183,26 @@ dropped, and duplicates are removed — `["design systems", "#css!"]` is stored 
 stored in any other shape would match nothing and could not be removed from the
 editor either; the same rule runs in both places (`lib/tags.ts`).
 
+### `PUT /api/v1/blocks/:id/position`
+
+Place a block in its channel's manual order. → `{ "block": { ... } }`
+
+```json
+{ "after": 41 }
+{ "after": null }
+```
+
+`after` is the id of the block this one should sit behind, or `null` to put it
+first. Both blocks must be in the same channel; an anchor from elsewhere is a
+`404`, since a position key only orders a block against its own channel's.
+
+Required, not optional — a missing `after` is a `400` rather than being read as
+`null`, so forgetting the field can't silently send a block to the top.
+
+Channel owners only, which is stricter than `PATCH /api/v1/blocks/:id`: a
+contributor may edit the block they added, but a reorder rearranges everyone's.
+That is why it is its own endpoint rather than a field on the PATCH.
+
 ### `DELETE /api/v1/blocks/:id`
 
 Delete a block in a channel you own. → `{ "success": true }`

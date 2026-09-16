@@ -18,7 +18,14 @@ import {
   viewerScope,
 } from "./channel";
 import { getChannel } from "./channel";
-import { isChannelMember, removeChannelMember } from "./member";
+import {
+  type ChannelMember,
+  addChannelMemberWithNotice,
+  isChannelMember,
+  listChannelMembers,
+  removeChannelMember,
+  removeChannelMemberByHandle,
+} from "./member";
 import {
   Column,
   addChannelColumn,
@@ -289,6 +296,59 @@ export async function moveBlock(
 
   const moved = await moveColumn(blockId, destinationChannelId);
   return moved ?? apiError("Not found.", 404);
+}
+
+// A channel's roster. Read-authorized rather than manage: the channel page
+// already lists members to anyone who can see the channel, so gating the API
+// harder would tell a different story about the same fact.
+export async function listMembersFor(
+  channelId: number,
+  userId: string,
+): Promise<ChannelMember[] | NextResponse> {
+  const denial = await authorizeChannelRead(await getChannel(channelId), userId);
+  if (denial) return denial;
+  return listChannelMembers(channelId);
+}
+
+// Add someone by handle. Manage-authorized: who may read a private channel is
+// the owner's decision, and an add sends the new member a notification.
+export async function addMemberFor(
+  channelId: number,
+  handle: string,
+  userId: string,
+): Promise<ChannelMember | NextResponse> {
+  const channel = await getChannel(channelId);
+  const denial = await authorizeChannelManage(channel, userId);
+  if (denial) return denial;
+  try {
+    return await addChannelMemberWithNotice({
+      channelId,
+      handle,
+      actorUserId: userId,
+      channelOwnedBy: channel!.owned_by,
+    });
+  } catch (e) {
+    // A bad handle, or the owner's own, is the caller's mistake rather than a
+    // server fault — surface the reason instead of a 500.
+    return apiError(e instanceof Error ? e.message : "Could not add that member.", 400);
+  }
+}
+
+// Remove someone by handle. Manage-authorized. Giving up your *own* membership
+// is leaveChannel, which a member may do without managing anything.
+export async function removeMemberFor(
+  channelId: number,
+  handle: string,
+  userId: string,
+): Promise<NextResponse | null> {
+  const denial = await authorizeChannelManage(await getChannel(channelId), userId);
+  if (denial) return denial;
+  try {
+    await removeChannelMemberByHandle(channelId, handle);
+    return null;
+  } catch (e) {
+    return apiError(e instanceof Error ? e.message : "Could not remove that member.", 400);
+  }
 }
 
 // Nest a channel inside another as a block (the Are.na-style link), the one

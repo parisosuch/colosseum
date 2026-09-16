@@ -59,7 +59,7 @@ import {
   getChannelColumns,
   getColumn,
   moveColumn,
-  copyColumn,
+  copyColumnInto,
   reorderColumn,
   searchColumns,
   updateColumnDescription,
@@ -101,10 +101,7 @@ import {
   MAX_COMMENT_LENGTH,
 } from "./comment";
 import {
-  createMedia,
   deleteMediaByUrl,
-  getMedia,
-  mediaIdFromUrl,
   putImageBlob,
   putImageBlobFromUrl,
   putPdfBlob,
@@ -1026,16 +1023,12 @@ export async function copyColumnAction(columnId: number, targetChannelId: number
   const { column: source } = await requireReadableBlock(columnId);
   const channel = await requireContributableChannel(targetChannelId, userId);
 
-  let image = source.image ?? null;
-  const mediaId = image ? mediaIdFromUrl(image) : null;
-  if (mediaId) {
-    const media = await getMedia(mediaId);
-    if (media) {
-      image = await createMedia(media.sha256, userId, channel.private ? "private" : "public");
-    }
-  }
-
-  return copyColumn({ source, channel_id: targetChannelId, created_by: userId, image });
+  return copyColumnInto({
+    source,
+    channel_id: targetChannelId,
+    created_by: userId,
+    targetPrivate: channel.private,
+  });
 }
 
 // Add a channel as a column inside one of the caller's channels (Are.na-style).

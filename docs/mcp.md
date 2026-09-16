@@ -94,6 +94,12 @@ shape would match nothing, which is why the rule is shared with the editor
 this (`channel_id` isn't editable), and create-then-delete drops the timestamp
 and the screenshot.
 
+`copy_block` is the other half of that pair: it leaves the original in place and
+makes a new block, with its own id and its own media reference, so the two can
+be deleted independently. It also asks less — read on the source rather than
+ownership — so a block from anyone's channel you can see may be copied into
+yours.
+
 A failed call (bad input, not found, not yours) comes back as an MCP tool
 error (`isError: true`) with a human-readable message — the agent sees it
 and can retry or explain, rather than the server crashing.

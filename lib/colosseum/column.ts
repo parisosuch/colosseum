@@ -21,7 +21,7 @@ import { channel, channelMember, column, owner, screenshot } from "@/lib/db/sche
 import { positionBetween, positionsAfter } from "@/lib/fractional-index";
 import { renderMarkdown } from "@/lib/markdown";
 import { sanitizeSearch } from "@/lib/utils";
-import { deleteMediaByUrl } from "./blob";
+import { createMedia, deleteMediaByUrl, getMedia, mediaIdFromUrl } from "./blob";
 import { deleteTweetIfUnreferenced } from "./tweet";
 import { SIGNED_OUT, viewerOwnerIds, type ViewerScope } from "./viewer";
 import { tweetIdFromUrl } from "@/lib/utils";
@@ -909,6 +909,45 @@ export async function copyColumn(input: {
     created_by: input.created_by,
   });
   return toColumn(row);
+}
+
+// Copy a block into another channel, minting the copy its own media reference
+// when the source holds one, so deleting either column later can't dangle the
+// other's image. A url block, or an image hosted somewhere else, keeps the
+// source URL — nothing here owns those bytes to re-mint.
+//
+// The copy's media takes the *target* channel's privacy, which is the point of
+// re-minting rather than reusing the URL: a copy into a private channel must
+// not keep pointing at public media.
+//
+// Authorization belongs to the caller — read the source, contribute to the
+// target (which is also where the block quota is charged, a copy being a new
+// block). Shared by the web app's copyColumnAction and the API's copyBlock so
+// the media rule has one home.
+export async function copyColumnInto(input: {
+  source: Column;
+  channel_id: number;
+  created_by: string;
+  targetPrivate: boolean;
+}): Promise<Column> {
+  let image = input.source.image ?? null;
+  const mediaId = image ? mediaIdFromUrl(image) : null;
+  if (mediaId) {
+    const media = await getMedia(mediaId);
+    if (media) {
+      image = await createMedia(
+        media.sha256,
+        input.created_by,
+        input.targetPrivate ? "private" : "public",
+      );
+    }
+  }
+  return copyColumn({
+    source: input.source,
+    channel_id: input.channel_id,
+    created_by: input.created_by,
+    image,
+  });
 }
 
 // Set title and/or description in one update — used to pre-fill a URL block

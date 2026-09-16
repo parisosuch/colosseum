@@ -46,6 +46,14 @@ import { getColumnQuota } from "@/lib/colosseum/admin";
 import { getUserProfile, searchProfiles } from "@/lib/colosseum/user";
 import { listUserGroups } from "@/lib/colosseum/group";
 import {
+  listNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+  setEmailNotificationPref,
+  unreadNotificationCount,
+  type NotificationType,
+} from "@/lib/colosseum/notification";
+import {
   Column,
   deleteColumn,
   getChannelColumnCount,
@@ -270,6 +278,70 @@ const handler = createMcpHandler(
           },
         };
       }),
+    );
+
+    server.registerTool(
+      "list_notifications",
+      {
+        description:
+          "What has happened to your account: comments on your blocks, " +
+          "mentions of you, channels of yours nested elsewhere, and channels " +
+          "you were added to. `unreadOnly` narrows it; `before` pages back " +
+          "using the `at` of the last one you saw. `unread` in the result is " +
+          "the whole count, not the page's.",
+        inputSchema: {
+          before: z.string().optional(),
+          unreadOnly: z.boolean().optional(),
+        },
+      },
+      asTool(
+        async ({ before, unreadOnly }: { before?: string; unreadOnly?: boolean }, { userId }) => {
+          const [notifications, unread] = await Promise.all([
+            listNotifications(userId, before, { unreadOnly: unreadOnly ?? false }),
+            unreadNotificationCount(userId),
+          ]);
+          return { notifications, unread };
+        },
+      ),
+    );
+
+    server.registerTool(
+      "mark_notifications_read",
+      {
+        description:
+          "Mark one notification read by id, or all of them when `id` is " +
+          "omitted. Reading the list does not mark anything.",
+        inputSchema: { id: z.number().int().optional() },
+      },
+      asTool(async ({ id }: { id?: number }, { userId }) => {
+        if (id === undefined) {
+          await markAllNotificationsRead(userId);
+          return { markedAll: true };
+        }
+        // Scoped to you as recipient, so someone else's id matches nothing
+        // rather than reporting whether it exists.
+        await markNotificationRead(userId, id);
+        return { marked: id };
+      }),
+    );
+
+    server.registerTool(
+      "set_email_notification",
+      {
+        description:
+          "Turn email on or off for one kind of notification. The in-app " +
+          "notifications keep arriving either way — this only decides whether " +
+          "they are also mailed to you.",
+        inputSchema: {
+          type: z.enum(["comment", "mention", "connect", "member"]),
+          enabled: z.boolean(),
+        },
+      },
+      asTool(
+        async ({ type, enabled }: { type: NotificationType; enabled: boolean }, { userId }) => ({
+          email_notifications: await setEmailNotificationPref(userId, type, enabled),
+        }),
+      ),
     );
 
     server.registerTool(

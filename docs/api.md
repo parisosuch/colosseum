@@ -333,6 +333,43 @@ That is why it is its own endpoint rather than a field on the PATCH.
 
 Delete a block in a channel you own. → `{ "success": true }`
 
+## Notifications
+
+### `GET /api/v1/notifications`
+
+What has happened to your account. Optional `?before=` (the `at` of the last one
+you saw) and `?unread=true`.
+
+→ `{ "notifications": [...], "unread": 3, "page_size": 30 }`
+
+`unread` is the whole count, not the page's, so a client can show a badge
+without paging to the end. Reading the list marks nothing.
+
+### `POST /api/v1/notifications/:id/read`
+
+Mark one read. → `{ "success": true }`
+
+Scoped to you as the recipient, so someone else's id matches nothing and comes
+back successful rather than reporting whether it exists.
+
+### `POST /api/v1/notifications/read-all`
+
+Mark every unread one read. → `{ "success": true }`
+
+### `GET` / `PATCH /api/v1/notifications/preferences`
+
+Which kinds of notification are also emailed.
+
+```json
+{ "type": "comment", "enabled": false }
+```
+
+→ `{ "email_notifications": { ... } }`
+
+One kind per call: the preferences are a single JSON column, so a partial write
+of the whole object would drop whichever keys were left out. The in-app
+notification arrives either way — this only decides whether it is also mailed.
+
 ## Comments
 
 ### `GET /api/v1/blocks/:id/comments`

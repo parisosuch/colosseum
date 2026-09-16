@@ -8,8 +8,10 @@ import { notification } from "@/lib/db/schema";
 import { createChannel, deleteChannel, getOwnerChannels, viewerScope } from "./channel";
 import { addChannelColumn, deleteColumn, getChannelColumns, searchColumns } from "./column";
 import { createComment, deleteComment } from "./comment";
+import { getUserProfile } from "./user";
 import {
   createNotification,
+  setEmailNotificationPref,
   EMAIL_QUIET_PERIOD_MINUTES,
   listNotifications,
   markAllNotificationsRead,
@@ -410,4 +412,18 @@ test("markAllNotificationsRead clears the unread count", async () => {
   await markAllNotificationsRead(USERS.bob.id);
   expect(await unreadNotificationCount(USERS.bob.id)).toBe(0);
   expect(await listNotifications(USERS.bob.id)).toHaveLength(1);
+});
+
+test("setEmailNotificationPref flips one kind and leaves the others alone", async () => {
+  const before = (await getUserProfile(USERS.alice.id))!.email_notifications;
+
+  const after = await setEmailNotificationPref(USERS.alice.id, "comment", false);
+  expect(after.comment).toBe(false);
+  // The prefs are one JSON column, so a partial write would drop the rest —
+  // this is the assertion that catches that.
+  expect(after.mention).toBe(before.mention);
+  expect(after.connect).toBe(before.connect);
+  expect(after.member).toBe(before.member);
+
+  expect((await setEmailNotificationPref(USERS.alice.id, "comment", true)).comment).toBe(true);
 });

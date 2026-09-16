@@ -2,7 +2,7 @@ import { beforeAll, expect, test } from "bun:test";
 import { NextResponse } from "next/server";
 
 import { seed, USERS } from "@/scripts/seed";
-import { attachPreview, attachPreviews, leaveChannel, moveBlock } from "./api-auth";
+import { attachPreview, attachPreviews, leaveChannel, moveBlock, reorderBlock } from "./api-auth";
 import { createMedia, putBlob } from "./blob";
 import { createChannel } from "./channel";
 import { Column, getChannelColumns, uploadTextColumn, uploadURLColumn } from "./column";
@@ -170,6 +170,78 @@ test("moveBlock 404s on a missing block or a missing destination channel", async
     status: 404,
     error: "Not found.",
   });
+});
+
+test("reorderBlock places a block after its anchor", async () => {
+  const ch = await createChannel({
+    title: "Ordered",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
+  const mk = (text: string) =>
+    uploadTextColumn({ created_by: USERS.alice.id, channel_id: ch.id, text });
+  const first = await mk("a");
+  const second = await mk("b");
+  const third = await mk("c");
+
+  // Newest-first by default, so the channel reads c, b, a.
+  const moved = await reorderBlock(third.id, first.id, USERS.alice.id);
+  expect(moved).not.toBeInstanceOf(NextResponse);
+
+  const order = (await getChannelColumns(ch.id, { sort: "manual" })).map((c) => c.id);
+  expect(order).toEqual([second.id, first.id, third.id]);
+});
+
+test("reorderBlock is owner-only, unlike editing a block you added", async () => {
+  // Bob's channel is open, so Alice may add to it and edit what she added —
+  // but rearranging it moves everyone's blocks, so it follows ownership.
+  const ch = await createChannel({
+    title: "Bob's open channel",
+    access: "open",
+    owned_by: USERS.bob.ownerId,
+  });
+  const bobs = await uploadTextColumn({
+    created_by: USERS.bob.id,
+    channel_id: ch.id,
+    text: "bob's",
+  });
+  const alices = await uploadTextColumn({
+    created_by: USERS.alice.id,
+    channel_id: ch.id,
+    text: "alice's",
+  });
+
+  const result = await reorderBlock(alices.id, bobs.id, USERS.alice.id);
+  expect(result).toBeInstanceOf(NextResponse);
+  expect((result as NextResponse).status).toBe(403);
+});
+
+test("reorderBlock 404s on an anchor in another channel", async () => {
+  const here = await createChannel({
+    title: "Here",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
+  const elsewhere = await createChannel({
+    title: "Elsewhere",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
+  const block = await uploadTextColumn({
+    created_by: USERS.alice.id,
+    channel_id: here.id,
+    text: "x",
+  });
+  const foreign = await uploadTextColumn({
+    created_by: USERS.alice.id,
+    channel_id: elsewhere.id,
+    text: "y",
+  });
+
+  // A position key only orders a block against its own channel's keys, so an
+  // anchor from elsewhere has nothing to be placed relative to.
+  const result = await reorderBlock(block.id, foreign.id, USERS.alice.id);
+  expect((result as NextResponse).status).toBe(404);
 });
 
 // leaveChannel returns null on success and a denial NextResponse otherwise, so

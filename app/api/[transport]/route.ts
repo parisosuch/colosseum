@@ -19,6 +19,7 @@ import {
   leaveChannel,
   moveBlock,
   parseAccess,
+  reorderBlock,
   resolveApiToken,
 } from "@/lib/colosseum/api-auth";
 import {
@@ -338,6 +339,28 @@ const handler = createMcpHandler(
           return { blocks: await attachPreviews(blocks), total };
         },
       ),
+    );
+
+    server.registerTool(
+      "reorder_block",
+      {
+        description:
+          "Place a block in its channel's manual order. `after` is the id of " +
+          "the block it should sit behind, or null to put it first. Both must " +
+          "be in the same channel. Channel owners only — a reorder rearranges " +
+          "everyone's blocks, unlike editing one you added. The anchor is a " +
+          "block id rather than a position number, so it stays correct even if " +
+          "the channel changed since you listed it.",
+        inputSchema: {
+          id: z.number().int(),
+          after: z.number().int().nullable(),
+        },
+      },
+      asTool(async ({ id, after }: { id: number; after: number | null }, { userId }) => {
+        const result = await reorderBlock(id, after, userId);
+        if (result instanceof NextResponse) throw await denialToError(result);
+        return { block: await attachPreview(result) };
+      }),
     );
 
     server.registerTool(

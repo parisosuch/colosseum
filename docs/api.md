@@ -238,9 +238,73 @@ List the groups you're in. → `{ "groups": [{ "handle", "name", "about", "role"
 This is how a client learns which handles it may pass as `owner` when creating
 a channel; `role` says which of them will be accepted.
 
-Read-only. Creating a group claims a handle in the same namespace people draw
-from, and changing a roster decides who can read private channels — both stay in
-the app, where they are confirmed.
+### `POST /api/v1/groups`
+
+Start a group. → `201 { "group": { ... } }`
+
+```json
+{ "handle": "studio", "name": "Studio" }
+```
+
+You become its owner. The handle comes from the same pool people's handles do,
+so `409` if it's taken — check `GET /api/v1/handles/:handle` first.
+
+### `PATCH /api/v1/groups/:handle`
+
+Rename a group or change its blurb. Owner or admin. → `{ "group": { ... } }`
+
+The handle itself isn't editable here: it's the group's address, and every link
+to its channels runs through it.
+
+### `DELETE /api/v1/groups/:handle`
+
+Delete a group. Owner only. → `{ "success": true }`
+
+**Its channels go with it**, and their blocks — the channels belong to the
+group, so nothing is left holding them. That cascade is why this is the owner's
+alone rather than an admin's.
+
+### `GET /api/v1/groups/:handle/members`
+
+The roster, with each member's role. Any member may read it.
+→ `{ "members": [...] }`
+
+### `POST /api/v1/groups/:handle/members`
+
+Add someone. Owner or admin. → `201 { "member": { ... } }`
+
+```json
+{ "handle": "alice", "role": "member" }
+```
+
+`role` is `member` or `admin`; `owner` isn't assignable, since a group has
+exactly one and it changes hands through the transfer route. They're notified,
+once — a role change on someone already in the group sends nothing.
+
+### `PATCH /api/v1/groups/:handle/members/:member`
+
+Change a member's role. Owner or admin. → `{ "success": true }`
+
+The owner's role can't be set here, which is what stops a group being left with
+nobody able to administer it.
+
+### `DELETE /api/v1/groups/:handle/members/:member`
+
+Remove someone, or leave by naming your own handle. Removing anyone else takes
+owner or admin. The owner can't be removed — they transfer or delete.
+
+### `POST /api/v1/groups/:handle/transfer`
+
+Hand the group to another member. Owner only. `{ "to": "alice" }`
+
+### `POST /api/v1/channels/:id/transfer`
+
+Move a channel to another owner — a group you administer, or back to yourself.
+`{ "to": "studio" }` → `{ "channel": { ... } }`
+
+You must own the channel now and be able to manage where it's going.
+**Ownership is what grants access to a private channel, so this changes who can
+read it.** The channel's own member roster is deliberately left as it is.
 
 ## Blocks
 

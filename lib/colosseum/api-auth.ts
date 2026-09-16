@@ -17,10 +17,28 @@ import {
   canReadChannel,
   viewerScope,
 } from "./channel";
-import { getChannel } from "./channel";
+import { getChannel, transferChannel } from "./channel";
+import {
+  type Group,
+  type GroupMember,
+  type GroupRole,
+  createGroup,
+  deleteGroup,
+  getGroupByHandle,
+  groupRole,
+  listGroupMembers,
+  removeGroupMember,
+  roleCanManage,
+  setGroupRole,
+  transferGroupOwnership,
+  updateGroup,
+} from "./group";
+import { getOwnerByHandle } from "./owner";
+import { HandleTakenError, getPublicUserProfile } from "./user";
 import {
   type ChannelMember,
   addChannelMemberWithNotice,
+  addGroupMemberWithNotice,
   isChannelMember,
   listChannelMembers,
   removeChannelMember,
@@ -303,6 +321,189 @@ export async function moveBlock(
 
   const moved = await moveColumn(blockId, destinationChannelId);
   return moved ?? apiError("Not found.", 404);
+}
+
+// Group authorization, mirroring the channel matrix above. A group the caller
+// may not administer is a 404 rather than a 403, for the same reason a private
+// channel is: a distinguishable refusal confirms it exists.
+//
+// Addressed by handle over the API, since that is what GET /api/v1/groups
+// returns and what a person would paste. `getGroupByHandle` resolves it.
+async function requireGroupBy(
+  handle: string,
+  userId: string,
+  need: "manage" | "own",
+): Promise<Group | NextResponse> {
+  const group = await getGroupByHandle(handle);
+  if (!group) return apiError("Not found.", 404);
+  const role = await groupRole(group.id, userId);
+  const ok = need === "own" ? role === "owner" : roleCanManage(role);
+  if (!ok) return apiError("Not found.", 404);
+  return group;
+}
+
+// A group's roster. Any member may read it — knowing who else is in a group you
+// belong to is not privileged.
+export async function listGroupMembersFor(
+  handle: string,
+  userId: string,
+): Promise<GroupMember[] | NextResponse> {
+  const group = await getGroupByHandle(handle);
+  if (!group) return apiError("Not found.", 404);
+  if (!(await groupRole(group.id, userId))) return apiError("Not found.", 404);
+  return listGroupMembers(group.id);
+}
+
+export async function addGroupMemberFor(
+  handle: string,
+  memberHandle: string,
+  role: Exclude<GroupRole, "owner">,
+  userId: string,
+): Promise<GroupMember | NextResponse> {
+  const group = await requireGroupBy(handle, userId, "manage");
+  if (group instanceof NextResponse) return group;
+  try {
+    return await addGroupMemberWithNotice({
+      groupId: group.id,
+      handle: memberHandle,
+      role,
+      actorUserId: userId,
+    });
+  } catch (e) {
+    return apiError(e instanceof Error ? e.message : "Could not add that member.", 400);
+  }
+}
+
+export async function setGroupRoleFor(
+  handle: string,
+  memberHandle: string,
+  role: Exclude<GroupRole, "owner">,
+  userId: string,
+): Promise<NextResponse | null> {
+  const group = await requireGroupBy(handle, userId, "manage");
+  if (group instanceof NextResponse) return group;
+  const profile = await getPublicUserProfile(memberHandle);
+  if (!profile) return apiError("No user with that handle.", 400);
+  try {
+    // setGroupRole refuses to touch the owner, which is what keeps a group from
+    // ending up with nobody able to administer it.
+    await setGroupRole(group.id, profile.user_id, role);
+    return null;
+  } catch (e) {
+    return apiError(e instanceof Error ? e.message : "Could not set that role.", 400);
+  }
+}
+
+export async function removeGroupMemberFor(
+  handle: string,
+  memberHandle: string,
+  userId: string,
+): Promise<NextResponse | null> {
+  const group = await getGroupByHandle(handle);
+  if (!group) return apiError("Not found.", 404);
+  const profile = await getPublicUserProfile(memberHandle);
+  if (!profile) return apiError("No user with that handle.", 400);
+
+  // Leaving is a member's own business; removing someone else takes manage.
+  if (profile.user_id !== userId) {
+    const managed = await requireGroupBy(handle, userId, "manage");
+    if (managed instanceof NextResponse) return managed;
+  } else if (!(await groupRole(group.id, userId))) {
+    return apiError("Not found.", 404);
+  }
+
+  try {
+    // removeGroupMember refuses the owner — they transfer or delete instead.
+    await removeGroupMember(group.id, profile.user_id);
+    return null;
+  } catch (e) {
+    return apiError(e instanceof Error ? e.message : "Could not remove that member.", 400);
+  }
+}
+
+export async function transferGroupOwnershipFor(
+  handle: string,
+  toHandle: string,
+  userId: string,
+): Promise<NextResponse | null> {
+  const group = await requireGroupBy(handle, userId, "own");
+  if (group instanceof NextResponse) return group;
+  const profile = await getPublicUserProfile(toHandle);
+  if (!profile) return apiError("No user with that handle.", 400);
+  try {
+    await transferGroupOwnership(group.id, userId, profile.user_id);
+    return null;
+  } catch (e) {
+    return apiError(e instanceof Error ? e.message : "Could not transfer the group.", 400);
+  }
+}
+
+export async function updateGroupFor(
+  handle: string,
+  updates: { name?: string; about?: string },
+  userId: string,
+): Promise<Group | NextResponse> {
+  const group = await requireGroupBy(handle, userId, "manage");
+  if (group instanceof NextResponse) return group;
+  if (Object.keys(updates).length === 0) {
+    return apiError("Nothing to update. Allowed: name, about.", 400);
+  }
+  return updateGroup(group.id, updates);
+}
+
+// Delete a group. Owner only, and its channels go with it — the cascade is why
+// this is the one group operation restricted to the single owner.
+export async function deleteGroupFor(handle: string, userId: string): Promise<NextResponse | null> {
+  const group = await requireGroupBy(handle, userId, "own");
+  if (group instanceof NextResponse) return group;
+  await deleteGroup(group.id);
+  return null;
+}
+
+// Hand a channel to another owner — yourself, or a group you administer.
+//
+// Both ends are checked: you must own the channel now, and be able to manage
+// where it is going. Note that ownership is what grants access to a private
+// channel, so a transfer silently changes who can read it; the per-channel
+// member roster is deliberately left alone.
+export async function transferChannelFor(
+  channelId: number,
+  toHandle: string,
+  userId: string,
+): Promise<Channel | NextResponse> {
+  const denial = await authorizeChannelManage(await getChannel(channelId), userId);
+  if (denial) return denial;
+
+  const target = await getOwnerByHandle(toHandle);
+  if (!target) return apiError("Not found.", 404);
+
+  const scope = await viewerScope(userId);
+  const mayReceive =
+    target.id === scope.ownerId || roleCanManage(await groupRole(target.id, userId));
+  if (!mayReceive) {
+    return apiError("You do not have permission to modify this resource.", 403);
+  }
+
+  const moved = await transferChannel(channelId, target.id);
+  return moved ?? apiError("Not found.", 404);
+}
+
+// Create a group. Anyone signed in may, as in the app — a group is a handle
+// plus a roster, and claiming one costs nothing anyone else holds.
+//
+// The handle comes from the same pool people draw from, so a taken one is a
+// 409 naming the reason rather than a generic failure.
+export async function createGroupFor(
+  handle: string,
+  name: string,
+  userId: string,
+): Promise<Group | NextResponse> {
+  try {
+    return await createGroup({ handle, name, created_by: userId });
+  } catch (e) {
+    if (e instanceof HandleTakenError) return apiError("That handle is already taken.", 409);
+    return apiError(e instanceof Error ? e.message : "Could not create that group.", 400);
+  }
 }
 
 // A channel's roster. Read-authorized rather than manage: the channel page

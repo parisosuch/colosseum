@@ -4,7 +4,7 @@ import { and, eq, ilike, or } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { owner, userProfile, type EmailNotificationPrefs } from "@/lib/db/schema";
-import { sanitizeSearch } from "@/lib/utils";
+import { sanitizeSearch, SEARCH_LIMIT } from "@/lib/utils";
 
 // A person's profile, assembled from the two tables it now spans: the `owner`
 // row carries the handle, avatar and bio (the things that have to share one
@@ -35,7 +35,10 @@ export type ProfileSearchResult = { handle: string; avatar_url?: string; about?:
 
 // Profiles whose handle or about text matches `query`. Used by the nav search
 // box, so capped to a handful of results. Returns [] for an empty query.
-export async function searchProfiles(query: string): Promise<ProfileSearchResult[]> {
+export async function searchProfiles(
+  query: string,
+  limit = SEARCH_LIMIT,
+): Promise<ProfileSearchResult[]> {
   const term = sanitizeSearch(query);
   if (!term) {
     return [];
@@ -51,7 +54,7 @@ export async function searchProfiles(query: string): Promise<ProfileSearchResult
     .where(
       and(eq(owner.kind, "user"), or(ilike(owner.handle, pattern), ilike(owner.about, pattern))),
     )
-    .limit(10);
+    .limit(limit);
   return rows.map((r) => ({
     handle: r.handle,
     avatar_url: r.avatar_url ?? undefined,

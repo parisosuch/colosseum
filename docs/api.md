@@ -124,6 +124,23 @@ to but not its own account.
 Identity only. The user id and owner id are not returned: no endpoint accepts
 either, and the two are easy to mistake for one another.
 
+## Search
+
+### `GET /api/v1/search`
+
+Find people, channels and blocks matching `?q=`. Optional `?limit=N` per kind,
+1–50, default 10.
+
+→ `{ "profiles": [...], "channels": [...], "blocks": [...] }`
+
+Results are scoped to what the token can see: public things, plus channels you
+own or belong to. Nothing private leaks.
+
+This is the way to find a block. Listing every channel and matching client-side
+pulls most of a collection across the wire to locate one link. To read a whole
+channel rather than find something in it, page
+`GET /api/v1/channels/:id/blocks` instead — search is capped, and deliberately.
+
 ## Groups
 
 A group is a handle several people share. The channels made in it belong to the

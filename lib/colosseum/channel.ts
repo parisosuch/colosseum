@@ -5,7 +5,7 @@ import { and, desc, eq, ilike, inArray, ne, notInArray, or, sql } from "drizzle-
 import { db } from "@/lib/db";
 import { cached, cacheKeys, cacheTtl, invalidate } from "@/lib/cache";
 import { channel, channelMember, column, owner } from "@/lib/db/schema";
-import { sanitizeSearch } from "@/lib/utils";
+import { sanitizeSearch, SEARCH_LIMIT } from "@/lib/utils";
 import { deleteMediaByUrl, mediaUrl, setMediaVisibilityByUrls } from "./blob";
 import { deleteScreenshotIfUnreferenced } from "./column";
 import { roleCanManage } from "./group";
@@ -303,6 +303,7 @@ export type ChannelSearchResult = Channel & { handle: string };
 export async function searchChannels(
   viewer: ViewerScope,
   query: string,
+  limit = SEARCH_LIMIT,
 ): Promise<ChannelSearchResult[]> {
   const term = sanitizeSearch(query);
   if (!term) {
@@ -336,7 +337,7 @@ export async function searchChannels(
       ),
     )
     .orderBy(rank, desc(channel.created_at), desc(channel.id))
-    .limit(10);
+    .limit(limit);
   return rows.map(({ ch, handle }) => ({ ...toChannel(ch), handle }));
 }
 

@@ -183,6 +183,26 @@ dropped, and duplicates are removed — `["design systems", "#css!"]` is stored 
 stored in any other shape would match nothing and could not be removed from the
 editor either; the same rule runs in both places (`lib/tags.ts`).
 
+### `POST /api/v1/blocks/:id/copy`
+
+Put a copy of a block in another channel, leaving the original where it is.
+
+```json
+{ "channelId": 12 }
+```
+
+→ `201 { "block": { ... } }`
+
+Asymmetric with a move, and looser: copying only _reads_ the source, so any
+block in a channel you can see may be copied, while the target must be one you
+can contribute to. A move needs ownership of both, because it takes the block
+away from where it was.
+
+The copy is a new block with its own id and, for an uploaded image or PDF, its
+own media reference minted under the target channel's privacy — so deleting
+either block leaves the other whole, and a copy into a private channel doesn't
+keep pointing at public media. A copy is charged to your block quota.
+
 ### `PUT /api/v1/blocks/:id/position`
 
 Place a block in its channel's manual order. → `{ "block": { ... } }`

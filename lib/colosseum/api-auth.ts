@@ -19,9 +19,10 @@ import {
 } from "./channel";
 import { getChannel } from "./channel";
 import { isChannelMember, removeChannelMember } from "./member";
-import { Column, getColumn, moveColumn, reorderColumn } from "./column";
+import { Column, copyColumnInto, getColumn, moveColumn, reorderColumn } from "./column";
 import { ApiToken } from "./api-token";
 import { getScreenshot, getScreenshotsForUrls } from "./screenshot-data";
+import { assertColumnQuota } from "./admin";
 import { checkRateLimit } from "./rate-limit";
 import { logError, logInfo } from "@/lib/log";
 
@@ -280,6 +281,44 @@ export async function moveBlock(
 
   const moved = await moveColumn(blockId, destinationChannelId);
   return moved ?? apiError("Not found.", 404);
+}
+
+// Copy a block into another channel, leaving the original where it is.
+//
+// Asymmetric on purpose, and looser than moveBlock: copying only *reads* the
+// source, so any block in a channel you can see may be copied, while the target
+// must be one you can contribute to. Moving needs manage on both because it
+// takes the block away from the channel it was in.
+//
+// A copy is a new block, so it is charged to the caller's quota — the same
+// charge contributing makes on the web side.
+export async function copyBlock(
+  blockId: number,
+  destinationChannelId: number,
+  userId: string,
+): Promise<Column | NextResponse> {
+  const source = await getColumn(blockId, { html: false });
+  if (!source) return apiError("Not found.", 404);
+
+  const readDenial = await authorizeChannelRead(await getChannel(source.channel_id), userId);
+  if (readDenial) return readDenial;
+
+  const destination = await getChannel(destinationChannelId);
+  const writeDenial = await authorizeChannelContribute(destination, userId);
+  if (writeDenial) return writeDenial;
+
+  try {
+    await assertColumnQuota(userId);
+  } catch (e) {
+    return apiError(e instanceof Error ? e.message : "Block limit reached.", 403);
+  }
+
+  return copyColumnInto({
+    source,
+    channel_id: destinationChannelId,
+    created_by: userId,
+    targetPrivate: destination!.private,
+  });
 }
 
 // Place a block after another one in its channel's manual order, or at the head

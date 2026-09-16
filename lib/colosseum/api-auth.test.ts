@@ -2,10 +2,23 @@ import { beforeAll, expect, test } from "bun:test";
 import { NextResponse } from "next/server";
 
 import { seed, USERS } from "@/scripts/seed";
-import { attachPreview, attachPreviews, leaveChannel, moveBlock, reorderBlock } from "./api-auth";
+import {
+  attachPreview,
+  attachPreviews,
+  copyBlock,
+  leaveChannel,
+  moveBlock,
+  reorderBlock,
+} from "./api-auth";
 import { createMedia, putBlob } from "./blob";
 import { createChannel } from "./channel";
-import { Column, getChannelColumns, uploadTextColumn, uploadURLColumn } from "./column";
+import {
+  Column,
+  getChannelColumns,
+  uploadImageColumn,
+  uploadTextColumn,
+  uploadURLColumn,
+} from "./column";
 import { addChannelMemberByHandle, isChannelMember } from "./member";
 import { getScreenshot, upsertScreenshot } from "./screenshot-data";
 
@@ -167,6 +180,87 @@ test("moveBlock 404s on a missing block or a missing destination channel", async
     error: "Not found.",
   });
   expect(await denial(await moveBlock(block.id, 999_999_999, USERS.alice.id))).toEqual({
+    status: 404,
+    error: "Not found.",
+  });
+});
+
+test("copyBlock leaves the original and gives the copy its own media", async () => {
+  const src = await createChannel({
+    title: "Source",
+    access: "public",
+    owned_by: USERS.bob.ownerId,
+  });
+  const dst = await createChannel({
+    title: "Target",
+    access: "private",
+    owned_by: USERS.alice.ownerId,
+  });
+
+  const sha = await putBlob(Buffer.from("copy-test-bytes"), "image/png", USERS.bob.id);
+  const image = await createMedia(sha, USERS.bob.id, "public");
+  const source = await uploadImageColumn({
+    created_by: USERS.bob.id,
+    channel_id: src.id,
+    image,
+  });
+
+  // Alice can only read Bob's channel, which is all copying needs.
+  const copy = (await copyBlock(source.id, dst.id, USERS.alice.id)) as Column;
+  expect(copy).not.toBeInstanceOf(NextResponse);
+
+  expect(copy.id).not.toBe(source.id);
+  expect(copy.channel_id).toBe(dst.id);
+  expect(copy.created_by).toBe(USERS.alice.id);
+  // A fresh media reference, not the source's — otherwise deleting either block
+  // would dangle the other's image, and a copy into a private channel would
+  // keep pointing at public media.
+  expect(copy.image).not.toBe(source.image);
+  // The original stays where it was.
+  expect((await getChannelColumns(src.id)).map((c) => c.id)).toContain(source.id);
+});
+
+test("copyBlock needs only read on the source, but contribute on the target", async () => {
+  const src = await createChannel({
+    title: "Readable",
+    access: "public",
+    owned_by: USERS.bob.ownerId,
+  });
+  const dst = await createChannel({
+    title: "Not Alice's",
+    access: "public",
+    owned_by: USERS.bob.ownerId,
+  });
+  const block = await uploadTextColumn({
+    created_by: USERS.bob.id,
+    channel_id: src.id,
+    text: "bob's",
+  });
+
+  // A public channel is readable by all but only its owner and members may add,
+  // so the target is what refuses — the source being someone else's is fine.
+  const { status } = await denial(await copyBlock(block.id, dst.id, USERS.alice.id));
+  expect(status).toBe(403);
+});
+
+test("copyBlock 404s on a source in a private channel the caller cannot read", async () => {
+  const src = await createChannel({
+    title: "Bob's private",
+    access: "private",
+    owned_by: USERS.bob.ownerId,
+  });
+  const dst = await createChannel({
+    title: "Alice's",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
+  const block = await uploadTextColumn({
+    created_by: USERS.bob.id,
+    channel_id: src.id,
+    text: "secret",
+  });
+
+  expect(await denial(await copyBlock(block.id, dst.id, USERS.alice.id))).toEqual({
     status: 404,
     error: "Not found.",
   });

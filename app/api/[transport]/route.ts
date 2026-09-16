@@ -16,6 +16,7 @@ import {
   authorizeChannelContribute,
   authorizeChannelManage,
   authorizeChannelRead,
+  copyBlock,
   leaveChannel,
   moveBlock,
   parseAccess,
@@ -339,6 +340,25 @@ const handler = createMcpHandler(
           return { blocks: await attachPreviews(blocks), total };
         },
       ),
+    );
+
+    server.registerTool(
+      "copy_block",
+      {
+        description:
+          "Put a copy of a block in another channel, leaving the original " +
+          "where it is. You need only to be able to see the source, and to be " +
+          "able to add to the target — so anyone's block from a channel you " +
+          "can read may be copied into yours. The copy is a new block with its " +
+          "own id and its own media, so deleting either leaves the other whole. " +
+          "Use move_block instead to take a block out of where it is.",
+        inputSchema: { id: z.number().int(), channelId: z.number().int() },
+      },
+      asTool(async ({ id, channelId }: { id: number; channelId: number }, { userId }) => {
+        const result = await copyBlock(id, channelId, userId);
+        if (result instanceof NextResponse) throw await denialToError(result);
+        return { block: await attachPreview(result) };
+      }),
     );
 
     server.registerTool(

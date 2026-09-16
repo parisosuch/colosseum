@@ -31,10 +31,11 @@ import {
   deleteChannel,
   getChannel,
   getViewerChannels,
+  getVisibleOwnerChannels,
   updateChannel,
   viewerScope,
 } from "@/lib/colosseum/channel";
-import { resolveCreateOwner } from "@/lib/colosseum/owner";
+import { getOwnerByHandle, resolveCreateOwner } from "@/lib/colosseum/owner";
 import { getColumnQuota } from "@/lib/colosseum/admin";
 import { getUserProfile, searchProfiles } from "@/lib/colosseum/user";
 import { listUserGroups } from "@/lib/colosseum/group";
@@ -54,6 +55,7 @@ import {
 import { putImageBlobFromUrl } from "@/lib/colosseum/blob";
 import { triggerScreenshotCapture } from "@/lib/colosseum/screenshot";
 import { ingestUrlColumn } from "@/lib/colosseum/ingest";
+import { parseColosseumLink } from "@/lib/colosseum/resolve";
 import { normalizeTags } from "@/lib/tags";
 import { SEARCH_LIMIT } from "@/lib/utils";
 import { logError } from "@/lib/log";
@@ -149,6 +151,60 @@ const handler = createMcpHandler(
       asTool(async (_args: Record<string, never>, { userId }) => ({
         channels: await getViewerChannels(await viewerScope(userId)),
       })),
+    );
+
+    server.registerTool(
+      "resolve",
+      {
+        description:
+          "Turn a Colosseum link, or a bare handle, into the ids everything " +
+          "else takes. Accepts a full URL, a host/path, a /path, or just a " +
+          "handle. Use it whenever you are handed a link — every other tool " +
+          "is addressed by numeric id, and list_channels only returns your " +
+          "own. A private channel resolves to not-found unless you can read it.",
+        inputSchema: { query: z.string() },
+      },
+      asTool(async ({ query }: { query: string }, { userId }) => {
+        const link = parseColosseumLink(query);
+        if (!link) throw new Error("Not a Colosseum link or handle.");
+
+        const owner = await getOwnerByHandle(link.handle);
+        if (!owner) throw new Error("Not found.");
+
+        const result: Record<string, unknown> = {
+          owner: { handle: owner.handle, kind: owner.kind, about: owner.about },
+        };
+        if (link.channelId !== undefined) {
+          result.channel = await requireChannel(userId, link.channelId, "read");
+          if (link.blockId !== undefined) {
+            const block = await getColumn(link.blockId, { html: false });
+            // Must be in the channel the link named; one that isn't is as good
+            // as missing, and saying otherwise would confirm it exists.
+            if (!block || block.channel_id !== link.channelId) throw new Error("Not found.");
+            result.block = await attachPreview(block);
+          }
+        }
+        return result;
+      }),
+    );
+
+    server.registerTool(
+      "list_owner_channels",
+      {
+        description:
+          "The channels under a handle — a person's or a group's — whether or " +
+          "not you own it, scoped to what you can see. list_channels returns " +
+          "only your own; this is how you read anyone else's.",
+        inputSchema: { handle: z.string() },
+      },
+      asTool(async ({ handle }: { handle: string }, { userId }) => {
+        const owner = await getOwnerByHandle(handle);
+        if (!owner) throw new Error("Not found.");
+        return {
+          owner: { handle: owner.handle, kind: owner.kind, about: owner.about },
+          channels: await getVisibleOwnerChannels(owner.id, await viewerScope(userId)),
+        };
+      }),
     );
 
     server.registerTool(

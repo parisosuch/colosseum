@@ -124,6 +124,36 @@ to but not its own account.
 Identity only. The user id and owner id are not returned: no endpoint accepts
 either, and the two are easy to mistake for one another.
 
+## Resolving links
+
+### `GET /api/v1/resolve`
+
+Turn a Colosseum link, or a bare handle, into the ids everything else takes.
+`?q=` accepts a full URL, a `host/path`, a `/path`, or just a handle.
+
+→ `{ "owner": { "handle", "kind", "about" }, "channel": { ... }, "block": { ... } }`
+
+`channel` and `block` appear only when the link named them. A handle is a person
+or a group — `kind` says which.
+
+Every other endpoint takes a numeric id, and `GET /channels` lists only your
+own, so without this a link — which is how a channel actually gets shared — was
+unusable.
+
+The channel is authorized like any other read, so a private one you can't see is
+a `404` whether or not it exists. A block that isn't in the channel the link
+named is a `404` too.
+
+### `GET /api/v1/owners/:handle/channels`
+
+The channels under a handle, whether or not you own it.
+
+→ `{ "owner": { "handle", "kind", "about" }, "channels": [...] }`
+
+Scoped through the viewer exactly as the profile page is: public and open
+channels, plus any private ones you can already reach. `GET /channels` stays
+what it is — yours — and this is how anyone else's become reachable.
+
 ## Search
 
 ### `GET /api/v1/search`

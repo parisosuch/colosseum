@@ -19,6 +19,7 @@ import { renderEmail, sendEmail } from "@/lib/email";
 import { logError } from "@/lib/log";
 
 import { blockLabel } from "./activity";
+import { getUserProfile, updateUserProfile } from "./user";
 
 export const NOTIFICATION_PAGE = 30;
 
@@ -391,4 +392,22 @@ export async function markAllNotificationsRead(userId: string): Promise<void> {
     .update(notification)
     .set({ read_at: new Date() })
     .where(and(eq(notification.recipient_id, userId), isNull(notification.read_at)));
+}
+
+// Flip one email-notification preference and hand back the whole set.
+//
+// A read-modify-write rather than a partial update: the prefs are one JSON
+// column, so writing a single key would drop the others. Lives here rather than
+// in user.ts because the type it keys on is this module's.
+export async function setEmailNotificationPref(
+  userId: string,
+  type: NotificationType,
+  enabled: boolean,
+): Promise<EmailNotificationPrefs> {
+  const profile = await getUserProfile(userId);
+  if (!profile) throw new Error("This account has not finished onboarding.");
+  const updated = await updateUserProfile(userId, {
+    email_notifications: { ...profile.email_notifications, [type]: enabled },
+  });
+  return updated.email_notifications;
 }

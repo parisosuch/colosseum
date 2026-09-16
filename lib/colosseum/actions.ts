@@ -88,6 +88,7 @@ import {
   createNotification,
   listNotifications,
   markAllNotificationsRead,
+  setEmailNotificationPref,
   markNotificationRead,
   NotificationItem,
   NotificationType,
@@ -1109,14 +1110,7 @@ export async function setEmailNotificationPrefAction(
   enabled: boolean,
 ): Promise<EmailNotificationPrefs> {
   const userId = await requireUserId();
-  const current = await getUserProfile(userId);
-  if (!current) {
-    throw new Error("Profile not found.");
-  }
-  const profile = await updateUserProfile(userId, {
-    email_notifications: { ...current.email_notifications, [type]: enabled },
-  });
-  return profile.email_notifications;
+  return setEmailNotificationPref(userId, type, enabled);
 }
 
 // ---------------------------------------------------------------------------

@@ -72,6 +72,25 @@ Update a channel you own. Partial — omitted fields are unchanged.
 
 Delete a channel you own (its blocks cascade). → `{ "success": true }`
 
+### `POST /api/v1/channels/:id/nest`
+
+Add another channel as a block inside this one — the Are.na-style link. `:id`
+is the host; the body names the channel being linked.
+
+```json
+{ "channelId": 34 }
+```
+
+→ `201 { "block": { ..., "type": "channel", "linked_channel_id": 34 } }`
+
+The one block type `POST /channels/:id/blocks` cannot produce.
+
+You must own the host, which is stricter than adding a block to it: nesting
+puts a permanent link to someone's collection in your channel and notifies its
+owner. The linked channel only has to be visible, and a private one is a `404`
+rather than a `403`, so this never confirms one exists. A channel cannot be
+nested in itself (`400`). Charged to your block quota.
+
 ### `DELETE /api/v1/channels/:id/members/me`
 
 Give up your own membership of a channel someone else owns. → `204`, no body.

@@ -19,10 +19,18 @@ import {
 } from "./channel";
 import { getChannel } from "./channel";
 import { isChannelMember, removeChannelMember } from "./member";
-import { Column, copyColumnInto, getColumn, moveColumn, reorderColumn } from "./column";
+import {
+  Column,
+  addChannelColumn,
+  copyColumnInto,
+  getColumn,
+  moveColumn,
+  reorderColumn,
+} from "./column";
 import { ApiToken } from "./api-token";
 import { getScreenshot, getScreenshotsForUrls } from "./screenshot-data";
 import { assertColumnQuota } from "./admin";
+import { notifyChannelNested } from "./nest";
 import { checkRateLimit } from "./rate-limit";
 import { logError, logInfo } from "@/lib/log";
 
@@ -281,6 +289,52 @@ export async function moveBlock(
 
   const moved = await moveColumn(blockId, destinationChannelId);
   return moved ?? apiError("Not found.", 404);
+}
+
+// Nest a channel inside another as a block (the Are.na-style link), the one
+// block type create_block can't produce.
+//
+// Manage on the host, not merely contribute: nesting puts a permanent link to
+// someone else's collection in this channel and notifies its owner, which is an
+// owner's call rather than a contributor's — matching addChannelColumnAction.
+//
+// The linked channel must be non-private, and a private one is a 404 rather
+// than a 403 for the same reason every read is: a distinguishable refusal would
+// confirm it exists. A channel can't be nested in itself.
+export async function nestChannel(
+  linkedChannelId: number,
+  hostChannelId: number,
+  userId: string,
+): Promise<Column | NextResponse> {
+  const host = await getChannel(hostChannelId);
+  const denial = await authorizeChannelManage(host, userId);
+  if (denial) return denial;
+
+  if (linkedChannelId === hostChannelId) {
+    return apiError("A channel can't be added to itself.", 400);
+  }
+
+  const linked = await getChannel(linkedChannelId);
+  if (!linked || linked.private) return apiError("Not found.", 404);
+
+  try {
+    await assertColumnQuota(userId);
+  } catch (e) {
+    return apiError(e instanceof Error ? e.message : "Block limit reached.", 403);
+  }
+
+  const added = await addChannelColumn({
+    created_by: userId,
+    channel_id: hostChannelId,
+    linked_channel_id: linkedChannelId,
+  });
+  await notifyChannelNested({
+    host: host!,
+    linkedOwnerId: linked.owned_by,
+    columnId: added.id,
+    userId,
+  });
+  return added;
 }
 
 // Copy a block into another channel, leaving the original where it is.

@@ -264,7 +264,12 @@ const ColumnComponent = memo(function ColumnComponent({
       }}
       // touch-none, or a drag on a phone scrolls the page instead of moving
       // the card. Confined to the grip so the rest of the card still scrolls.
-      className={`z-20 grid size-9 shrink-0 touch-none place-items-center rounded-md border bg-background/90 text-muted-foreground shadow-sm ${
+      // focus-ring like every other control here: the UA outline it fell back
+      // to isn't replaced by the `ring-2` below, which only marks the held
+      // state. coarse: raises it to the 44px touch floor Button/Input/Select
+      // already keep, which matters more for this one than for most — it is
+      // the only way to move a block by hand.
+      className={`focus-ring z-20 grid size-9 shrink-0 touch-none place-items-center rounded-md border bg-background/90 text-muted-foreground shadow-sm coarse:size-11 ${
         heldHere ? "ring-2 ring-ring" : ""
       } cursor-grab active:cursor-grabbing`}
     >
@@ -293,13 +298,28 @@ const ColumnComponent = memo(function ColumnComponent({
   const openLabel = `Open ${
     (column.title || urlTitle || column.text || "block").trim().slice(0, 80) || "block"
   }`;
-  const openOnKey = (e: React.KeyboardEvent<HTMLElement>) => {
-    if (e.target !== e.currentTarget) return;
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      onOpen(column.id);
-    }
-  };
+  // Where the card can't be a <button> — it holds the grip, or a tweet embed's
+  // own controls — it is a group holding real controls instead of a role=button
+  // holding presentational ones.
+  //
+  // ARIA makes a button's children presentational, so inside one the grip's
+  // name, its aria-pressed state and its help text need not reach the
+  // accessibility tree at all. That grip is the whole keyboard reorder path,
+  // which was built to be keyboard-reachable, so losing it there is the bug.
+  //
+  // This button is stretched across the card rather than wrapping it: the whole
+  // surface still opens the block on click, while the grip sits above it at
+  // z-20 and keeps its own hit area. Being a real button, it needs no tabIndex
+  // or key handling of its own.
+  const openButton = (
+    <button
+      type="button"
+      aria-label={openLabel}
+      data-open-block=""
+      onClick={() => onOpen(column.id)}
+      className="focus-ring absolute inset-0 z-10 rounded-lg"
+    />
+  );
 
   if (view === "list") {
     // Content column: the domain/path for a link, the text itself for a text
@@ -350,15 +370,13 @@ const ColumnComponent = memo(function ColumnComponent({
       return (
         <div
           ref={cardRef}
-          role="button"
-          tabIndex={0}
+          role="group"
           aria-label={openLabel}
           data-column-id={column.id}
-          onClick={() => onOpen(column.id)}
-          onKeyDown={openOnKey}
           {...prefetch}
-          className={rowClass}
+          className={`relative ${rowClass}`}
         >
+          {openButton}
           {rowInner}
         </div>
       );
@@ -413,17 +431,15 @@ const ColumnComponent = memo(function ColumnComponent({
     return (
       <div
         ref={cardRef}
-        role="button"
-        tabIndex={0}
+        role="group"
         aria-label={openLabel}
         data-column-id={column.id}
-        onClick={() => onOpen(column.id)}
-        onKeyDown={openOnKey}
         {...prefetch}
-        className={`cv-card group w-full text-left ${
+        className={`cv-card group relative w-full text-left ${
           column.type === "tweet" ? "aspect-square overflow-hidden" : ""
         } ${cardPress} ${activeClass}`}
       >
+        {openButton}
         {gridInner}
       </div>
     );

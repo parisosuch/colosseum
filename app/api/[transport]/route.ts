@@ -27,6 +27,7 @@ import {
 import {
   Channel,
   createChannel,
+  searchChannels,
   deleteChannel,
   getChannel,
   getViewerChannels,
@@ -35,7 +36,7 @@ import {
 } from "@/lib/colosseum/channel";
 import { resolveCreateOwner } from "@/lib/colosseum/owner";
 import { getColumnQuota } from "@/lib/colosseum/admin";
-import { getUserProfile } from "@/lib/colosseum/user";
+import { getUserProfile, searchProfiles } from "@/lib/colosseum/user";
 import { listUserGroups } from "@/lib/colosseum/group";
 import {
   Column,
@@ -43,6 +44,7 @@ import {
   getChannelColumnCount,
   getChannelColumns,
   getColumn,
+  searchColumns,
   updateColumn,
   updateColumnTags,
   uploadImageColumn,
@@ -52,6 +54,7 @@ import {
 import { putImageBlobFromUrl } from "@/lib/colosseum/blob";
 import { triggerScreenshotCapture } from "@/lib/colosseum/screenshot";
 import { normalizeTags } from "@/lib/tags";
+import { SEARCH_LIMIT } from "@/lib/utils";
 import { logError } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -145,6 +148,34 @@ const handler = createMcpHandler(
       asTool(async (_args: Record<string, never>, { userId }) => ({
         channels: await getViewerChannels(await viewerScope(userId)),
       })),
+    );
+
+    server.registerTool(
+      "search",
+      {
+        description:
+          "Find people, channels and blocks matching a query, under your own " +
+          "visibility — public things plus what you own or belong to. Use it " +
+          "instead of listing channels and matching client-side: that pulls " +
+          "most of a collection into the conversation to find one link. " +
+          "`limit` is per kind, up to 50. To read a whole channel rather than " +
+          "find something in it, page list_blocks.",
+        inputSchema: {
+          query: z.string(),
+          limit: z.number().int().positive().max(50).optional(),
+        },
+      },
+      asTool(async ({ query, limit }: { query: string; limit?: number }, { userId }) => {
+        if (!query.trim()) throw new Error("`query` is required.");
+        const n = limit ?? SEARCH_LIMIT;
+        const viewer = await viewerScope(userId);
+        const [profiles, channels, columns] = await Promise.all([
+          searchProfiles(query, n),
+          searchChannels(viewer, query, n),
+          searchColumns(viewer, query, n),
+        ]);
+        return { profiles, channels, blocks: await attachPreviews(columns) };
+      }),
     );
 
     server.registerTool(

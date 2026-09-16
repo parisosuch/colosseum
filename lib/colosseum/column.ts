@@ -20,7 +20,7 @@ import { db } from "@/lib/db";
 import { channel, channelMember, column, owner, screenshot } from "@/lib/db/schema";
 import { positionBetween, positionsAfter } from "@/lib/fractional-index";
 import { renderMarkdown } from "@/lib/markdown";
-import { sanitizeSearch } from "@/lib/utils";
+import { sanitizeSearch, SEARCH_LIMIT } from "@/lib/utils";
 import { createMedia, deleteMediaByUrl, getMedia, mediaIdFromUrl } from "./blob";
 import { deleteTweetIfUnreferenced } from "./tweet";
 import { SIGNED_OUT, viewerOwnerIds, type ViewerScope } from "./viewer";
@@ -432,6 +432,7 @@ export type ColumnSearchResult = Column & { handle: string };
 export async function searchColumns(
   viewer: ViewerScope,
   query: string,
+  limit = SEARCH_LIMIT,
 ): Promise<ColumnSearchResult[]> {
   const term = sanitizeSearch(query);
   if (!term) {
@@ -478,7 +479,7 @@ export async function searchColumns(
       ),
     )
     .orderBy(rank, desc(column.created_at), desc(column.id))
-    .limit(10);
+    .limit(limit);
   return rows.map(({ col, handle }) => ({ ...toColumn(col), handle }));
 }
 

@@ -1,6 +1,7 @@
 import { beforeAll, expect, test } from "bun:test";
 
 import { BLOCKS, CHANNELS, seed, USERS } from "@/scripts/seed";
+import { SEARCH_LIMIT } from "@/lib/utils";
 import { createMedia, mediaIdFromUrl, putBlob } from "./blob";
 import {
   canContributeChannel,
@@ -17,7 +18,7 @@ import {
   type ChannelViewer,
 } from "./channel";
 import { isChannelMember } from "./member";
-import { searchColumns, uploadImageColumn, uploadURLColumn } from "./column";
+import { searchColumns, uploadImageColumn, uploadTextColumn, uploadURLColumn } from "./column";
 import { getScreenshot, upsertScreenshot } from "./screenshot-data";
 
 beforeAll(async () => {
@@ -242,4 +243,27 @@ test("searchColumns surfaces a private group's blocks to its members", async () 
   expect(
     (await searchColumns(await viewerScope(USERS.alice.id), BLOCKS.bobGroup)).map((c) => c.title),
   ).toContain(BLOCKS.bobGroup);
+});
+
+test("searchChannels and searchColumns take a limit, defaulting to SEARCH_LIMIT", async () => {
+  const viewer = await viewerScope(USERS.alice.id);
+  const channel = await createChannel({
+    title: "Limit probe",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
+  // Comfortably more than the default cap, so the default is observable.
+  const term = "limitprobeterm";
+  for (let i = 0; i < SEARCH_LIMIT + 3; i++) {
+    await uploadTextColumn({
+      created_by: USERS.alice.id,
+      channel_id: channel.id,
+      text: `${term} ${i}`,
+    });
+  }
+
+  // The nav search box's cap is the default, so its behaviour is unchanged.
+  expect((await searchColumns(viewer, term)).length).toBe(SEARCH_LIMIT);
+  expect((await searchColumns(viewer, term, 3)).length).toBe(3);
+  expect((await searchChannels(viewer, "Limit probe", 1)).length).toBe(1);
 });

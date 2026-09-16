@@ -34,6 +34,13 @@ import {
   moveColumn,
   reorderColumn,
 } from "./column";
+import {
+  type Comment,
+  createCommentWithNotices,
+  deleteComment,
+  getColumnComments,
+  getCommentAuthorization,
+} from "./comment";
 import { ApiToken } from "./api-token";
 import { getScreenshot, getScreenshotsForUrls } from "./screenshot-data";
 import { assertColumnQuota } from "./admin";
@@ -349,6 +356,67 @@ export async function removeMemberFor(
   } catch (e) {
     return apiError(e instanceof Error ? e.message : "Could not remove that member.", 400);
   }
+}
+
+// A block's comments. Read-authorized: anyone who can see the block can see
+// what was said about it, which is what the block modal shows.
+export async function listCommentsFor(
+  blockId: number,
+  userId: string,
+): Promise<Comment[] | NextResponse> {
+  const block = await getColumn(blockId, { html: false });
+  if (!block) return apiError("Not found.", 404);
+  const denial = await authorizeChannelRead(await getChannel(block.channel_id), userId);
+  if (denial) return denial;
+  return getColumnComments(blockId);
+}
+
+// Post a comment. Read-authorized too — commenting is what a reader does, and
+// an open channel's whole point is that others join in. The notices owed to the
+// block's author and to anyone @mentioned are sent by createCommentWithNotices,
+// which filters both to people who can actually read the channel.
+export async function createCommentFor(
+  blockId: number,
+  body: string,
+  userId: string,
+): Promise<Comment | NextResponse> {
+  const block = await getColumn(blockId, { html: false });
+  if (!block) return apiError("Not found.", 404);
+  const channel = await getChannel(block.channel_id);
+  const denial = await authorizeChannelRead(channel, userId);
+  if (denial) return denial;
+  try {
+    return await createCommentWithNotices({
+      column: block,
+      channel: channel!,
+      authorId: userId,
+      body,
+    });
+  } catch (e) {
+    // Empty or over-length is the caller's mistake, not a server fault.
+    return apiError(e instanceof Error ? e.message : "Could not post that comment.", 400);
+  }
+}
+
+// Delete a comment. The author may always remove their own; otherwise the
+// block's channel owner may moderate it — the same two-way rule the web app
+// applies. A comment the caller can neither author nor moderate is a 404 rather
+// than a 403, so this never confirms one exists on a channel they cannot see.
+export async function deleteCommentFor(
+  commentId: number,
+  userId: string,
+): Promise<NextResponse | null> {
+  const target = await getCommentAuthorization(commentId);
+  if (!target) return apiError("Not found.", 404);
+
+  if (target.author_id !== userId) {
+    const block = await getColumn(target.column_id, { html: false });
+    if (!block) return apiError("Not found.", 404);
+    const denial = await authorizeChannelManage(await getChannel(block.channel_id), userId);
+    if (denial) return denial;
+  }
+  await deleteComment(commentId);
+  return null;
 }
 
 // Nest a channel inside another as a block (the Are.na-style link), the one

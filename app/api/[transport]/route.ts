@@ -18,7 +18,10 @@ import {
   authorizeChannelRead,
   addMemberFor,
   copyBlock,
+  createCommentFor,
+  deleteCommentFor,
   leaveChannel,
+  listCommentsFor,
   listMembersFor,
   moveBlock,
   nestChannel,
@@ -266,6 +269,52 @@ const handler = createMcpHandler(
             blocks: { used: blocks.used, limit: blocks.limit },
           },
         };
+      }),
+    );
+
+    server.registerTool(
+      "list_comments",
+      {
+        description:
+          "What has been said about a block. Visible to anyone who can read " + "the block.",
+        inputSchema: { blockId: z.number().int() },
+      },
+      asTool(async ({ blockId }: { blockId: number }, { userId }) => {
+        const result = await listCommentsFor(blockId, userId);
+        if (result instanceof NextResponse) throw await denialToError(result);
+        return { comments: result };
+      }),
+    );
+
+    server.registerTool(
+      "create_comment",
+      {
+        description:
+          "Leave a comment on a block. Any reader may comment, not just the " +
+          "channel's owner. `@handle` in the text notifies that person, but " +
+          "only if they can read the channel — a mention never leaks a private " +
+          "channel's contents to someone outside it.",
+        inputSchema: { blockId: z.number().int(), body: z.string() },
+      },
+      asTool(async ({ blockId, body }: { blockId: number; body: string }, { userId }) => {
+        const result = await createCommentFor(blockId, body, userId);
+        if (result instanceof NextResponse) throw await denialToError(result);
+        return { comment: result };
+      }),
+    );
+
+    server.registerTool(
+      "delete_comment",
+      {
+        description:
+          "Remove a comment. Its author always may; otherwise the block's " +
+          "channel owner may moderate it.",
+        inputSchema: { commentId: z.number().int() },
+      },
+      asTool(async ({ commentId }: { commentId: number }, { userId }) => {
+        const denial = await deleteCommentFor(commentId, userId);
+        if (denial) throw await denialToError(denial);
+        return { deleted: commentId };
       }),
     );
 

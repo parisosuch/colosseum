@@ -7,6 +7,9 @@ import {
   attachPreview,
   attachPreviews,
   copyBlock,
+  createCommentFor,
+  deleteCommentFor,
+  listCommentsFor,
   listMembersFor,
   leaveChannel,
   moveBlock,
@@ -30,10 +33,12 @@ beforeAll(async () => {
   await seed();
 });
 
-// moveBlock returns either the moved block or a denial NextResponse; these pull
-// the status + message out of the denial the way the REST API and the MCP tool
-// (via denialToError) do.
-async function denial(result: Column | NextResponse): Promise<{ status: number; error: string }> {
+// The api-auth helpers return either a result or a denial NextResponse; this
+// pulls the status + message out of the denial the way the REST API and the MCP
+// tool (via denialToError) do. Typed on `unknown` because the helpers return
+// different result types — a Column, a Comment, a member row — and only the
+// denial branch is read here.
+async function denial(result: unknown): Promise<{ status: number; error: string }> {
   expect(result).toBeInstanceOf(NextResponse);
   const res = result as NextResponse;
   const body = (await res.json()) as { error?: string };
@@ -533,4 +538,65 @@ test("removeMemberFor takes someone off, and is owner-only", async () => {
 
   expect(await removeMemberFor(ch.id, USERS.alice.handle, USERS.bob.id)).toBeNull();
   expect(await isChannelMember(ch.id, USERS.alice.id)).toBe(false);
+});
+
+test("createCommentFor lets any reader comment, and lists back", async () => {
+  const ch = await createChannel({
+    title: "Commentable",
+    access: "public",
+    owned_by: USERS.bob.ownerId,
+  });
+  const block = await uploadTextColumn({
+    created_by: USERS.bob.id,
+    channel_id: ch.id,
+    text: "a block",
+  });
+
+  // Alice doesn't own the channel — commenting is what a reader does.
+  const posted = await createCommentFor(block.id, "nice one", USERS.alice.id);
+  expect(posted).not.toBeInstanceOf(NextResponse);
+
+  const listed = await listCommentsFor(block.id, USERS.alice.id);
+  expect((listed as { body: string }[]).map((c) => c.body)).toContain("nice one");
+});
+
+test("createCommentFor rejects an empty comment as the caller's mistake", async () => {
+  const ch = await createChannel({
+    title: "Empty",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
+  const block = await uploadTextColumn({
+    created_by: USERS.alice.id,
+    channel_id: ch.id,
+    text: "b",
+  });
+
+  const { status } = await denial(await createCommentFor(block.id, "   ", USERS.alice.id));
+  expect(status).toBe(400);
+});
+
+test("deleteCommentFor: the author may, a stranger may not, the channel owner may", async () => {
+  const ch = await createChannel({
+    title: "Moderated",
+    access: "open",
+    owned_by: USERS.bob.ownerId,
+  });
+  const block = await uploadTextColumn({
+    created_by: USERS.bob.id,
+    channel_id: ch.id,
+    text: "c",
+  });
+
+  const mine = (await createCommentFor(block.id, "mine", USERS.alice.id)) as { id: number };
+  // Its author, always.
+  expect(await deleteCommentFor(mine.id, USERS.alice.id)).toBeNull();
+
+  const theirs = (await createCommentFor(block.id, "bob's", USERS.bob.id)) as { id: number };
+  // Alice can read the channel but neither wrote this nor owns the channel.
+  const refused = await deleteCommentFor(theirs.id, USERS.alice.id);
+  expect((refused as NextResponse).status).toBe(403);
+
+  // The channel's owner moderates it.
+  expect(await deleteCommentFor(theirs.id, USERS.bob.id)).toBeNull();
 });

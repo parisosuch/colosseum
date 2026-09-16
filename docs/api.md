@@ -333,6 +333,34 @@ That is why it is its own endpoint rather than a field on the PATCH.
 
 Delete a block in a channel you own. → `{ "success": true }`
 
+## Comments
+
+### `GET /api/v1/blocks/:id/comments`
+
+What has been said about a block. → `{ "comments": [...] }`
+
+Visible to anyone who can read the block.
+
+### `POST /api/v1/blocks/:id/comments`
+
+Leave a comment. → `201 { "comment": { ... } }`
+
+```json
+{ "body": "the second half of this is the good part" }
+```
+
+Any reader may comment, not only the channel's owner. `@handle` in the text
+notifies that person — but only if they can read the channel, so a mention can
+never hand a private channel's contents to someone outside it. Empty or
+over-length is a `400`.
+
+### `DELETE /api/v1/comments/:id`
+
+Remove a comment. → `{ "success": true }`
+
+Its author always may; otherwise the block's channel owner may moderate it.
+Addressed by comment id, which is what the list hands back.
+
 ## Example
 
 ```bash

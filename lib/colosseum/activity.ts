@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, or, sql, type SQL } from "drizzle-orm";
 import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
 
 import { db } from "@/lib/db";
@@ -25,6 +25,10 @@ export const ACTIVITY_PAGE = 24;
 export type ActivityItem = {
   kind: "block" | "channel" | "user";
   at: string;
+  // Where this item sits in the feed's order, as one opaque string. Hand the
+  // last one back as `before` to get the next page; nothing else should read
+  // it. See FEED ORDER below.
+  cursor: string;
   handle: string;
   // block / channel only.
   channelId?: number;
@@ -82,6 +86,59 @@ const preciseAt = (col: AnyPgColumn) =>
 
 const olderThan = (col: AnyPgColumn, cursor: string) => sql`${col} < ${cursor}::timestamptz`;
 
+// FEED ORDER
+//
+// Three sources merge into one list, so "the next page" needs an order all four
+// places agree on — the three queries and the merge itself. `created_at` alone
+// is not one: two rows can share an instant, and then `< at` drops both while
+// `<= at` repeats both. There is no third option without a tiebreak.
+//
+// The order is (at DESC, kind ASC, id DESC). `kind` separates the sources, so
+// the id comparison only ever runs within one table and never has to compare a
+// block id against an owner's uuid.
+//
+// An item comes after the cursor when its `at` is older, or its `at` matches
+// and its kind sorts later, or both match and its id is lower. Per source that
+// collapses to one of three predicates, which is what cursorFilter builds.
+const KIND_RANK = { block: 0, channel: 1, user: 2 } as const;
+
+type FeedCursor = { at: string; rank: number; id: string };
+
+// `at|rank|id`. The timestamp is fixed-width and contains no pipe, so this
+// splits cleanly.
+function encodeCursor(at: string, kind: keyof typeof KIND_RANK, id: string | number): string {
+  return `${at}|${KIND_RANK[kind]}|${id}`;
+}
+
+// A cursor with no `|` is one a page issued before this existed. Treated as a
+// bare timestamp, which is exactly the old behaviour — so a page already open
+// in someone's browser keeps paging rather than erroring or repeating itself.
+function decodeCursor(before: string): FeedCursor | null {
+  const parts = before.split("|");
+  if (parts.length !== 3) return null;
+  const rank = Number(parts[1]);
+  if (!Number.isInteger(rank)) return null;
+  return { at: parts[0], rank, id: parts[2] };
+}
+
+// The "strictly after the cursor" predicate for one source.
+function cursorFilter(
+  col: AnyPgColumn,
+  idCol: AnyPgColumn,
+  kind: keyof typeof KIND_RANK,
+  before: string | undefined,
+): SQL | undefined {
+  if (!before) return undefined;
+  const cursor = decodeCursor(before);
+  // Legacy bare-timestamp cursor: the old millisecond-free comparison.
+  if (!cursor) return olderThan(col, before);
+
+  const rank = KIND_RANK[kind];
+  if (rank < cursor.rank) return olderThan(col, cursor.at);
+  if (rank > cursor.rank) return sql`${col} <= ${cursor.at}::timestamptz`;
+  return sql`(${col} < ${cursor.at}::timestamptz or (${col} = ${cursor.at}::timestamptz and ${idCol} < ${cursor.id}))`;
+}
+
 // Recent public blocks, channels, and new members, merged newest-first. Capped
 // queries (indexed on created_at), then merge + slice in memory. `before` is a
 // cursor — the `at` of the last item seen — so each source returns only older
@@ -122,7 +179,7 @@ export async function getActivityFeed(
               ? sql`exists (select 1 from ${channelMember} where ${channelMember.channel_id} = ${channel.id} and ${channelMember.user_id} = ${viewer.userId})`
               : undefined,
           ),
-          before ? olderThan(column.created_at, before) : undefined,
+          cursorFilter(column.created_at, column.id, "block", before),
         ),
       )
       .orderBy(desc(column.created_at))
@@ -130,6 +187,7 @@ export async function getActivityFeed(
     db
       .select({
         at: preciseAt(channel.created_at),
+        id: channel.id,
         handle: owner.handle,
         avatar: owner.avatar_url,
         channelId: channel.id,
@@ -141,7 +199,7 @@ export async function getActivityFeed(
       .where(
         and(
           ne(channel.access, "private"),
-          before ? olderThan(channel.created_at, before) : undefined,
+          cursorFilter(channel.created_at, channel.id, "channel", before),
         ),
       )
       .orderBy(desc(channel.created_at))
@@ -151,11 +209,12 @@ export async function getActivityFeed(
     db
       .select({
         at: preciseAt(owner.created_at),
+        id: owner.id,
         handle: owner.handle,
         avatar: owner.avatar_url,
       })
       .from(owner)
-      .where(and(eq(owner.kind, "user"), before ? olderThan(owner.created_at, before) : undefined))
+      .where(and(eq(owner.kind, "user"), cursorFilter(owner.created_at, owner.id, "user", before)))
       .orderBy(desc(owner.created_at))
       .limit(limit),
   ]);
@@ -180,6 +239,7 @@ export async function getActivityFeed(
     ...blocks.map(({ col, at, handle, avatar, channelTitle, channelHandle }, i) => ({
       kind: "block" as const,
       at,
+      cursor: encodeCursor(at, "block", col.id),
       handle,
       avatarUrl: avatar ?? undefined,
       channelId: col.channel_id,
@@ -192,6 +252,7 @@ export async function getActivityFeed(
     ...channels.map((c) => ({
       kind: "channel" as const,
       at: c.at,
+      cursor: encodeCursor(c.at, "channel", c.id),
       handle: c.handle,
       avatarUrl: c.avatar ?? undefined,
       channelId: c.channelId,
@@ -203,12 +264,33 @@ export async function getActivityFeed(
     ...joins.map((u) => ({
       kind: "user" as const,
       at: u.at,
+      cursor: encodeCursor(u.at, "user", u.id),
       handle: u.handle,
       avatarUrl: u.avatar ?? undefined,
     })),
   ];
 
-  return items.sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, limit);
+  // The same order the queries paged by, or the merge would hand back a page
+  // whose last item isn't the one the next page continues from.
+  return items.sort(compareItems).slice(0, limit);
+}
+
+// (at DESC, kind ASC, id DESC), matching cursorFilter. Ids are only ever
+// compared within one kind, so a numeric id never meets a uuid; the string
+// compare below is on values of the same shape. Returns 0 only for the same
+// item, which is what makes this a total order rather than a stable-ish sort.
+function compareItems(a: ActivityItem, b: ActivityItem): number {
+  if (a.at !== b.at) return a.at < b.at ? 1 : -1;
+  const rank = KIND_RANK[a.kind] - KIND_RANK[b.kind];
+  if (rank !== 0) return rank;
+  const aId = a.cursor.slice(a.cursor.lastIndexOf("|") + 1);
+  const bId = b.cursor.slice(b.cursor.lastIndexOf("|") + 1);
+  if (aId === bId) return 0;
+  // Numeric ids (blocks, channels) compare as numbers — "9" is not after "10".
+  const aNum = Number(aId);
+  const bNum = Number(bId);
+  if (Number.isInteger(aNum) && Number.isInteger(bNum)) return bNum - aNum;
+  return aId < bId ? 1 : -1;
 }
 
 // A channel-column ("connected X to Y") reads as its own sentence, so it never
@@ -263,7 +345,7 @@ export async function getActivityPage(
   for (let pages = 0; hasMore && pages < MAX_RUN_PAGES; pages++) {
     const last = items[items.length - 1];
     if (!groupable(last)) break;
-    const more = await getActivityFeed(viewer, ACTIVITY_PAGE, last.at);
+    const more = await getActivityFeed(viewer, ACTIVITY_PAGE, last.cursor);
     const end = more.findIndex((i) => !joinsRun(last, i));
     const taken = end === -1 ? more : more.slice(0, end);
     items.push(...taken);
@@ -275,7 +357,7 @@ export async function getActivityPage(
 
   return {
     items,
-    nextCursor: items.length > 0 ? items[items.length - 1].at : null,
+    nextCursor: items.length > 0 ? items[items.length - 1].cursor : null,
     hasMore,
   };
 }

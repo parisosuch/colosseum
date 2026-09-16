@@ -117,6 +117,7 @@ test("getActivityFeed: private-channel blocks reach the owner and members, not o
 const add = (handle: string, channelId: number, id: number, type = "image"): ActivityItem => ({
   kind: "block",
   at: new Date(id * 1000).toISOString(),
+  cursor: `${new Date(id * 1000).toISOString()}|0|${id}`,
   handle,
   channelId,
   channelTitle: `c${channelId}`,
@@ -131,7 +132,12 @@ test("groupActivity: consecutive adds by one person to one channel collapse", ()
     // A different channel, then a different actor, then back to the first pair.
     add("alice", 2, 4),
     add("bob", 2, 5),
-    { kind: "user", at: "2020-01-01T00:00:00.000Z", handle: "carol" },
+    {
+      kind: "user",
+      at: "2020-01-01T00:00:00.000Z",
+      cursor: "2020-01-01T00:00:00.000Z|2|carol",
+      handle: "carol",
+    },
     add("alice", 1, 6),
   ]);
 
@@ -230,8 +236,9 @@ test("getActivityPage: a run longer than one page stays a single group", async (
   const groups = groupActivity(page.items);
 
   expect(groups[0].length).toBe(run);
-  // The cursor has to clear the whole run, or the next page re-opens it.
-  expect(page.nextCursor).toBe(page.items[run - 1].at);
+  // The cursor has to clear the whole run, or the next page re-opens it. It is
+  // the last item's full position now, not just its timestamp.
+  expect(page.nextCursor).toBe(page.items[run - 1].cursor);
   expect(page.hasMore).toBe(true);
 });
 
@@ -260,4 +267,64 @@ test("getActivityPage: another actor ends the run past the page boundary", async
   const second = await getActivityPage(await viewerScope(null), first.nextCursor!);
   expect(second.items[0].handle).toBe(USERS.bob.handle);
   expect(second.items[1].handle).toBe(USERS.alice.handle);
+});
+
+test("getActivityFeed pages through blocks that share an instant exactly", async () => {
+  const channel = await createChannel({
+    title: "Same instant",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
+  // One statement, one `created_at` for all three — the timestamp alone cannot
+  // separate them, so `< at` drops all three and `<= at` repeats them.
+  stampWindow += 6000;
+  const rows = await db
+    .insert(column)
+    .values(
+      [0, 1, 2].map((i) => ({
+        type: "url" as const,
+        url: `https://ponytail.example/explore-567-${i}`,
+        created_by: USERS.alice.id,
+        channel_id: channel.id,
+        created_at: new Date(stampWindow),
+      })),
+    )
+    .returning({ id: column.id });
+  const ids = rows.map((r) => r.id).sort((a, b) => b - a);
+
+  // Page one at a time; each cursor has to land on the next id down.
+  const first = await getActivityFeed(await viewerScope(null), 1);
+  expect(first[0].column?.id).toBe(ids[0]);
+
+  const second = await getActivityFeed(await viewerScope(null), 1, first[0].cursor);
+  expect(second[0].column?.id).toBe(ids[1]);
+
+  const third = await getActivityFeed(await viewerScope(null), 1, second[0].cursor);
+  expect(third[0].column?.id).toBe(ids[2]);
+});
+
+test("a cursor from an older page still pages, as a bare timestamp", async () => {
+  const channel = await createChannel({
+    title: "Legacy cursor",
+    access: "public",
+    owned_by: USERS.alice.ownerId,
+  });
+  stampWindow += 6000;
+  await db.insert(column).values(
+    [0, 1].map((i) => ({
+      type: "url" as const,
+      url: `https://ponytail.example/explore-567-legacy-${i}`,
+      created_by: USERS.alice.id,
+      channel_id: channel.id,
+      created_at: new Date(stampWindow - i * 1000),
+    })),
+  );
+
+  const page = await getActivityFeed(await viewerScope(null), 1);
+  // What a page loaded before this change would hand back: the timestamp on its
+  // own. It must keep working rather than erroring or repeating the item.
+  const legacy = page[0].at;
+  const next = await getActivityFeed(await viewerScope(null), 1, legacy);
+  expect(next[0].column?.id).not.toBe(page[0].column?.id);
+  expect(next[0].at < legacy).toBe(true);
 });

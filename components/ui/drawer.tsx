@@ -51,10 +51,22 @@ function DrawerContent({
       <DrawerPrimitive.Content
         data-slot="drawer-content"
         className={cn(
-          // dvh (not vh): in an iOS standalone PWA and when the keyboard opens,
-          // vh resolves against the large layout viewport, so the sheet oversizes
-          // and vaul's input-repositioning snaps it. dvh tracks the visible area.
-          "bg-background fixed inset-x-0 bottom-0 z-50 mt-24 flex h-auto max-h-[80dvh] flex-col rounded-t-lg border-t",
+          // dvh (not vh): in an iOS standalone PWA vh resolves against the
+          // large layout viewport, so the sheet oversizes and vaul's
+          // input-repositioning snaps it. dvh follows the browser's own chrome.
+          //
+          // It does not follow the software keyboard, though — on iOS that
+          // shrinks the visual viewport and leaves the layout viewport alone,
+          // so a sheet capped in dvh alone keeps its full height and its lower
+          // half sits under the keyboard. --visual-vh is the height that does
+          // shrink (see VisualViewportVar); min() takes whichever is smaller,
+          // and falls back to the dvh cap wherever the variable is absent.
+          //
+          // Capping the height is only half of it. The sheet is anchored to the
+          // *layout* viewport's bottom edge, which the keyboard sits over, so a
+          // shorter sheet stays exactly as buried as a tall one — it has to be
+          // lifted by what the keyboard covers as well.
+          "bg-background fixed inset-x-0 bottom-[var(--keyboard-inset,0px)] z-50 mt-24 flex h-auto max-h-[min(80dvh,var(--visual-vh,80dvh))] flex-col rounded-t-lg border-t",
           className,
         )}
         {...props}

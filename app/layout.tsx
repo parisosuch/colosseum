@@ -9,6 +9,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
 import { NoZoomGuard } from "@/components/no-zoom-guard";
+import { VisualViewportVar } from "@/components/visual-viewport-var";
 import SiteFooter from "@/components/site-footer";
 import MobileBottomNav from "@/components/mobile-bottom-nav";
 
@@ -119,6 +120,7 @@ export default async function RootLayout({
         className={`${geistSans.className} ${geistSans.variable} ${fraunces.variable} antialiased`}
       >
         <NoZoomGuard />
+        <VisualViewportVar />
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

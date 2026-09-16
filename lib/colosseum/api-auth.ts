@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db";
-import { apiToken } from "@/lib/db/schema";
+import { apiToken, user } from "@/lib/db/schema";
 import {
   Channel,
   ChannelAccess,
@@ -136,13 +136,26 @@ export type ApiAuth = {
 export async function resolveApiToken(token: string): Promise<ApiAuth | null> {
   const hash = hashToken(token);
 
+  // Joined rather than a second read: this runs on every API and MCP request,
+  // and the join is on the user's primary key.
   const [row] = await db
-    .select({ id: apiToken.id, user_id: apiToken.user_id })
+    .select({ id: apiToken.id, user_id: apiToken.user_id, banned: user.banned })
     .from(apiToken)
+    .innerJoin(user, eq(user.id, apiToken.user_id))
     .where(eq(apiToken.token_hash, hash))
     .limit(1);
 
-  if (!row) {
+  // A banned user's tokens stop working here, the same instant getSessionUser
+  // starts treating them as signed out (lib/auth.ts). Without this a ban took
+  // the browser away and left every token they held fully working — reading,
+  // writing, commenting, minting invite codes into an invite-gated instance.
+  //
+  // The rows are left in place rather than deleted, matching how a ban treats
+  // sessions: the row survives and the check rejects it. That keeps a ban
+  // reversible, at the cost that an unban restores whatever was running before.
+  // Deleting them would be the harder kill, and wants to be a deliberate
+  // "revoke everything" rather than a side effect of a flag.
+  if (!row || row.banned) {
     return null;
   }
 

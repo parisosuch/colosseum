@@ -26,13 +26,14 @@ import {
   removeGroupMemberFor,
   removeMemberFor,
   reorderBlock,
+  resolveApiToken,
   revokeInviteCodeFor,
   setGroupRoleFor,
   transferChannelFor,
 } from "./api-auth";
 import { createMedia, getMedia, mediaIdFromUrl, putBlob } from "./blob";
 import { getMyInviteCodes } from "./invite";
-import { redactSettings } from "./admin";
+import { redactSettings, setUserBanned } from "./admin";
 import { createChannel } from "./channel";
 import {
   Column,
@@ -832,4 +833,28 @@ test("createFileBlock takes the channel's privacy, not the uploader's", async ()
   // A file put into a private channel must not stay publicly addressable.
   const media = await getMedia(mediaIdFromUrl(block.image!)!);
   expect(media?.visibility).toBe("private");
+});
+
+test("a banned user's API tokens stop resolving", async () => {
+  const { token } = await createApiToken({ userId: USERS.bob.id, name: "bob's agent" });
+  expect((await resolveApiToken(token))?.userId).toBe(USERS.bob.id);
+
+  await setUserBanned(USERS.bob.id, true);
+  try {
+    // A ban took the browser away and left every token working — reading,
+    // writing, and minting invite codes into an invite-gated instance.
+    expect(await resolveApiToken(token)).toBeNull();
+  } finally {
+    await setUserBanned(USERS.bob.id, false);
+  }
+
+  // The row is left in place, so lifting the ban restores it rather than
+  // stranding the account with tokens it can't use or see.
+  expect((await resolveApiToken(token))?.userId).toBe(USERS.bob.id);
+});
+
+test("an unknown token is still null, and a valid one still carries its id", async () => {
+  expect(await resolveApiToken("clsm_not-a-real-token")).toBeNull();
+  const { token, row } = await createApiToken({ userId: USERS.alice.id, name: "probe" });
+  expect(await resolveApiToken(token)).toEqual({ userId: USERS.alice.id, tokenId: row.id });
 });

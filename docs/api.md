@@ -18,6 +18,9 @@ Authorization: Bearer clsm_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 - `403` — valid token, but you don't own the resource you're trying to modify.
 - `404` — the resource doesn't exist, or it's a private channel you can't see.
 
+A banned account's tokens stop working immediately, the same as its browser
+session — the rows survive, and lifting the ban restores them.
+
 A token grants the same access its owner has: it can read public channels and
 anything you own, and write only what you own. "You" includes the groups you
 belong to — a group's channels are yours to read, and yours to write if your

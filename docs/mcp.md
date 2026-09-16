@@ -49,7 +49,8 @@ Same token, same rules as the [REST API](api.md): `Authorization: Bearer
 clsm_...`. A token grants the same access its owner has — it can read public
 channels and anything it owns, and write only what it owns. "Owns" includes the
 groups you belong to, up to the role you hold in each. An invalid or missing
-token gets a `401` before any tool runs.
+token gets a `401` before any tool runs, as does one belonging to a banned
+account.
 
 ## Tools
 

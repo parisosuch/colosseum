@@ -20,7 +20,9 @@ test("isHandleAvailable counts a group's handle as taken", async () => {
   // People and groups share one `owner.handle` namespace. Checking only user
   // profiles reported a group's handle free, and the save then failed with
   // HandleTakenError — the form said yes and the write said no.
-  const handle = "shared-namespace-probe";
+  // A fresh handle each run: seed() doesn't clear groups, so a fixed one is
+  // already claimed the second time this suite runs against the same database.
+  const handle = `ns-probe-${Date.now().toString(36)}`;
   await createGroup({ handle, name: "Probe", created_by: USERS.bob.id });
   expect(await isHandleAvailable(handle)).toBe(false);
 });

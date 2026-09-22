@@ -13,6 +13,7 @@ import {
   bigint,
   boolean,
   check,
+  customType,
   index,
   integer,
   jsonb,
@@ -302,6 +303,27 @@ export const channelMember = pgTable(
   },
   (t) => [primaryKey({ columns: [t.channel_id, t.user_id] })],
 );
+
+// Postgres bytea as a Uint8Array. Drizzle's pg-core has no built-in for it.
+const bytea = customType<{ data: Uint8Array; driverData: Buffer }>({
+  dataType: () => "bytea",
+  toDriver: (value) => Buffer.from(value),
+  fromDriver: (value) => new Uint8Array(value),
+});
+
+// A channel's canvas: the merged Yjs document (Y.encodeStateAsUpdate), written
+// by the realtime server (lib/realtime/) a second or so after edits settle. One
+// row per channel that has ever had a canvas; a channel without one opens to an
+// empty canvas. The doc refers to blocks by column id and never copies their
+// content, so it cascades with the channel but not with any block — the server
+// prunes elements for blocks that are gone.
+export const channelCanvas = pgTable("channel_canvas", {
+  channel_id: bigint("channel_id", { mode: "number" })
+    .primaryKey()
+    .references(() => channel.id, { onDelete: "cascade" }),
+  doc: bytea("doc").notNull(),
+  updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 // "column" is a reserved SQL keyword; Drizzle quotes the table name for us.
 export const column = pgTable(

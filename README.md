@@ -43,6 +43,11 @@ Deploying behind a real domain (Coolify, a reverse proxy, etc.)? Set
 `BETTER_AUTH_URL` in the same `.env` to that public URL — otherwise
 sign-in/sign-up requests fail with a 403 `Invalid origin`.
 
+Channel canvases sync live over a WebSocket on the same port, under
+`/realtime/`, so the proxy has to pass WebSocket upgrades through. Caddy,
+Traefik and Coolify do this by default. nginx needs `proxy_http_version 1.1`
+plus the `Upgrade` and `Connection` headers set for that location.
+
 ### Upgrading
 
 ```bash

@@ -169,6 +169,13 @@
       "when": 1788811348323,
       "tag": "0023_notification_group",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1790113329506,
+      "tag": "0024_channel_canvas",
+      "breakpoints": true
     }
   ]
 }

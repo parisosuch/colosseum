@@ -13,9 +13,9 @@
     "url": "https://github.com/parisosuch/colosseum.git"
   },
   "scripts": {
-    "dev": "bun --bun next dev --turbopack",
+    "dev": "bun --bun server.ts",
     "build": "bun --bun next build",
-    "start": "bun --bun next start",
+    "start": "NODE_ENV=production bun --bun server.ts",
     "lint": "oxlint",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
@@ -49,6 +49,7 @@
     "drizzle-orm": "^0.45.2",
     "global-tld-list": "^1.22.45",
     "ioredis": "^5.11.1",
+    "lib0": "^0.2.117",
     "lucide-react": "^0.511.0",
     "mcp-handler": "^1.1.0",
     "next": "^15.5.16",
@@ -68,6 +69,10 @@
     "tailwind-merge": "^3.3.1",
     "tldts": "^7.0.17",
     "vaul": "^1.1.2",
+    "ws": "^8.21.3",
+    "y-protocols": "^1.0.7",
+    "y-websocket": "^3.1.0",
+    "yjs": "^13.6.32",
     "zod": "^3"
   },
   "devDependencies": {
@@ -77,6 +82,7 @@
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.1",
     "@types/sanitize-html": "^2.16.1",
+    "@types/ws": "^8.18.1",
     "autoprefixer": "^10.4.21",
     "babel-plugin-react-compiler": "^1.0.0",
     "drizzle-kit": "^0.31.10",

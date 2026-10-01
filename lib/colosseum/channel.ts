@@ -5,6 +5,7 @@ import { and, desc, eq, ilike, inArray, ne, notInArray, or, sql } from "drizzle-
 import { db } from "@/lib/db";
 import { cached, cacheKeys, cacheTtl, invalidate } from "@/lib/cache";
 import { channel, channelMember, column, owner } from "@/lib/db/schema";
+import { publishRealtime } from "@/lib/realtime/events";
 import { sanitizeSearch, SEARCH_LIMIT } from "@/lib/utils";
 import { deleteMediaByUrl, mediaUrl, setMediaVisibilityByUrls } from "./blob";
 import { deleteScreenshotIfUnreferenced } from "./column";
@@ -362,6 +363,8 @@ export async function deleteChannel(channel_id: number): Promise<void> {
   const images = await channelImageUrls(channel_id);
   const linkUrls = await channelLinkUrls(channel_id);
   await db.delete(channel).where(eq(channel.id, channel_id));
+  // Close any open canvas; its row went with the cascade.
+  publishRealtime({ type: "channel.deleted", channelId: channel_id });
   await invalidate(cacheKeys.channel(channel_id));
   if (ownedBy) await invalidateOwnerChannelLists(ownedBy);
   // Drop image-block media references (blobs GC when the last reference goes).

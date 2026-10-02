@@ -72,22 +72,29 @@ export type CanvasHistoryOptions = {
   // same deletes. A restore into a closed canvas has no room, which is why
   // this callback exists.
   onElementsRemoved?: (channelId: number, removed: RemovedElement[]) => void | Promise<void>;
+  // Computes `revertUpdate`. Restoring a heavy canvas takes seconds of CPU, so
+  // server.ts runs it on a worker thread (canvas-restore-pool.ts) and only the
+  // final apply happens on the thread that serves every room. Defaults to
+  // computing it in-thread.
+  computeRevert?: (current: Uint8Array, version: Uint8Array) => Promise<Uint8Array>;
 };
 
 // Transaction origins for history's own changes.
 const REVERT_ORIGIN = Symbol("canvas-history-revert");
 export const RESTORE_ORIGIN = Symbol("canvas-history-restore");
 
-// An update that, applied to `doc`, returns its elements to the state encoded
-// in `version`. The version is loaded into a scratch doc, everything that
-// happened since is applied there as one tracked change, and an undo of that
-// change is what gets sent back. Undo re-creates deleted elements under their
-// old keys, reverts changed fields and text, and deletes what was added, all as
-// new operations, so the result merges into the live doc like any edit.
+// An update that, applied to a doc whose state is `current`, returns its
+// elements to the state encoded in `version`. The version is loaded into a
+// scratch doc, everything that happened since is applied there as one tracked
+// change, and an undo of that change is what gets sent back. Undo re-creates
+// deleted elements under their old keys, reverts changed fields and text, and
+// deletes what was added, all as new operations, so the result merges into the
+// live doc like any edit.
 //
-// Only the `elements` map is reverted. Any other top-level type a later
-// feature adds to the doc keeps its current state.
-function revertUpdate(doc: Y.Doc, version: Uint8Array): Uint8Array {
+// Works on encoded states only, so it can run on a worker thread
+// (canvas-restore-worker.ts). Only the `elements` map is reverted. Any other
+// top-level type a later feature adds to the doc keeps its current state.
+export function revertUpdate(current: Uint8Array, version: Uint8Array): Uint8Array {
   const past = new Y.Doc({ gc: false });
   try {
     Y.applyUpdate(past, version);
@@ -95,10 +102,10 @@ function revertUpdate(doc: Y.Doc, version: Uint8Array): Uint8Array {
       trackedOrigins: new Set([REVERT_ORIGIN]),
       captureTimeout: 0,
     });
-    Y.applyUpdate(past, Y.encodeStateAsUpdate(doc, Y.encodeStateVector(past)), REVERT_ORIGIN);
+    Y.applyUpdate(past, Y.diffUpdate(current, Y.encodeStateVector(past)), REVERT_ORIGIN);
     undo.undo();
     undo.destroy();
-    return Y.encodeStateAsUpdate(past, Y.encodeStateVector(doc));
+    return Y.encodeStateAsUpdate(past, Y.encodeStateVectorFromUpdate(current));
   } finally {
     past.destroy();
   }
@@ -119,23 +126,32 @@ function boxOf(id: string, el: Y.Map<unknown>): RemovedElement {
   };
 }
 
-// Restore `doc`'s elements to `version` in one transaction, dropping block
+// Apply a `revertUpdate` result to `doc` in one transaction, dropping block
 // elements whose column fails `keepColumn` (blocks deleted or moved out since).
 // Returns the elements that were on the canvas before and aren't now.
+export function applyRestore(
+  doc: Y.Doc,
+  update: Uint8Array,
+  keepColumn: (columnId: number) => boolean,
+  origin: unknown,
+): RemovedElement[] {
+  const elements = elementsOf(doc);
+  const before = [...elements.entries()].map(([id, el]) => boxOf(id, el));
+  doc.transact(() => {
+    Y.applyUpdate(doc, update, origin);
+    removeBlockElements(doc, keepColumn, origin);
+  }, origin);
+  return before.filter((el) => !elements.has(el.id));
+}
+
+// Both steps at once, in-thread. For plain docs and tests.
 export function restoreElements(
   doc: Y.Doc,
   version: Uint8Array,
   keepColumn: (columnId: number) => boolean,
   origin: unknown,
 ): RemovedElement[] {
-  const elements = elementsOf(doc);
-  const before = [...elements.entries()].map(([id, el]) => boxOf(id, el));
-  const update = revertUpdate(doc, version);
-  doc.transact(() => {
-    Y.applyUpdate(doc, update, origin);
-    removeBlockElements(doc, keepColumn, origin);
-  }, origin);
-  return before.filter((el) => !elements.has(el.id));
+  return applyRestore(doc, revertUpdate(Y.encodeStateAsUpdate(doc), version), keepColumn, origin);
 }
 
 export function createCanvasHistory(options: CanvasHistoryOptions) {
@@ -146,6 +162,7 @@ export function createCanvasHistory(options: CanvasHistoryOptions) {
     quietMs = DEFAULT_QUIET_MS,
     now = Date.now,
     onElementsRemoved,
+    computeRevert = async (current, version) => revertUpdate(current, version),
   } = options;
 
   // An editing session per channel: who has edited since the last version,
@@ -209,7 +226,7 @@ export function createCanvasHistory(options: CanvasHistoryOptions) {
     channelId: number,
     name: string | null,
     createdBy: string | null,
-  ): Promise<{ id: number; snapshot: Y.Snapshot } | null> {
+  ): Promise<{ id: number; state: Uint8Array; snapshot: Y.Snapshot } | null> {
     let editors: string[] = [];
     const captured = await docs.withDoc(channelId, (doc) => {
       editors = takeEditors(channelId);
@@ -230,7 +247,7 @@ export function createCanvasHistory(options: CanvasHistoryOptions) {
       for (const editor of editors) recordEdit(channelId, editor);
       throw err;
     }
-    return id === null ? null : { id, snapshot: captured.snapshot };
+    return id === null ? null : { id, state: captured.state, snapshot: captured.snapshot };
   }
 
   const api = {
@@ -253,14 +270,19 @@ export function createCanvasHistory(options: CanvasHistoryOptions) {
       const backup = await writeVersion(channelId, null, null);
       if (!backup) return null;
 
+      // The expensive part, off the rooms' thread when server.ts set it up so.
+      // It reverts from the backup's state.
+      const update = await computeRevert(backup.state, target);
+
       const live = await canvases.columnIds(channelId);
       const result = await docs.withDoc(channelId, (doc) => {
-        // An edit can land between the backup and this step. Rather than lose
-        // it, rewrite the backup with the state the restore is about to replace.
+        // Edits can land between the backup and this step. The update doesn't
+        // cover them, so they survive the restore like any concurrent edit, and
+        // the backup is rewritten with the state the restore actually replaced.
         const drifted = Y.equalSnapshots(Y.snapshot(doc), backup.snapshot)
           ? null
           : Y.encodeStateAsUpdate(doc);
-        const removed = restoreElements(doc, target, (id) => live.has(id), RESTORE_ORIGIN);
+        const removed = applyRestore(doc, update, (id) => live.has(id), RESTORE_ORIGIN);
         return { drifted, removed };
       });
       if (!result) return null;

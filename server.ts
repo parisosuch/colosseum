@@ -11,6 +11,7 @@ import next from "next";
 import { createCanvasHistory } from "./lib/realtime/canvas-history";
 import { setCanvasHistory } from "./lib/realtime/canvas-history-registry";
 import { createPgVersionStore } from "./lib/realtime/canvas-history-store";
+import { createRestoreWorker } from "./lib/realtime/canvas-restore-pool";
 import { startRetention } from "./lib/realtime/canvas-retention";
 import { createCanvasServer, type Authorization } from "./lib/realtime/canvas-server";
 import { createPgCanvasStore } from "./lib/realtime/canvas-store";
@@ -83,8 +84,16 @@ subscribeRealtime((event) => canvas.handleEvent(event));
 // Canvas version history. The server writes versions as editing sessions go
 // quiet, the server actions reach it through the registry, and old automatic
 // versions are thinned on a timer here, so self-hosters need no scheduler.
+// Restores are computed on a worker thread so a heavy one doesn't stall every
+// other room.
 const versionStore = createPgVersionStore(databaseUrl);
-const history = createCanvasHistory({ versions: versionStore, canvases: store, docs: canvas });
+const restoreWorker = createRestoreWorker();
+const history = createCanvasHistory({
+  versions: versionStore,
+  canvases: store,
+  docs: canvas,
+  computeRevert: restoreWorker.compute,
+});
 canvas.onEdit((channelId, userId) => history.recordEdit(channelId, userId));
 setCanvasHistory(history);
 const retention = startRetention(versionStore);
@@ -113,6 +122,7 @@ async function stop(signal: string) {
   try {
     retention.stop();
     await history.shutdown();
+    restoreWorker.terminate();
     await canvas.shutdown();
     await versionStore.end();
     await store.end();

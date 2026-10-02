@@ -13,6 +13,7 @@ import { channelCanvas, channelCanvasVersion } from "@/lib/db/schema";
 import { seed, USERS } from "@/scripts/seed";
 import { elementsOf } from "./canvas-doc";
 import {
+  applyRestore,
   createCanvasHistory,
   restoreElements,
   storedDocs,
@@ -21,6 +22,7 @@ import {
   type RemovedElement,
 } from "./canvas-history";
 import { createPgVersionStore } from "./canvas-history-store";
+import { createRestoreWorker } from "./canvas-restore-pool";
 import { startRetention } from "./canvas-retention";
 import { createCanvasServer, type CanvasServer } from "./canvas-server";
 import { createPgCanvasStore } from "./canvas-store";
@@ -58,11 +60,13 @@ async function start({
     maxWaitMs: 100,
   });
   const removed: Harness["removed"] = [];
+  const restoreWorker = createRestoreWorker();
   const history = createCanvasHistory({
     versions,
     canvases: store,
     docs: wrapDocs(canvas),
     quietMs,
+    computeRevert: restoreWorker.compute,
     onElementsRemoved: (channelId, elements) => {
       removed.push({ channelId, elements });
     },
@@ -84,6 +88,7 @@ async function start({
       unsubscribe();
       stopEdits();
       await history.shutdown();
+      restoreWorker.terminate();
       await canvas.shutdown();
       await versions.end();
       await store.end();
@@ -244,6 +249,40 @@ test("restoreElements drops block elements whose column is gone", () => {
   expect(ids(live)).toEqual(["alive", "shape"]);
   // Neither block was on the canvas just before, so nothing was removed.
   expect(removed).toEqual([]);
+});
+
+test("the restore worker computes the same revert, one result per request", async () => {
+  const worker = createRestoreWorker({ timeoutMs: 1000 });
+  try {
+    const live = new Y.Doc();
+    addShape(live, "a", 1);
+    const v1 = Y.encodeStateAsUpdate(live);
+    elementsOf(live).delete("a");
+    addShape(live, "b", 2);
+    const v2 = Y.encodeStateAsUpdate(live);
+    addShape(live, "c", 3);
+    const current = Y.encodeStateAsUpdate(live);
+
+    const [to1, to2] = await Promise.all([
+      worker.compute(current, v1),
+      worker.compute(current, v2),
+    ]);
+    const one = decode(current);
+    applyRestore(one, to1, () => true, "test");
+    expect(ids(one)).toEqual(["a"]);
+    const two = decode(current);
+    applyRestore(two, to2, () => true, "test");
+    expect(ids(two)).toEqual(["b"]);
+    // The caller's buffers are still intact after the transfer.
+    expect(ids(decode(current))).toEqual(["b", "c"]);
+
+    // A malformed version fails that request (Yjs throws or loops on it,
+    // depending on the bytes), and restores keep working afterwards.
+    await expect(worker.compute(current, new Uint8Array([1, 2, 3]))).rejects.toThrow();
+    expect((await worker.compute(current, v1)).byteLength).toBeGreaterThan(0);
+  } finally {
+    worker.terminate();
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -416,7 +455,7 @@ test("a restore drops block elements for blocks deleted since the version", asyn
   await waitFor(() => ids(a.doc).join() === "kept-block,shape", "the restore without the block");
 });
 
-test("an edit landing between the backup and the restore ends up in the backup", async () => {
+test("an edit landing between the backup and the restore survives it and is in the backup", async () => {
   let calls = 0;
   harness = await start({
     wrapDocs: (docs) => ({
@@ -440,7 +479,8 @@ test("an edit landing between the backup and the restore ends up in the backup",
 
   const backup = (await versionsOf(channelId)).at(-1)!;
   expect(ids(decode(backup.doc))).toEqual(["sneaky"]);
-  expect(ids((await storedDoc(channelId))!)).toEqual([]);
+  // The revert was computed from the backup, so it doesn't touch the newer edit.
+  expect(ids((await storedDoc(channelId))!)).toEqual(["sneaky"]);
 });
 
 test("restore refuses a version from another channel", async () => {

@@ -48,7 +48,7 @@ export async function generateMetadata({
 }: SharePageParams): Promise<Metadata> {
   const { token } = await params;
   const share = await loadShare(token);
-  if (!share || share === "limited") return NOT_FOUND_META;
+  if (!share) return NOT_FOUND_META;
   const handle = await shareOwnerHandle(share.channel.owned_by);
 
   const block = share.block ?? (await deepLinkedBlock(share, (await searchParams).block)) ?? null;
@@ -75,7 +75,7 @@ export async function generateMetadata({
 export default async function SharePage({ params, searchParams }: SharePageParams) {
   const { token } = await params;
   const share = await loadShare(token);
-  if (!share || share === "limited") return <ShareUnavailable limited={share === "limited"} />;
+  if (!share) return <ShareUnavailable />;
 
   const { channel } = share;
   const handle = await shareOwnerHandle(channel.owned_by);

@@ -1,18 +1,15 @@
 import { cache } from "react";
-import { headers } from "next/headers";
 
 import { getChannelColumns } from "./column";
 import { ownerHandles } from "./channel";
 import { getScreenshotsForUrls } from "./screenshot-data";
-import { type ResolvedShare, resolveShareRequest, shareColumn } from "./share-link";
+import { type ResolvedShare, resolveShareToken, shareColumn } from "./share-link";
 import { SIGNED_OUT } from "./viewer";
 
 // Shared by the /s/<token> pages and their metadata. Cached per request, so the
-// page and generateMetadata resolve the token once between them (and a miss is
-// counted once).
+// page and generateMetadata resolve the token once between them.
 export const loadShare = cache(
-  async (token: string): Promise<ResolvedShare | null | "limited"> =>
-    resolveShareRequest(token, await headers()),
+  async (token: string): Promise<ResolvedShare | null> => resolveShareToken(token),
 );
 
 // The handle of whoever owns the shared channel, for breadcrumbs and bylines.

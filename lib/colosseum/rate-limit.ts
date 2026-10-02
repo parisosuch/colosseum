@@ -40,13 +40,3 @@ export function checkRateLimit(key: string, now: number = Date.now()): RateLimit
   win.count += 1;
   return { ok: true };
 }
-
-// Whether `key` is out of requests in its current window, without spending one.
-// For counters that only charge failures (a share-link miss), where the check
-// has to happen before the attempt but only a failed attempt counts.
-export function isRateLimited(key: string, now: number = Date.now()): boolean {
-  const { limit } = config();
-  if (!Number.isFinite(limit) || limit <= 0) return false;
-  const win = windows.get(key);
-  return !!win && now < win.resetAt && win.count >= limit;
-}

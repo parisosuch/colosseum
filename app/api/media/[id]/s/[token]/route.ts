@@ -3,11 +3,11 @@
 // covers — any block of a shared channel, or the one block of a block link.
 // Everything after the check is the ordinary media route (serveMedia).
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 
 import { getMedia } from "@/lib/colosseum/blob";
 import { mediaNotFound, serveMedia } from "@/lib/colosseum/media-response";
-import { resolveShareRequest, shareCoversMedia } from "@/lib/colosseum/share-link";
+import { resolveShareToken, shareCoversMedia } from "@/lib/colosseum/share-link";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -18,10 +18,7 @@ export async function GET(
   const { id, token } = await ctx.params;
   if (!UUID_RE.test(id)) return mediaNotFound();
 
-  const share = await resolveShareRequest(token, req.headers);
-  if (share === "limited") {
-    return NextResponse.json({ error: "Too many requests." }, { status: 429 });
-  }
+  const share = await resolveShareToken(token);
   if (!share) return mediaNotFound();
 
   const item = await getMedia(id);

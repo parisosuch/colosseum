@@ -52,6 +52,9 @@ export async function POST(req: Request, { params }: Ctx) {
     } catch {
       return apiError("Invalid JSON body.", 400);
     }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return apiError("The body must be a JSON object.", 400);
+    }
   }
 
   try {

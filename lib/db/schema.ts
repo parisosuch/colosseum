@@ -566,7 +566,11 @@ export const shareLink = pgTable(
     expires_at: timestamp("expires_at", { withTimezone: true }),
     revoked_at: timestamp("revoked_at", { withTimezone: true }),
   },
-  (t) => [index("share_link_channel_id_idx").on(t.channel_id)],
+  // block_id is indexed for the cascade: every block delete looks here.
+  (t) => [
+    index("share_link_channel_id_idx").on(t.channel_id),
+    index("share_link_block_id_idx").on(t.block_id),
+  ],
 );
 
 export const inviteCode = pgTable("invite_code", {

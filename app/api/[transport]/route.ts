@@ -602,10 +602,12 @@ const handler = createMcpHandler(
       "list_share_links",
       {
         description:
-          "List a channel's live share links, block links included, newest " +
-          "first: id, label, block_id (null for a whole-channel link), " +
-          "expires_at (null for never). Expired links stay listed until " +
-          "revoked. The URLs themselves can't be listed. Channel managers only.",
+          "List a channel's share links that haven't been revoked, block links " +
+          "included, newest first: id, label, block_id (null for a " +
+          "whole-channel link), block_label, expires_at (null for never) and " +
+          "status (active, expired, or block_moved for a block link whose " +
+          "block left the channel). The URLs themselves can't be listed. " +
+          "Channel managers only.",
         inputSchema: { channelId: z.number().int() },
       },
       asTool(async ({ channelId }: { channelId: number }, { userId }) => {

@@ -160,9 +160,10 @@ export default function ManageChannelButton({
             ) : null}
 
             {/* Links that open this channel to people without an account. Only a
-                private channel needs one; keyed off the saved access, like the
-                roster above. */}
-            {channel.private ? <ShareLinks channelId={channel.id} /> : null}
+                private channel can make one; keyed off the saved access, like the
+                roster above. Once it isn't private the panel still lists any
+                links made before, so they can be revoked. */}
+            <ShareLinks channelId={channel.id} canCreate={channel.private} />
 
             <ChannelOwnerTransfer channel={channel} />
 

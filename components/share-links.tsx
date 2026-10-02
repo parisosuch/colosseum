@@ -42,9 +42,17 @@ const dateLabel = (iso: string) =>
 
 function expiryLabel(link: ShareLink): string {
   if (!link.expires_at) return "Never expires";
-  return new Date(link.expires_at).getTime() <= Date.now()
+  return link.status === "expired"
     ? `Expired ${dateLabel(link.expires_at)}`
     : `Expires ${dateLabel(link.expires_at)}`;
+}
+
+// What a link in the channel's list opens. A block link names its block, and
+// says so when the block has moved out, which leaves the link opening nothing.
+function scopeLabel(link: ShareLink): string {
+  if (link.block_id == null) return "Whole channel";
+  const block = link.block_label ? `Block “${link.block_label}”` : "One block";
+  return link.status === "block_moved" ? `${block}, moved to another channel` : block;
 }
 
 // Revoke is confirm-gated like an API token's: the link was shown once, so a
@@ -121,11 +129,16 @@ export default function ShareLinks({
   channelId,
   blockId = null,
   divided = true,
+  canCreate = true,
 }: {
   channelId: number;
   blockId?: number | null;
   // A rule above the section, for when it follows other settings.
   divided?: boolean;
+  // False once the channel isn't private: anyone can read it, so there's
+  // nothing to make, but links made while it was private still exist and still
+  // work if it goes private again, so they stay listed and revocable.
+  canCreate?: boolean;
 }) {
   const [links, setLinks] = useState<ShareLink[] | null>(null);
   const [label, setLabel] = useState("");
@@ -180,39 +193,46 @@ export default function ShareLinks({
 
   const nameOf = (link: ShareLink) => link.label || "this link";
 
+  // Nothing to make and nothing to revoke: the section has nothing to offer.
+  if (!canCreate && (links?.length ?? 0) === 0) return null;
+
   return (
     <div className={divided ? "border-t pt-4 flex flex-col gap-2" : "flex flex-col gap-2"}>
       <Label>Share links</Label>
       <p className="text-xs text-muted-foreground">
-        {blockId == null
-          ? "Anyone with a link can open this channel and every block in it, with comments and members. They don't need an account and can't change anything."
-          : "Anyone with a link can open this block and its comments. They don't need an account and can't change anything."}
+        {!canCreate
+          ? "This channel isn't private, so anyone can open it without a link. These links were made while it was private. Any that haven't expired work again if it goes back to private, so revoke the ones you don't want."
+          : blockId == null
+            ? "Anyone with a link can open this channel and every block in it, with comments and members. They don't need an account and can't change anything."
+            : "Anyone with a link can open this block and its comments. They don't need an account and can't change anything."}
       </p>
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <Input
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          placeholder="Label (optional)"
-          aria-label="Link label"
-          maxLength={100}
-        />
-        <Select
-          value={expiry}
-          onChange={(e) => setExpiry(e.target.value)}
-          aria-label="Link expires after"
-          className="sm:w-44 sm:shrink-0"
-        >
-          {EXPIRY_CHOICES.map((c) => (
-            <option key={c.value} value={c.value}>
-              {c.value === "never" ? c.label : `Expires in ${c.label}`}
-            </option>
-          ))}
-        </Select>
-        <Button type="button" variant="secondary" onClick={handleCreate} disabled={creating}>
-          {creating ? "Creating..." : "Create link"}
-        </Button>
-      </div>
-      {expiry === "never" ? (
+      {canCreate ? (
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="Label (optional)"
+            aria-label="Link label"
+            maxLength={100}
+          />
+          <Select
+            value={expiry}
+            onChange={(e) => setExpiry(e.target.value)}
+            aria-label="Link expires after"
+            className="sm:w-44 sm:shrink-0"
+          >
+            {EXPIRY_CHOICES.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.value === "never" ? c.label : `Expires in ${c.label}`}
+              </option>
+            ))}
+          </Select>
+          <Button type="button" variant="secondary" onClick={handleCreate} disabled={creating}>
+            {creating ? "Creating..." : "Create link"}
+          </Button>
+        </div>
+      ) : null}
+      {canCreate && expiry === "never" ? (
         <p className="flex items-start gap-1.5 text-xs text-destructive-text">
           <TriangleAlert className="size-3.5 shrink-0 translate-y-px" aria-hidden />
           This link never expires. It keeps working for anyone who has it, including anyone it gets
@@ -245,14 +265,10 @@ export default function ShareLinks({
         <ul className="flex flex-col divide-y rounded-lg border">
           {links.map((link) => (
             <li key={link.id} className="flex items-center justify-between gap-2 px-3 py-2">
-              <div className="min-w-0">
+              <div className={link.status === "active" ? "min-w-0" : "min-w-0 opacity-60"}>
                 <p className="truncate text-sm">{link.label || "Untitled link"}</p>
                 <p className="text-caption">
-                  {blockId == null
-                    ? link.block_id == null
-                      ? "Whole channel · "
-                      : "One block · "
-                    : ""}
+                  {blockId == null ? `${scopeLabel(link)} · ` : ""}
                   {expiryLabel(link)} · made {dateLabel(link.created_at)}
                 </p>
               </div>

@@ -1,12 +1,15 @@
 import { createHash, randomBytes } from "node:crypto";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { column, shareLink } from "@/lib/db/schema";
+import { column, owner, shareLink, user } from "@/lib/db/schema";
 import { mediaUrl } from "./blob";
+import { blockLabel } from "./block-meta";
 import { type Channel, getChannel } from "./channel";
 import { type Column, getColumn } from "./column";
-import { checkRateLimit, isRateLimited } from "./rate-limit";
+import { shareMediaUrl } from "./share-url";
+
+export { shareMediaUrl, stripShareToken } from "./share-url";
 
 // Share links: "anyone with the link" read access to a private channel, or to
 // one block in it, without an account. The token in the URL is the whole
@@ -18,6 +21,7 @@ import { checkRateLimit, isRateLimited } from "./rate-limit";
 // an API token. No prefix — this lives in a URL, not a header someone pastes.
 const TOKEN_BYTES = 32;
 const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 // Expiry choices offered by the UI and accepted by the API, in days. A link
 // expires after DEFAULT_SHARE_EXPIRY_DAYS unless its creator picks another, and
@@ -35,6 +39,12 @@ export type ShareLink = {
   label: string | null;
   // Null: the link never expires.
   expires_at: string | null;
+  // Whether it opens anything right now. `block_moved`: a block link whose
+  // block has left this channel; it works again if the block comes back.
+  status: "active" | "expired" | "block_moved";
+  // What a block link's block is called, so a list of links can say which is
+  // which. Null for a channel link, or a block that's been deleted.
+  block_label: string | null;
 };
 
 // A token that resolved to a live link, with what it opens.
@@ -82,15 +92,61 @@ export function shareExpiry(days: number | null, now: number = Date.now()): Date
 }
 
 type ShareRow = typeof shareLink.$inferSelect;
-function toShareLink(row: ShareRow): ShareLink {
+type BlockInfo = { channel_id: number; label: string };
+
+function toShareLink(row: ShareRow, block?: BlockInfo): ShareLink {
+  const expires_at = row.expires_at?.toISOString() ?? null;
+  const status =
+    expires_at && isExpired({ expires_at })
+      ? "expired"
+      : row.block_id != null && block && block.channel_id !== row.channel_id
+        ? "block_moved"
+        : "active";
   return {
     id: row.id,
     created_at: row.created_at.toISOString(),
     channel_id: row.channel_id,
     block_id: row.block_id ?? null,
     label: row.label ?? null,
-    expires_at: row.expires_at?.toISOString() ?? null,
+    expires_at,
+    status,
+    block_label: block?.label ?? null,
   };
+}
+
+// The blocks behind a set of block links, in one read: where each lives now
+// and what it's called.
+async function blockInfo(rows: ShareRow[]): Promise<Map<number, BlockInfo>> {
+  const ids = [...new Set(rows.map((r) => r.block_id).filter((id): id is number => id != null))];
+  if (ids.length === 0) return new Map();
+  const blocks = await db
+    .select({
+      id: column.id,
+      channel_id: column.channel_id,
+      type: column.type,
+      title: column.title,
+      url: column.url,
+    })
+    .from(column)
+    .where(inArray(column.id, ids));
+  return new Map(
+    blocks.map((b) => [
+      b.id,
+      {
+        channel_id: b.channel_id,
+        label: blockLabel({
+          type: b.type,
+          title: b.title ?? undefined,
+          url: b.url ?? undefined,
+        } as Column),
+      },
+    ]),
+  );
+}
+
+async function toShareLinks(rows: ShareRow[]): Promise<ShareLink[]> {
+  const blocks = await blockInfo(rows);
+  return rows.map((r) => toShareLink(r, r.block_id != null ? blocks.get(r.block_id) : undefined));
 }
 
 export function isExpired(link: Pick<ShareLink, "expires_at">, now: number = Date.now()): boolean {
@@ -120,25 +176,26 @@ export async function createShareLink(input: {
       expires_at: input.expiresAt,
     })
     .returning();
-  return { link: toShareLink(row), token };
+  const [link] = await toShareLinks([row]);
+  return { link, token };
 }
 
 // A channel's links that haven't been revoked, newest first, block links
-// included. Expired ones stay listed (the UI marks them) so their creator can
-// tell a dead link from a missing one.
+// included. Expired links and block links whose block has moved stay listed,
+// with their `status`, so their creator can tell a dead link from a missing one.
 export async function listShareLinks(channelId: number): Promise<ShareLink[]> {
   const rows = await db
     .select()
     .from(shareLink)
     .where(and(eq(shareLink.channel_id, channelId), isNull(shareLink.revoked_at)))
     .orderBy(desc(shareLink.created_at));
-  return rows.map(toShareLink);
+  return toShareLinks(rows);
 }
 
 // One link by id, revoked or not — for authorizing a revoke against the
 // channel it belongs to.
 export async function getShareLink(id: string): Promise<ShareLink | null> {
-  if (!/^[0-9a-f-]{36}$/.test(id)) return null;
+  if (!UUID_RE.test(id)) return null;
   const [row] = await db.select().from(shareLink).where(eq(shareLink.id, id)).limit(1);
   return row ? toShareLink(row) : null;
 }
@@ -147,7 +204,7 @@ export async function getShareLink(id: string): Promise<ShareLink | null> {
 // reads the row every time and nothing caches it. Returns false when there was
 // no live link with that id on that channel.
 export async function revokeShareLink(id: string, channelId: number): Promise<boolean> {
-  if (!/^[0-9a-f-]{36}$/.test(id)) return false;
+  if (!UUID_RE.test(id)) return false;
   const rows = await db
     .update(shareLink)
     .set({ revoked_at: new Date() })
@@ -158,10 +215,32 @@ export async function revokeShareLink(id: string, channelId: number): Promise<bo
   return rows.length > 0;
 }
 
+// Whether a ban stands behind a link: its creator is banned, or the channel
+// belongs to a banned person. Like an API token, a link stops working the
+// moment its user is banned and comes back if they're unbanned; the row is
+// left alone so the ban stays reversible.
+async function bannedBehind(createdBy: string | null, ownedBy: string): Promise<boolean> {
+  const channelOwner = db.select({ id: owner.user_id }).from(owner).where(eq(owner.id, ownedBy));
+  const [row] = await db
+    .select({ id: user.id })
+    .from(user)
+    .where(
+      and(
+        eq(user.banned, true),
+        createdBy
+          ? or(inArray(user.id, channelOwner), eq(user.id, createdBy))
+          : inArray(user.id, channelOwner),
+      ),
+    )
+    .limit(1);
+  return !!row;
+}
+
 // Resolve a token from a URL to what it opens, or null for anything that
 // shouldn't work: a malformed or unknown token, a revoked or expired link, a
-// deleted channel, or a block link whose block has left the channel it was
-// shared from (moved blocks don't carry their links along).
+// deleted channel, a banned creator or channel owner, or a block link whose
+// block has left the channel it was shared from (moved blocks don't carry their
+// links along).
 export async function resolveShareToken(token: string): Promise<ResolvedShare | null> {
   if (!TOKEN_RE.test(token)) return null;
   const [row] = await db
@@ -174,6 +253,7 @@ export async function resolveShareToken(token: string): Promise<ResolvedShare | 
   if (isExpired(link)) return null;
   const channel = await getChannel(link.channel_id);
   if (!channel) return null;
+  if (await bannedBehind(row.created_by, channel.owned_by)) return null;
   let block: Column | null = null;
   if (link.block_id != null) {
     block = await getColumn(link.block_id);
@@ -207,37 +287,7 @@ export async function shareCoversMedia(share: ResolvedShare, mediaId: string): P
   return rows.some((r) => shareCoversBlock(share, r));
 }
 
-// A block's own media URL, rewritten to the token-scoped route a link holder
-// can load (/api/media/<id>/s/<token>). Anything else — an external URL, a
-// public file — passes through. Callers append `?thumb` after this, so the
-// token goes in the path.
-export function shareMediaUrl(url: string, token: string): string {
-  const match = /^(\/api\/media\/[0-9a-f-]{36})(\?.*)?$/.exec(url);
-  return match ? `${match[1]}/s/${token}${match[2] ?? ""}` : url;
-}
-
 // The block as a link holder receives it: its media pointed at the share route.
 export function shareColumn(col: Column, token: string): Column {
   return col.image ? { ...col, image: shareMediaUrl(col.image, token) } : col;
-}
-
-// Who is asking, for the miss counter: the first hop the proxy recorded.
-function clientKey(headers: Headers): string {
-  const forwarded = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return `share-miss:${forwarded || headers.get("x-real-ip") || "unknown"}`;
-}
-
-// resolveShareToken for a request: a client that keeps presenting dead or
-// made-up tokens gets "limited" instead of an answer. Only misses count, so a
-// board loading a hundred thumbnails through a good link is never throttled.
-// At 256 bits a token can't be guessed anyway; this keeps the lookups cheap.
-export async function resolveShareRequest(
-  token: string,
-  headers: Headers,
-): Promise<ResolvedShare | null | "limited"> {
-  const key = clientKey(headers);
-  if (isRateLimited(key)) return "limited";
-  const share = await resolveShareToken(token);
-  if (!share) checkRateLimit(key);
-  return share;
 }

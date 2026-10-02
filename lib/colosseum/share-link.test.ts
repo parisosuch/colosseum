@@ -5,9 +5,11 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { column, shareLink } from "@/lib/db/schema";
 import { seed, USERS } from "@/scripts/seed";
+import { setUserBanned } from "./admin";
 import { createShareLinkFor, listShareLinksFor, revokeShareLinkFor } from "./api-auth";
 import { createChannel } from "./channel";
 import { moveColumn, uploadTextColumn } from "./column";
+import { buildChannelExport } from "./export";
 import {
   DEFAULT_SHARE_EXPIRY_DAYS,
   createShareLink,
@@ -22,6 +24,7 @@ import {
   shareCoversMedia,
   shareExpiry,
   shareMediaUrl,
+  stripShareToken,
 } from "./share-link";
 
 beforeAll(async () => {
@@ -276,4 +279,98 @@ test("the API lists and revokes for the manager only", async () => {
   expect(await revokeShareLinkFor(made.share_link.id, USERS.alice.id)).toBeNull();
   const token = made.url.split("/s/")[1];
   expect(await resolveShareToken(token)).toBeNull();
+});
+
+test("a ban on the link's creator or on the channel's owner takes the link down, and an unban restores it", async () => {
+  const bobs = await createChannel({
+    title: "Bob's private",
+    access: "private",
+    owned_by: USERS.bob.ownerId,
+  });
+  const ownedByBob = await createShareLink({
+    channelId: bobs.id,
+    expiresAt: null,
+    createdBy: USERS.bob.id,
+  });
+  // On alice's channel, but made by bob (an admin of a group channel, say).
+  const alices = await privateChannel();
+  const madeByBob = await createShareLink({
+    channelId: alices.id,
+    expiresAt: null,
+    createdBy: USERS.bob.id,
+  });
+  const madeByAlice = await createShareLink({
+    channelId: alices.id,
+    expiresAt: null,
+    createdBy: USERS.alice.id,
+  });
+
+  await setUserBanned(USERS.bob.id, true);
+  try {
+    expect(await resolveShareToken(ownedByBob.token)).toBeNull();
+    expect(await resolveShareToken(madeByBob.token)).toBeNull();
+    expect(await resolveShareToken(madeByAlice.token)).not.toBeNull();
+  } finally {
+    await setUserBanned(USERS.bob.id, false);
+  }
+  expect(await resolveShareToken(ownedByBob.token)).not.toBeNull();
+  expect(await resolveShareToken(madeByBob.token)).not.toBeNull();
+});
+
+test("a listed link says whether it still opens anything, and names its block", async () => {
+  const ch = await privateChannel();
+  const other = await privateChannel("Elsewhere");
+  const block = await textBlock(ch.id);
+  await db.update(column).set({ title: "Field notes" }).where(eq(column.id, block.id));
+  const live = await createShareLink({
+    channelId: ch.id,
+    blockId: block.id,
+    expiresAt: null,
+    createdBy: null,
+  });
+  const old = await createShareLink({
+    channelId: ch.id,
+    expiresAt: new Date(Date.now() - 1000),
+    createdBy: null,
+  });
+  expect(live.link.status).toBe("active");
+  expect(live.link.block_label).toBe("Field notes");
+
+  await moveColumn(block.id, other.id);
+  const byId = new Map((await listShareLinks(ch.id)).map((l) => [l.id, l]));
+  expect(byId.get(live.link.id)?.status).toBe("block_moved");
+  expect(byId.get(live.link.id)?.block_label).toBe("Field notes");
+  expect(byId.get(old.link.id)?.status).toBe("expired");
+  expect(byId.get(old.link.id)?.block_label).toBeNull();
+});
+
+test("a malformed link id is a 404, not a database error", async () => {
+  expect((await revokeShareLinkFor("-".repeat(36), USERS.alice.id))?.status).toBe(404);
+  expect((await revokeShareLinkFor("not-an-id", USERS.alice.id))?.status).toBe(404);
+});
+
+test("an export doesn't carry a share link's token", () => {
+  const id = "0b8f8c1e-3a7d-4c39-9a51-0d6c2a1e4f10";
+  expect(stripShareToken(`/api/media/${id}/s/abc_DEF-123`)).toBe(`/api/media/${id}`);
+  expect(stripShareToken(`/api/media/${id}/s/abc?thumb`)).toBe(`/api/media/${id}?thumb`);
+  expect(stripShareToken(`/api/media/${id}`)).toBe(`/api/media/${id}`);
+  expect(stripShareToken("https://example.com/s/abc")).toBe("https://example.com/s/abc");
+
+  const data = buildChannelExport(
+    { title: "Shared" },
+    [
+      {
+        id: 1,
+        created_at: "2026-01-01T00:00:00Z",
+        type: "image",
+        created_by: "u1",
+        channel_id: 1,
+        tags: [],
+        image: shareMediaUrl(`/api/media/${id}`, "secret-token"),
+      },
+    ],
+    new Map(),
+  );
+  expect(data.blocks[0].image).toBe(`/api/media/${id}`);
+  expect(JSON.stringify(data)).not.toContain("secret-token");
 });

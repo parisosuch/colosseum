@@ -26,8 +26,8 @@ async function sharedBlock(share: ResolvedShare, raw: string) {
 export async function generateMetadata({ params }: ShareBlockParams): Promise<Metadata> {
   const { token, block_id } = await params;
   const share = await loadShare(token);
-  const block = share && share !== "limited" ? await sharedBlock(share, block_id) : null;
-  if (!share || share === "limited" || !block) {
+  const block = share ? await sharedBlock(share, block_id) : null;
+  if (!share || !block) {
     return { title: "Colosseum", robots: { index: false, follow: false } };
   }
   const preview = block.type === "url" && block.url ? await getScreenshot(block.url) : null;
@@ -44,7 +44,7 @@ export async function generateMetadata({ params }: ShareBlockParams): Promise<Me
 export default async function ShareBlockPage({ params }: ShareBlockParams) {
   const { token, block_id } = await params;
   const share = await loadShare(token);
-  if (!share || share === "limited") return <ShareUnavailable limited={share === "limited"} />;
+  if (!share) return <ShareUnavailable />;
 
   const block = await sharedBlock(share, block_id);
   if (!block) {

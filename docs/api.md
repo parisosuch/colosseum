@@ -138,9 +138,17 @@ A private channel's live share links, block links included, newest first.
 Channel managers only. → `{ "share_links": [...] }`
 
 Each link has `id`, `label`, `block_id` (null for a whole-channel link),
-`created_at` and `expires_at` (null for a link that never expires). Expired
-links stay listed until revoked. The URLs themselves aren't stored, so they
-can't be listed.
+`block_label` (what that block is called), `created_at`, `expires_at` (null for
+a link that never expires) and `status`:
+
+- `active`: the link opens what it shares.
+- `expired`: past `expires_at`.
+- `block_moved`: a block link whose block has moved to another channel. It works
+  again if the block comes back.
+
+Expired and moved links stay listed until revoked. A link also stops working
+while its creator, or the person who owns the channel, is banned. The URLs
+themselves aren't stored, so they can't be listed.
 
 ### `POST /api/v1/channels/:id/share-links`
 

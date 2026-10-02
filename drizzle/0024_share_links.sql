@@ -14,4 +14,5 @@ CREATE TABLE "share_link" (
 ALTER TABLE "share_link" ADD CONSTRAINT "share_link_channel_id_channel_id_fk" FOREIGN KEY ("channel_id") REFERENCES "public"."channel"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "share_link" ADD CONSTRAINT "share_link_block_id_column_id_fk" FOREIGN KEY ("block_id") REFERENCES "public"."column"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "share_link" ADD CONSTRAINT "share_link_created_by_user_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."user"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "share_link_channel_id_idx" ON "share_link" USING btree ("channel_id");
+CREATE INDEX "share_link_channel_id_idx" ON "share_link" USING btree ("channel_id");--> statement-breakpoint
+CREATE INDEX "share_link_block_id_idx" ON "share_link" USING btree ("block_id");

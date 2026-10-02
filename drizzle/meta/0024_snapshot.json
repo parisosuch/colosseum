@@ -1,5 +1,5 @@
 {
-  "id": "90d0aa89-4382-4686-958c-a131400b636a",
+  "id": "0cfe3860-4b77-44e8-a69a-4a0430e298e7",
   "prevId": "0311dcba-fc0c-4be8-9485-03e522099a9d",
   "version": "7",
   "dialect": "postgresql",
@@ -1862,6 +1862,21 @@
           "columns": [
             {
               "expression": "channel_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "share_link_block_id_idx": {
+          "name": "share_link_block_id_idx",
+          "columns": [
+            {
+              "expression": "block_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

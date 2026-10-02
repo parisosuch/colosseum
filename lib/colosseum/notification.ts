@@ -80,6 +80,8 @@ type JoinedNotification = {
   linked_channel_title: string | null;
   linked_owner_handle: string | null;
   comment_body: string | null;
+  // The canvas thread the comment is in, for a comment/mention on a canvas.
+  comment_thread_id: number | null;
 };
 
 // Every read of a notification needs the same joins, so both the feed and the
@@ -116,6 +118,7 @@ async function joinNotifications(
       linked_channel_title: linkedChannel.title,
       linked_owner_handle: linkedOwner.handle,
       comment_body: comment.body,
+      comment_thread_id: comment.thread_id,
     })
     .from(notification)
     .innerJoin(actor, eq(actor.user_id, notification.actor_id))
@@ -156,6 +159,13 @@ function subjectBlock(r: JoinedNotification): string | null {
   });
 }
 
+// A comment or mention in a canvas thread. Block comments have always recorded
+// their block, so a comment/mention row without one is on a canvas. Its thread
+// comes through the comment, and is unknown once that comment is deleted.
+function isCanvasComment(r: JoinedNotification): boolean {
+  return (r.n.type === "comment" || r.n.type === "mention") && r.n.column_id === null;
+}
+
 // A `connect` notification is in the old shape when it has no column: those rows
 // recorded the recipient's own channel in `channel_id` rather than the host, so
 // they keep rendering the message and link they always did.
@@ -176,6 +186,10 @@ function hasPrivateHost(r: JoinedNotification): boolean {
 function messageFor(r: JoinedNotification): string {
   const inChannel = r.channel_title ? ` in ${quoted(r.channel_title)}` : "";
   const block = subjectBlock(r);
+  if (isCanvasComment(r)) {
+    const on = r.channel_title ? `the canvas of ${quoted(r.channel_title)}` : "a canvas";
+    return r.n.type === "mention" ? `mentioned you on ${on}` : `commented on ${on}`;
+  }
   switch (r.n.type) {
     case "comment":
       return block ? `commented on ${quoted(block)}${inChannel}` : "commented on your block";
@@ -215,6 +229,10 @@ function hrefFor(r: JoinedNotification): string {
     return r.owner_handle ? `/${r.owner_handle}/${r.n.channel_id}` : "/";
   }
   if (!r.owner_handle) return "/";
+  // A canvas comment opens the canvas on its thread.
+  if (isCanvasComment(r) && r.comment_thread_id !== null) {
+    return `/${r.owner_handle}/${r.n.channel_id}?thread=${r.comment_thread_id}`;
+  }
   return r.n.column_id !== null
     ? `/${r.owner_handle}/${r.n.channel_id}/${r.n.column_id}`
     : `/${r.owner_handle}/${r.n.channel_id}`;
@@ -288,12 +306,15 @@ async function emailNotification(n: NotificationRow): Promise<boolean> {
     heading: "New on Colosseum",
     // The excerpt is user-written; renderEmail escapes what it interpolates.
     body: excerpt ? `${message}\n\n“${excerpt}”` : message,
-    // Mirrors hrefFor: only a non-connect row with a block lands on one.
+    // Mirrors hrefFor: only a non-connect row with a block lands on one, and a
+    // canvas comment lands on its thread.
     buttonLabel: n.group_id
       ? "View group"
       : n.type !== "connect" && n.column_id !== null
         ? "View block"
-        : "View channel",
+        : isCanvasComment(row) && row.comment_thread_id !== null
+          ? "View thread"
+          : "View channel",
     buttonUrl: base + hrefFor(row),
     footnote: "Turn these off anytime in your Colosseum settings.",
   });

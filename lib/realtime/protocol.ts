@@ -2,6 +2,8 @@
 // so the stock WebsocketProvider can talk to the server unchanged. Anything
 // Colosseum adds on top uses a type number far above them.
 
+import type { ThreadChannelEvent } from "./canvas-threads";
+
 export const MESSAGE_SYNC = 0;
 export const MESSAGE_AWARENESS = 1;
 export const MESSAGE_AUTH = 2;
@@ -17,7 +19,9 @@ export type ChannelEvent =
   | { type: "block.added"; columnId: number }
   // A block left the channel. The server has already removed its elements from
   // the doc; this tells the sidebar to drop it too.
-  | { type: "block.removed"; columnId: number };
+  | { type: "block.removed"; columnId: number }
+  // Canvas comment threads (canvas-threads.ts).
+  | ThreadChannelEvent;
 
 // Canvas rooms live under /realtime/canvas/<channelId>.
 export const CANVAS_PATH = "/realtime/canvas/";

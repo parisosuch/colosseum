@@ -14,11 +14,13 @@ import {
   boolean,
   check,
   customType,
+  doublePrecision,
   index,
   integer,
   jsonb,
   pgTable,
   primaryKey,
+  real,
   text,
   timestamp,
   unique,
@@ -414,24 +416,61 @@ export const column = pgTable(
   ],
 );
 
-// Comments on a block ("column"). Anyone who can read the block can post; the
-// author or the block's channel owner can delete. Cascades on both FKs so a
-// comment vanishes with its block or its author.
+// A comment thread pinned to a channel's canvas. It sits on an element of the
+// canvas doc (`element_id`, plus an offset from the element's x/y) or on a bare
+// point in world space. When its element is deleted, the realtime server writes
+// the element's last position into `x`/`y` and nulls `element_id`, so the
+// thread stays where it was as a free pin. `x`/`y` are only authoritative while
+// `element_id` is null; for an anchored thread they're the position last seen.
+// The thread's comments are `comment` rows with `thread_id` set.
+export const canvasThread = pgTable(
+  "canvas_thread",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+    channel_id: bigint("channel_id", { mode: "number" })
+      .notNull()
+      .references(() => channel.id, { onDelete: "cascade" }),
+    // Yjs element id (a key of the doc's `elements` map). Null for a free pin.
+    element_id: text("element_id"),
+    offset_x: real("offset_x"),
+    offset_y: real("offset_y"),
+    x: doublePrecision("x").notNull(),
+    y: doublePrecision("y").notNull(),
+    created_by: uuid("created_by").references(() => user.id, { onDelete: "set null" }),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  // The comments panel lists a channel's threads; the realtime server loads the
+  // anchored ones when a canvas opens.
+  (t) => [index("canvas_thread_channel_id_created_at_idx").on(t.channel_id, t.created_at)],
+);
+
+// Comments on a block ("column") or in a canvas thread. Exactly one of
+// `column_id` and `thread_id` is set. Anyone who can read the channel can post;
+// the author or the channel's managers can delete. Cascades on every FK so a
+// comment vanishes with its block, its thread or its author.
 export const comment = pgTable(
   "comment",
   {
     id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    column_id: bigint("column_id", { mode: "number" })
-      .notNull()
-      .references(() => column.id, { onDelete: "cascade" }),
+    column_id: bigint("column_id", { mode: "number" }).references(() => column.id, {
+      onDelete: "cascade",
+    }),
+    thread_id: bigint("thread_id", { mode: "number" }).references(() => canvasThread.id, {
+      onDelete: "cascade",
+    }),
     author_id: uuid("author_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     body: text("body").notNull(),
   },
-  // A block's comment thread is fetched by column_id, oldest first.
-  (t) => [index("comment_column_id_created_at_idx").on(t.column_id, t.created_at)],
+  (t) => [
+    // A block's comments are fetched by column_id, oldest first, and a canvas
+    // thread's by thread_id the same way.
+    index("comment_column_id_created_at_idx").on(t.column_id, t.created_at),
+    index("comment_thread_id_created_at_idx").on(t.thread_id, t.created_at),
+    check("comment_one_parent", sql`(${t.column_id} is not null) <> (${t.thread_id} is not null)`),
+  ],
 );
 
 // In-app notifications: someone (actor) did something to the recipient's
@@ -461,8 +500,10 @@ export const notification = pgTable(
     // Set instead of `channel_id` when someone is added to a group. A group's
     // owner row is its id, so this points there and cascades with it.
     group_id: uuid("group_id").references(() => owner.id, { onDelete: "cascade" }),
-    // Set for comment/mention (the block) and for `connect` (the channel column
-    // created inside the host, whose linked_channel_id names the subject).
+    // Set for comment/mention on a block (the block) and for `connect` (the
+    // channel column created inside the host, whose linked_channel_id names the
+    // subject). Null for comment/mention in a canvas thread, whose thread is
+    // reached through `comment_id`.
     column_id: bigint("column_id", { mode: "number" }).references(() => column.id, {
       onDelete: "cascade",
     }),

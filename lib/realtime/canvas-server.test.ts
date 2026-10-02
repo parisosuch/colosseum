@@ -16,7 +16,12 @@ import { elementsOf, placedColumnIds } from "./canvas-doc";
 import { channelIdFromPath, createCanvasServer, type CanvasServer } from "./canvas-server";
 import { createPgCanvasStore } from "./canvas-store";
 import { subscribeRealtime } from "./events";
-import { CLOSE_CHANNEL_GONE, MESSAGE_CHANNEL_EVENT, type ChannelEvent } from "./protocol";
+import {
+  CLOSE_ACCESS_REVOKED,
+  CLOSE_CHANNEL_GONE,
+  MESSAGE_CHANNEL_EVENT,
+  type ChannelEvent,
+} from "./protocol";
 
 type Harness = {
   url: string;
@@ -353,12 +358,14 @@ test("deleting the channel closes its canvas for good", async () => {
   expect(a.provider.wsconnected).toBe(false);
 });
 
-test("an unauthorized upgrade is refused before any socket opens", async () => {
+test("an unauthorized socket is closed with 4403 before it joins a room", async () => {
   const ws = new WebSocket(`${harness!.url}/${channelId}?as=none`);
-  const outcome = await new Promise<string>((resolve) => {
-    ws.onopen = () => resolve("open");
-    ws.onerror = () => resolve("error");
+  const messages: unknown[] = [];
+  ws.onmessage = (event) => messages.push(event.data);
+  const code = await new Promise<number>((resolve) => {
+    ws.onclose = (event) => resolve(event.code);
   });
-  expect(outcome).toBe("error");
+  expect(code).toBe(CLOSE_ACCESS_REVOKED);
+  expect(messages).toEqual([]);
   expect(harness!.canvas.roomCount()).toBe(0);
 });

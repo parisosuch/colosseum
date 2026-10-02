@@ -2,6 +2,7 @@ import { and, asc, eq } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { channelMember, owner } from "@/lib/db/schema";
+import { publishRealtime } from "@/lib/realtime/events";
 import { getPublicUserProfile, normalizeHandle } from "./user";
 import { createNotification } from "./notification";
 import { addGroupMemberByHandle, groupRole, type GroupMember, type GroupRole } from "./group";
@@ -75,9 +76,14 @@ export async function addChannelMemberByHandle(
 
 // Remove a member. A no-op if they weren't one. Callers authorize ownership.
 export async function removeChannelMember(channel_id: number, user_id: string): Promise<void> {
-  await db
+  const removed = await db
     .delete(channelMember)
-    .where(and(eq(channelMember.channel_id, channel_id), eq(channelMember.user_id, user_id)));
+    .where(and(eq(channelMember.channel_id, channel_id), eq(channelMember.user_id, user_id)))
+    .returning({ user_id: channelMember.user_id });
+  // An open canvas of theirs drops to read-only, or closes on a private channel.
+  if (removed.length > 0) {
+    publishRealtime({ type: "user.access-changed", userId: user_id, channelId: channel_id });
+  }
 }
 
 // Add someone to a channel by handle and tell them about it. Shared by the web

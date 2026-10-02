@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { appSettings, column, inviteCode, owner, user } from "@/lib/db/schema";
 import type { EmailSettings } from "@/lib/db/schema";
+import { publishRealtime } from "@/lib/realtime/events";
 
 // Instance-wide limits. null = unlimited, 0 = none, N = cap. Stored as a single
 // pinned row (id = 1); see the app_settings table in lib/db/schema.ts. The email
@@ -175,6 +176,9 @@ export async function setUserBanned(userId: string, banned: boolean): Promise<vo
   if (!target) throw new Error("No such user.");
   if (target.is_admin && banned) throw new Error("Admins can't be banned.");
   await db.update(user).set({ banned }).where(eq(user.id, userId));
+  // A banned user reads as signed out, so their open canvases drop to read-only
+  // or close. Lifting a ban changes nothing for a socket already signed out.
+  if (banned) publishRealtime({ type: "user.access-changed", userId });
 }
 
 export async function setUserAdmin(userId: string, isAdmin: boolean): Promise<void> {

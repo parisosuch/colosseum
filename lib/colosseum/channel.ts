@@ -418,6 +418,11 @@ export async function updateChannel(
   channel_id: number,
   updates: { title: string; description?: string; access: ChannelAccess; tags?: string[] },
 ): Promise<Channel> {
+  const [before] = await db
+    .select({ access: channel.access })
+    .from(channel)
+    .where(eq(channel.id, channel_id))
+    .limit(1);
   const [row] = await db
     .update(channel)
     .set({ ...updates, updated_at: new Date() })
@@ -435,6 +440,11 @@ export async function updateChannel(
     await channelImageUrls(channel_id),
     row.access === "private" ? "private" : "public",
   );
+  // Open canvases re-check every socket against the new mode. Published after
+  // the cache invalidation above, so the re-check reads the new row.
+  if (before && before.access !== row.access) {
+    publishRealtime({ type: "channel.access-changed", channelId: channel_id });
+  }
   return toChannel(row);
 }
 
@@ -459,6 +469,9 @@ export async function transferChannel(channel_id: number, to_owner_id: string): 
   await invalidate(cacheKeys.channel(channel_id));
   if (previous) await invalidateOwnerChannelLists(previous);
   await invalidateOwnerChannelLists(to_owner_id);
+  // The old owner (or old group's members) may have lost access, the new one
+  // gained it. Open canvases re-check every socket.
+  publishRealtime({ type: "channel.access-changed", channelId: channel_id });
   return toChannel(row);
 }
 

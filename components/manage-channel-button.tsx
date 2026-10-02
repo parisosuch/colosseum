@@ -19,6 +19,7 @@ import type { ChannelMember } from "@/lib/colosseum/member";
 import AccessSelect from "./access-select";
 import ChannelMembers from "./channel-members";
 import ChannelOwnerTransfer from "./channel-owner-transfer";
+import ShareLinks from "./share-links";
 import TagInput from "./tag-input";
 import { Settings, Trash2 } from "lucide-react";
 import type { Dispatch, SetStateAction } from "react";
@@ -157,6 +158,11 @@ export default function ManageChannelButton({
                 setMembers={setMembers}
               />
             ) : null}
+
+            {/* Links that open this channel to people without an account. Only a
+                private channel needs one; keyed off the saved access, like the
+                roster above. */}
+            {channel.private ? <ShareLinks channelId={channel.id} /> : null}
 
             <ChannelOwnerTransfer channel={channel} />
 

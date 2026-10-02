@@ -132,6 +132,43 @@ would be nothing to remove, and the answer is to delete the channel or hand it
 on. `409` if you were never a member. `404` if you cannot read the channel at
 all, so this never confirms that someone else's private channel exists.
 
+### `GET /api/v1/channels/:id/share-links`
+
+A private channel's live share links, block links included, newest first.
+Channel managers only. → `{ "share_links": [...] }`
+
+Each link has `id`, `label`, `block_id` (null for a whole-channel link),
+`created_at` and `expires_at` (null for a link that never expires). Expired
+links stay listed until revoked. The URLs themselves aren't stored, so they
+can't be listed.
+
+### `POST /api/v1/channels/:id/share-links`
+
+Make an "anyone with the link" URL for a private channel. Channel managers
+only. Every field is optional:
+
+```json
+{ "block_id": 12, "label": "for Sam", "expires_in_days": 30 }
+```
+
+→ `201 { "share_link": { ... }, "url": "https://…/s/<token>" }`
+
+- Whoever opens `url` can read the channel and every block in it, with
+  comments and members, without an account and without being able to change
+  anything. With `block_id`, the link opens that one block instead.
+- `expires_in_days` defaults to 30 and takes 1 to 3650. `null` makes a link
+  that never expires, which keeps working for anyone it's forwarded to until it
+  is revoked.
+- `url` holds the token, and this response is the only place it appears. Only
+  a hash is stored.
+- `400` for a public or open channel, which anyone can read already. `404` for a
+  `block_id` that isn't in this channel.
+
+### `DELETE /api/v1/share-links/:id`
+
+Revoke a share link. It stops working on the next request. Managers of the
+link's channel only. → `{ "success": true }`
+
 ## Account
 
 ### `GET /api/v1/me`

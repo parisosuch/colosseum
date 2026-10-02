@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 
-import { checkRateLimit } from "./rate-limit";
+import { checkRateLimit, isRateLimited } from "./rate-limit";
 
 // Small deterministic window so the test doesn't churn 100 calls.
 const prevLimit = process.env.API_RATE_LIMIT;
@@ -44,4 +44,14 @@ test("limit of 0 disables limiting", () => {
   const now = 20_000;
   for (let i = 0; i < 50; i++) expect(checkRateLimit("user-e", now).ok).toBe(true);
   process.env.API_RATE_LIMIT = "3";
+});
+
+test("isRateLimited reports an exhausted window without spending a request", () => {
+  const now = 30_000;
+  expect(isRateLimited("user-f", now)).toBe(false);
+  for (let i = 0; i < 3; i++) checkRateLimit("user-f", now);
+  // Asking repeatedly doesn't count against the window.
+  expect(isRateLimited("user-f", now)).toBe(true);
+  expect(isRateLimited("user-f", now)).toBe(true);
+  expect(isRateLimited("user-f", now + 1000)).toBe(false);
 });

@@ -15,6 +15,7 @@ import {
   searchProfilesAction,
 } from "@/lib/colosseum/actions";
 import { fetchComments, peekComments, writeComments } from "@/lib/comment-cache";
+import { useShare } from "@/components/share-context";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -55,6 +56,7 @@ export default function ColumnComments({ columnId, viewerId, isOwner }: ColumnCo
   // straight away instead of flashing "Loading…" every time. Always null on the
   // server (the cache is browser-only), so the permalink page's HTML and its
   // hydration agree.
+  const share = useShare();
   const [comments, setComments] = useState<Comment[] | null>(() => peekComments(columnId));
   const [body, setBody] = useState("");
   const [posting, setPosting] = useState(false);
@@ -79,13 +81,13 @@ export default function ColumnComments({ columnId, viewerId, isOwner }: ColumnCo
   useEffect(() => {
     let active = true;
     setComments(peekComments(columnId));
-    fetchComments(columnId, getColumnCommentsAction)
+    fetchComments(columnId, (id) => getColumnCommentsAction(id, share?.token))
       .then((c) => active && setComments(c))
       .catch(() => active && setComments((prev) => prev ?? []));
     return () => {
       active = false;
     };
-  }, [columnId]);
+  }, [columnId, share?.token]);
 
   // Keep the thread pinned to the newest (bottom) — on load, after a post, and
   // when the mobile accordion expands (the list is display:none until then). A

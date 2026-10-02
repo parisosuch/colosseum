@@ -37,6 +37,7 @@ import {
 } from "@/lib/colosseum/actions";
 import { Plus, SearchX, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useShare } from "@/components/share-context";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -181,6 +182,10 @@ export default function ChannelBoard({
   initialBlockScreenshot,
 }: ChannelBoardProps) {
   const router = useRouter();
+  // Set on a share-link page: reads go through the link's token, and the URLs
+  // the board writes stay under /s/<token>.
+  const share = useShare();
+  const token = share?.token;
   const [members, setMembers] = useState<ChannelMember[]>(initialMembers);
   const [channel, setChannel] = useState<Channel>(initialChannel);
   const [columns, setColumns] = useState<Column[]>(initialColumns);
@@ -320,15 +325,17 @@ export default function ChannelBoard({
         // The count is what the controls report; it's a separate query because
         // the page is capped at PAGE_SIZE and can't answer "how many matched".
         const [first, matched] = await Promise.all([
-          getChannelColumnsAction(channel.id, {
-            search: debouncedSearch,
-            type: typeFilter,
-            sort,
-            limit: PAGE_SIZE,
-            offset: 0,
-          }),
+          getChannelColumnsAction(
+            channel.id,
+            { search: debouncedSearch, type: typeFilter, sort, limit: PAGE_SIZE, offset: 0 },
+            token,
+          ),
           isFiltered
-            ? getChannelColumnCountAction(channel.id, { search: debouncedSearch, type: typeFilter })
+            ? getChannelColumnCountAction(
+                channel.id,
+                { search: debouncedSearch, type: typeFilter },
+                token,
+              )
             : Promise.resolve(null),
         ]);
         if (cancelled) return;
@@ -346,7 +353,7 @@ export default function ChannelBoard({
     return () => {
       cancelled = true;
     };
-  }, [channel.id, debouncedSearch, typeFilter, sort, isFiltered]);
+  }, [channel.id, debouncedSearch, typeFilter, sort, isFiltered, token]);
 
   // Append the next page. Offset is the count already loaded.
   const loadMore = useCallback(async () => {
@@ -354,13 +361,17 @@ export default function ChannelBoard({
 
     setLoadingMore(true);
     try {
-      const next = await getChannelColumnsAction(channel.id, {
-        search: debouncedSearch,
-        type: typeFilter,
-        sort,
-        limit: PAGE_SIZE,
-        offset: columns.length,
-      });
+      const next = await getChannelColumnsAction(
+        channel.id,
+        {
+          search: debouncedSearch,
+          type: typeFilter,
+          sort,
+          limit: PAGE_SIZE,
+          offset: columns.length,
+        },
+        token,
+      );
       setColumns((prev) => [...prev, ...next]);
       setHasMore(next.length === PAGE_SIZE);
     } catch (e) {
@@ -377,6 +388,7 @@ export default function ChannelBoard({
     typeFilter,
     sort,
     columns.length,
+    token,
   ]);
 
   // Observe a sentinel below the grid; load the next page as it nears the
@@ -645,11 +657,12 @@ export default function ChannelBoard({
     setDetachedSiblings({ prev: null, next: null });
     (async () => {
       try {
-        const siblings = await getColumnNeighboursAction(channel.id, id, {
-          search: debouncedSearch,
-          type: typeFilter,
-          sort,
-        });
+        const siblings = await getColumnNeighboursAction(
+          channel.id,
+          id,
+          { search: debouncedSearch, type: typeFilter, sort },
+          token,
+        );
         if (!cancelled) setDetachedSiblings(siblings);
       } catch (e) {
         console.error(e);
@@ -659,7 +672,7 @@ export default function ChannelBoard({
     return () => {
       cancelled = true;
     };
-  }, [detachedColumn?.id, channel.id, debouncedSearch, typeFilter, sort]);
+  }, [detachedColumn?.id, channel.id, debouncedSearch, typeFilter, sort, token]);
 
   // Whether blocks can be dragged into a new order right now. Three conditions,
   // each answering a question the feature can't dodge:
@@ -730,14 +743,14 @@ export default function ChannelBoard({
       lastOpenId.current = openId;
       return;
     }
-    const base = `/${handle}/${channel.id}`;
+    const base = share?.base ?? `/${handle}/${channel.id}`;
     const url = openId == null ? base : `${base}?block=${openId}`;
     // Stepping between blocks: replace. Opening or closing: push.
     const stepping = openId != null && lastOpenId.current != null;
     lastOpenId.current = openId;
     if (stepping) window.history.replaceState(null, "", url);
     else window.history.pushState(null, "", url);
-  }, [openId, handle, channel.id]);
+  }, [openId, handle, channel.id, share?.base]);
 
   // Back/forward: read the modal state back out of the URL. Same-route history
   // moves don't re-render the server component, so nothing else would notice.
@@ -1014,6 +1027,7 @@ export default function ChannelBoard({
         isOwner={isOwner}
         canEdit={isOwner || (!!user && openColumn?.created_by === user.id)}
         isAdmin={isAdmin && !channel.private}
+        canShare={isOwner && channel.private}
         handle={handle}
         viewerId={user?.id ?? null}
         setColumns={setColumns}

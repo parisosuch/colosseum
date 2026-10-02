@@ -101,3 +101,16 @@ test("blockShareImage picks per type", () => {
   // A URL block with no capture yet has nothing to show.
   expect(blockShareImage(block({ type: "url" }), null)).toBeNull();
 });
+
+test("a share link unfurls a private block at the share URL, and asks not to be indexed", () => {
+  const m = meta({
+    column: block({ title: "Secret", image: "/api/media/abc/s/tok" }),
+    channel: channel({ access: "private", private: true }),
+    shareUrl: "/s/tok",
+  });
+  expect(m.title).toBe("Secret · Colosseum");
+  expect(m.openGraph?.url).toBe("/s/tok");
+  // @ts-expect-error next types openGraph.images as a loose union
+  expect(m.openGraph?.images?.[0]?.url).toBe("/api/media/abc/s/tok");
+  expect(m.robots).toEqual({ index: false, follow: false });
+});

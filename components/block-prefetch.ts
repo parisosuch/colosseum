@@ -11,6 +11,7 @@ import type { Column } from "@/lib/colosseum/column";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import { fetchComments } from "@/lib/comment-cache";
 import { getColumnCommentsAction } from "@/lib/colosseum/actions";
+import { useShare } from "@/components/share-context";
 import {
   PREFETCH_DELAY_MS,
   neighbourBlocks,
@@ -70,6 +71,7 @@ export function useNeighbourPrefetch(
   openIndex: number,
   screenshots?: Map<string, ColumnScreenshot>,
 ) {
+  const share = useShare();
   useEffect(() => {
     if (prefersReducedData()) return;
     for (const column of neighbourBlocks(columns, openIndex)) {
@@ -77,7 +79,7 @@ export function useNeighbourPrefetch(
       preconnectBlockOrigins(column);
       // Ignored on failure: a warm that 404s or is refused costs the viewer
       // nothing, and the panel surfaces the real error if they step onto it.
-      fetchComments(column.id, getColumnCommentsAction).catch(() => {});
+      fetchComments(column.id, (id) => getColumnCommentsAction(id, share?.token)).catch(() => {});
     }
-  }, [columns, openIndex, screenshots]);
+  }, [columns, openIndex, screenshots, share?.token]);
 }

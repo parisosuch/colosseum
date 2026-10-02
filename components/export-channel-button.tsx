@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import type { Channel } from "@/lib/colosseum/channel";
 import { getChannelColumnsAction, getScreenshotsForUrlsAction } from "@/lib/colosseum/actions";
+import { useShare } from "@/components/share-context";
 import { buildChannelExport, exportFilename, toCSV, toJSON } from "@/lib/colosseum/export";
 import { Button } from "./ui/button";
 import {
@@ -35,6 +36,7 @@ function downloadFile(filename: string, contents: string, mimeType: string) {
 
 export default function ExportChannelButton({ channel }: ExportChannelButtonProps) {
   const [exporting, setExporting] = useState(false);
+  const share = useShare();
 
   // Pull the whole channel at export time rather than relying on whatever the
   // page currently has loaded — the channel page paginates, so its in-memory
@@ -46,7 +48,7 @@ export default function ExportChannelButton({ channel }: ExportChannelButtonProp
     if (exporting) return;
     setExporting(true);
     try {
-      const columns = await getChannelColumnsAction(channel.id, { html: false });
+      const columns = await getChannelColumnsAction(channel.id, { html: false }, share?.token);
       const urls = columns.filter((c) => c.type === "url" && c.url).map((c) => c.url!);
       const screenshots = new Map(await getScreenshotsForUrlsAction(urls));
       const data = buildChannelExport(channel, columns, screenshots);

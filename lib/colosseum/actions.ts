@@ -123,6 +123,22 @@ import {
 import { notifyChannelNested } from "./nest";
 import { getScreenshotsForUrls, ColumnScreenshot } from "./screenshot-data";
 import {
+  type ResolvedShare,
+  type ShareLink,
+  createShareLink,
+  getShareLink,
+  listShareLinks,
+  parseShareExpiryDays,
+  resolveShareToken,
+  revokeShareLink,
+  shareColumn,
+  shareCoversBlock,
+  shareCoversChannel,
+  shareExpiry,
+  sharePath,
+} from "./share-link";
+import { SIGNED_OUT } from "./viewer";
+import {
   createUserProfile,
   getUserProfile,
   HandleTakenError,
@@ -208,6 +224,26 @@ async function requireReadableChannel(channelId: number): Promise<Channel> {
     throw new Error("Not found.");
   }
   return channel;
+}
+
+// A share token stands in for a session on the reads a link holder's page makes
+// (the board's paging, the modal's arrows, comments, export). It has to resolve
+// to a live link, and the caller checks it covers what was asked for. Throws the
+// same "Not found." a hidden channel does.
+async function requireShare(token: string): Promise<ResolvedShare> {
+  const share = await resolveShareToken(token);
+  if (!share) {
+    throw new Error("Not found.");
+  }
+  return share;
+}
+
+async function requireSharedChannel(channelId: number, token: string): Promise<ResolvedShare> {
+  const share = await requireShare(token);
+  if (!shareCoversChannel(share, channelId)) {
+    throw new Error("Not found.");
+  }
+  return share;
 }
 
 // A block the caller may read: it must exist and live in a channel they may
@@ -493,10 +529,19 @@ export async function leaveChannelAction(channelId: number): Promise<void> {
 // ---------------------------------------------------------------------------
 // Blocks
 // ---------------------------------------------------------------------------
+// `share` is a share-link token, for a link holder's board. Their blocks come
+// back read as a signed-out visitor would (a nested private channel stays
+// hidden) with media pointed at the token-scoped route.
 export async function getChannelColumnsAction(
   channelId: number,
   query: ColumnQuery = {},
+  share?: string,
 ): Promise<Column[]> {
+  if (share) {
+    await requireSharedChannel(channelId, share);
+    const columns = await getChannelColumns(channelId, query, SIGNED_OUT);
+    return columns.map((c) => shareColumn(c, share));
+  }
   await requireReadableChannel(channelId);
   return getChannelColumns(channelId, query, await viewerScope(await currentUserId()));
 }
@@ -507,8 +552,10 @@ export async function getChannelColumnsAction(
 export async function getChannelColumnCountAction(
   channelId: number,
   query: ColumnQuery = {},
+  share?: string,
 ): Promise<number> {
-  await requireReadableChannel(channelId);
+  if (share) await requireSharedChannel(channelId, share);
+  else await requireReadableChannel(channelId);
   return getChannelColumnCount(channelId, query);
 }
 
@@ -519,7 +566,16 @@ export async function getColumnNeighboursAction(
   channelId: number,
   columnId: number,
   query: ColumnQuery = {},
+  share?: string,
 ): Promise<{ prev: Column | null; next: Column | null }> {
+  if (share) {
+    await requireSharedChannel(channelId, share);
+    const { prev, next } = await getChannelColumnNeighbours(channelId, columnId, query, SIGNED_OUT);
+    return {
+      prev: prev && shareColumn(prev, share),
+      next: next && shareColumn(next, share),
+    };
+  }
   await requireReadableChannel(channelId);
   return getChannelColumnNeighbours(
     channelId,
@@ -877,7 +933,18 @@ export async function addChannelColumnAction(
 // Comments — anyone who can read the block can post; the comment's author or
 // the block's channel owner can delete.
 // ---------------------------------------------------------------------------
-export async function getColumnCommentsAction(columnId: number): Promise<Comment[]> {
+export async function getColumnCommentsAction(
+  columnId: number,
+  share?: string,
+): Promise<Comment[]> {
+  if (share) {
+    const resolved = await requireShare(share);
+    const column = await getColumn(columnId);
+    if (!column || !shareCoversBlock(resolved, column)) {
+      throw new Error("Not found.");
+    }
+    return getColumnComments(columnId);
+  }
   await requireReadableBlock(columnId);
   return getColumnComments(columnId);
 }
@@ -904,6 +971,75 @@ export async function deleteCommentAction(commentId: number): Promise<void> {
     await requireOwnedChannel(column.channel_id, userId);
   }
   await deleteComment(commentId);
+}
+
+// ---------------------------------------------------------------------------
+// Share links — "anyone with the link" access to a private channel or one block
+// in it. Managing them takes manage rights on the channel.
+// ---------------------------------------------------------------------------
+
+// A private channel the caller manages. Share links only exist for private
+// channels: a public or open one is readable by anyone already.
+async function requireShareableChannel(channelId: number, userId: string): Promise<Channel> {
+  const channel = await requireOwnedChannel(channelId, userId);
+  if (!channel.private) {
+    throw new Error(
+      "Share links are for private channels. This one is already readable by anyone.",
+    );
+  }
+  return channel;
+}
+
+// Make a link. The returned path holds the token, and it is the only time the
+// token is ever available: copy it now.
+export async function createShareLinkAction(input: {
+  channelId: number;
+  blockId?: number | null;
+  label?: string | null;
+  // Days until it expires; null for never. Omitted takes the default.
+  expiresInDays?: number | null;
+}): Promise<{ link: ShareLink; path: string }> {
+  const userId = await requireUserId();
+  await requireShareableChannel(input.channelId, userId);
+  if (input.blockId != null) {
+    const block = await getColumn(input.blockId, { html: false });
+    if (!block || block.channel_id !== input.channelId) {
+      throw new Error("Not found.");
+    }
+  }
+  const days = parseShareExpiryDays(input.expiresInDays);
+  if (days === "invalid") {
+    throw new Error("Pick how long the link should last.");
+  }
+  const { link, token } = await createShareLink({
+    channelId: input.channelId,
+    blockId: input.blockId ?? null,
+    label: input.label ?? null,
+    expiresAt: shareExpiry(days),
+    createdBy: userId,
+  });
+  return { link, path: sharePath(token) };
+}
+
+// A channel's live links, or just one block's when `blockId` is given.
+export async function listShareLinksAction(
+  channelId: number,
+  blockId?: number | null,
+): Promise<ShareLink[]> {
+  const userId = await requireUserId();
+  await requireOwnedChannel(channelId, userId);
+  const links = await listShareLinks(channelId);
+  return blockId == null ? links : links.filter((l) => l.block_id === blockId);
+}
+
+export async function revokeShareLinkAction(id: string): Promise<void> {
+  const userId = await requireUserId();
+  const link = await getShareLink(id);
+  if (!link) {
+    throw new Error("Not found.");
+  }
+  await requireOwnedChannel(link.channel_id, userId);
+  await revokeShareLink(id, link.channel_id);
 }
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 import type { Column } from "./column";
 import type { ColumnScreenshot } from "./screenshot-data";
+import { stripShareToken } from "./share-url";
 
 // One block as it appears in an export. Mirrors the per-block fields a viewer
 // can already see on the channel page, plus the cached screenshot URL for
@@ -60,7 +61,9 @@ export function buildChannelExport(
       description: column.description ?? null,
       url: column.url ?? null,
       text: column.text ?? null,
-      image: column.image ?? null,
+      // Exported from a share link, a block's media URL carries the link's
+      // token. The file can travel anywhere, so it gets the plain URL instead.
+      image: column.image ? stripShareToken(column.image) : null,
       image_url: column.url ? (screenshots.get(column.url)?.image_url ?? null) : null,
       created_at: column.created_at,
       tags: column.tags.join(", "),

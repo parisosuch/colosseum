@@ -10,6 +10,19 @@ const nextConfig: NextConfig = {
   // `puppeteer` by default but not these; bundling them fails on clone-deep's
   // dynamic require(). They run server-side only, so leave them as node requires.
   serverExternalPackages: ["puppeteer-extra", "puppeteer-extra-plugin-stealth"],
+  // Share links carry their credential in the URL. Keep them out of search
+  // indexes, and out of the Referer header a link holder's browser would send
+  // to every site a link block points at.
+  async headers() {
+    const shareHeaders = [
+      { key: "X-Robots-Tag", value: "noindex, nofollow" },
+      { key: "Referrer-Policy", value: "no-referrer" },
+    ];
+    return [
+      { source: "/s/:path*", headers: shareHeaders },
+      { source: "/api/media/:id/s/:token", headers: shareHeaders },
+    ];
+  },
   experimental: {
     // React Compiler auto-memoizes components, so the board and grid stop
     // re-rendering on state they don't read. It replaces reaching for memo() by

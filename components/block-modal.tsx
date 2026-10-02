@@ -12,6 +12,7 @@ import {
   FolderInput,
   GlobeIcon,
   LinkIcon,
+  Share2,
 } from "lucide-react";
 import { toast } from "sonner";
 import ColumnComments from "./column-comments";
@@ -52,6 +53,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import TagInput from "@/components/tag-input";
+import { useShare } from "@/components/share-context";
 
 type BlockModalProps = {
   // The block to show, or null when nothing is open. The channel board owns this.
@@ -65,6 +67,8 @@ type BlockModalProps = {
   // Viewer is an admin moderating a public/open channel (false for private).
   // Unlocks deleting a block they don't own.
   isAdmin: boolean;
+  // May make share links for this block: manages a private channel.
+  canShare?: boolean;
   handle: string;
   // The signed-in viewer's id, or null when signed out. Drives commenting.
   viewerId: string | null;
@@ -101,6 +105,8 @@ const MarkdownPreview = dynamic(() => import("./markdown-preview"), {
 const loadChannelPicker = () => import("./block-channel-picker");
 const loadDeleteDialog = () => import("./delete-block-dialog");
 const BlockChannelPicker = dynamic(loadChannelPicker, { ssr: false });
+// Owner-only and behind a click, like Move.
+const ShareLinks = dynamic(() => import("./share-links"), { ssr: false });
 const DeleteBlockDialog = dynamic(loadDeleteDialog, { ssr: false });
 
 // A dialog whose contents are code-split: nothing renders (so no chunk is
@@ -298,6 +304,7 @@ export default function BlockModal({
   isOwner,
   canEdit,
   isAdmin,
+  canShare = false,
   handle,
   viewerId,
   setColumns,
@@ -340,6 +347,7 @@ export default function BlockModal({
             isOwner={isOwner}
             canEdit={canEdit}
             isAdmin={isAdmin}
+            canShare={canShare}
             handle={handle}
             viewerId={viewerId}
             setColumns={setColumns}
@@ -363,6 +371,7 @@ function BlockModalBody({
   isOwner,
   canEdit,
   isAdmin,
+  canShare,
   handle,
   viewerId,
   setColumns,
@@ -377,6 +386,7 @@ function BlockModalBody({
   isOwner: boolean;
   canEdit: boolean;
   isAdmin: boolean;
+  canShare: boolean;
   handle: string;
   viewerId: string | null;
   setColumns: Dispatch<SetStateAction<Column[]>>;
@@ -511,6 +521,8 @@ function BlockModalBody({
   const moveTargets = channels.filter((c) => c.id !== column.channel_id);
   const copyTargets = moveTargets;
   const move = useDeferredDialog(loadChannelPicker);
+  const [sharing, setSharing] = useState(false);
+  const share = useShare();
   const [moving, setMoving] = useState(false);
 
   const handleMove = async (targetChannelId: number) => {
@@ -826,7 +838,9 @@ function BlockModalBody({
                 {/* Deep link, not the standalone block page: sharing this drops
                   the recipient on the channel with the block already open, so
                   closing it leaves them somewhere instead of nowhere. */}
-                <Link href={`/${handle}/${column.channel_id}?block=${column.id}`}>
+                <Link
+                  href={`${share?.base ?? `/${handle}/${column.channel_id}`}?block=${column.id}`}
+                >
                   <LinkIcon className="size-3" />
                   Permalink
                 </Link>
@@ -835,6 +849,39 @@ function BlockModalBody({
                 <Button size="sm" onClick={handleSave}>
                   Save
                 </Button>
+              ) : null}
+              {canShare ? (
+                <>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Share links"
+                        onClick={() => setSharing(true)}
+                      >
+                        <Share2 />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Share links</TooltipContent>
+                  </Tooltip>
+                  <Dialog open={sharing} onOpenChange={setSharing}>
+                    <DialogContent className="max-w-lg">
+                      <DialogTitle>Share this block</DialogTitle>
+                      <DialogDescription>
+                        Links that open this one block, for people who aren&apos;t members of the
+                        channel.
+                      </DialogDescription>
+                      {sharing ? (
+                        <ShareLinks
+                          channelId={column.channel_id}
+                          blockId={column.id}
+                          divided={false}
+                        />
+                      ) : null}
+                    </DialogContent>
+                  </Dialog>
+                </>
               ) : null}
               {/* Move is owner-only (it removes the block from this channel). */}
               {isOwner && moveTargets.length > 0 ? (

@@ -58,3 +58,22 @@ test("a private channel gives nothing away, image or not", () => {
   );
   expect(meta).toEqual({ title: "Colosseum" });
 });
+
+test("a share link previews a private channel, and asks not to be indexed", () => {
+  const meta = channelPreviewMeta(
+    channel({ access: "private", private: true }),
+    "paris",
+    "/api/media/x/s/tok",
+    "/s/tok",
+  );
+  expect(meta.title).toBe("Design Inspiration · Colosseum");
+  expect(meta.openGraph?.url).toBe("/s/tok");
+  // @ts-expect-error next types openGraph.images as a loose union
+  expect(meta.openGraph?.images?.[0]?.url).toBe("/api/media/x/s/tok");
+  expect(meta.robots).toEqual({ index: false, follow: false });
+});
+
+test("a private channel without a share link still previews as the bare site", () => {
+  const meta = channelPreviewMeta(channel({ access: "private", private: true }), "paris");
+  expect(meta).toEqual({ title: "Colosseum" });
+});

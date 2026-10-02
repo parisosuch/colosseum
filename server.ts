@@ -8,6 +8,10 @@ import { createServer, type IncomingMessage, type Server } from "node:http";
 
 import next from "next";
 
+import { createCanvasHistory } from "./lib/realtime/canvas-history";
+import { setCanvasHistory } from "./lib/realtime/canvas-history-registry";
+import { createPgVersionStore } from "./lib/realtime/canvas-history-store";
+import { startRetention } from "./lib/realtime/canvas-retention";
 import { createCanvasServer, type Authorization } from "./lib/realtime/canvas-server";
 import { createPgCanvasStore } from "./lib/realtime/canvas-store";
 import { subscribeRealtime } from "./lib/realtime/events";
@@ -76,6 +80,15 @@ const store = createPgCanvasStore(databaseUrl);
 const canvas = createCanvasServer({ store, authorize });
 subscribeRealtime((event) => canvas.handleEvent(event));
 
+// Canvas version history. The server writes versions as editing sessions go
+// quiet, the server actions reach it through the registry, and old automatic
+// versions are thinned on a timer here, so self-hosters need no scheduler.
+const versionStore = createPgVersionStore(databaseUrl);
+const history = createCanvasHistory({ versions: versionStore, canvases: store, docs: canvas });
+canvas.onEdit((channelId, userId) => history.recordEdit(channelId, userId));
+setCanvasHistory(history);
+const retention = startRetention(versionStore);
+
 const server = createServer((req, res) => void handle(req, res));
 server.on("upgrade", (req, socket, head) => {
   if (canvas.handleUpgrade(req, socket, head)) return;
@@ -98,7 +111,10 @@ async function stop(signal: string) {
   console.log(`> ${signal}: saving open canvases`);
   server.close();
   try {
+    retention.stop();
+    await history.shutdown();
     await canvas.shutdown();
+    await versionStore.end();
     await store.end();
   } catch (err) {
     console.error("[realtime] shutdown failed", err);

@@ -25,6 +25,13 @@ import {
 } from "./channel";
 import { getOwner, ownerIdForUser } from "./owner";
 import {
+  type CanvasVersion,
+  getCanvasVersionPreviewFor,
+  listCanvasVersionsFor,
+  restoreCanvasVersionFor,
+  saveCanvasRestorePointFor,
+} from "./canvas-version";
+import {
   createGroup,
   deleteGroup,
   getGroup,
@@ -317,6 +324,38 @@ export async function deleteChannelAction(channelId: number): Promise<void> {
   const userId = await requireUserId();
   await requireOwnedChannel(channelId, userId);
   await deleteChannel(channelId);
+}
+
+// ---------------------------------------------------------------------------
+// Canvas version history — channel managers only. The manage check lives in
+// canvas-version.ts, which takes the session's user id from here.
+// ---------------------------------------------------------------------------
+export async function listCanvasVersionsAction(
+  channelId: number,
+  page?: { before?: number; limit?: number },
+): Promise<CanvasVersion[]> {
+  return listCanvasVersionsFor(await requireUserId(), channelId, page);
+}
+
+export async function getCanvasVersionPreviewAction(
+  channelId: number,
+  versionId: number,
+): Promise<{ version: CanvasVersion; doc: string }> {
+  return getCanvasVersionPreviewFor(await requireUserId(), channelId, versionId);
+}
+
+export async function saveCanvasRestorePointAction(
+  channelId: number,
+  name: string,
+): Promise<CanvasVersion> {
+  return saveCanvasRestorePointFor(await requireUserId(), channelId, name);
+}
+
+export async function restoreCanvasVersionAction(
+  channelId: number,
+  versionId: number,
+): Promise<{ backup: CanvasVersion; removedElements: number }> {
+  return restoreCanvasVersionFor(await requireUserId(), channelId, versionId);
 }
 
 // ---------------------------------------------------------------------------

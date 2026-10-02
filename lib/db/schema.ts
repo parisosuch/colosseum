@@ -566,6 +566,35 @@ export const apiToken = pgTable("api_token", {
   last_used_at: timestamp("last_used_at", { withTimezone: true }),
 });
 
+// "Anyone with the link" access to a private channel, or to one block in it.
+// The URL carries a random token; only its sha256 is stored, so the link can be
+// shown once at creation and never read back out of the database. A channel
+// can hold any number of links, each revoked on its own. `block_id` set means
+// the link opens that block alone. `expires_at` null means it never expires.
+export const shareLink = pgTable(
+  "share_link",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    channel_id: bigint("channel_id", { mode: "number" })
+      .notNull()
+      .references(() => channel.id, { onDelete: "cascade" }),
+    block_id: bigint("block_id", { mode: "number" }).references(() => column.id, {
+      onDelete: "cascade",
+    }),
+    token_hash: text("token_hash").notNull().unique(),
+    label: text("label"),
+    created_by: uuid("created_by").references(() => user.id, { onDelete: "set null" }),
+    expires_at: timestamp("expires_at", { withTimezone: true }),
+    revoked_at: timestamp("revoked_at", { withTimezone: true }),
+  },
+  // block_id is indexed for the cascade: every block delete looks here.
+  (t) => [
+    index("share_link_channel_id_idx").on(t.channel_id),
+    index("share_link_block_id_idx").on(t.block_id),
+  ],
+);
+
 export const inviteCode = pgTable("invite_code", {
   code: text("code").primaryKey(),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

@@ -73,7 +73,10 @@ export function blockShareImage(
  * `previewDescription` is the page description captured alongside a URL block's
  * screenshot; it stands in when the block carries no description of its own.
  *
- * A block in a private channel gets the generic site metadata and nothing else.
+ * A block in a private channel gets the generic site metadata and nothing else,
+ * unless the page is a share link (`shareUrl`): its holder may open the block,
+ * so the preview shows it, and asks not to be indexed.
+ *
  * The page's own loader already returns nothing to a viewer who can't read the
  * channel, so a crawler never reaches this with a private block — but a member
  * does, and there's no reason to build a share card for something the person
@@ -85,19 +88,20 @@ export function blockPreviewMeta(input: {
   handle: string;
   previewUrl?: string | null;
   previewDescription?: string | null;
+  shareUrl?: string;
 }): Metadata {
   const { column, channel, handle } = input;
   const label = blockLabel(column);
   const title = `${label} · Colosseum`;
 
-  if (channel.private) {
+  if (channel.private && !input.shareUrl) {
     return { title };
   }
 
   const byline = `In ${channel.title}, a channel by @${handle} on Colosseum`;
   const own = column.description || (column.type === "text" ? column.text : "");
   const description = (own || input.previewDescription || byline).slice(0, 300);
-  const url = `/${handle}/${channel.id}/${column.id}`;
+  const url = input.shareUrl ?? `/${handle}/${channel.id}/${column.id}`;
   // A text or PDF block has no picture of its own, and falls back to the site
   // card rather than to nothing — see SITE_CARD for why that has to be said out
   // loud here.
@@ -115,5 +119,6 @@ export function blockPreviewMeta(input: {
       images: [{ ...image, alt: label }],
     },
     twitter: { card: "summary_large_image", title, description, images: [image.url] },
+    ...(input.shareUrl ? { robots: { index: false, follow: false } } : {}),
   };
 }

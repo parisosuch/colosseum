@@ -76,6 +76,17 @@ import { getScreenshot, getScreenshotsForUrls } from "./screenshot-data";
 import { assertColumnQuota, assertInviteQuota, getAdminUser } from "./admin";
 import { notifyChannelNested } from "./nest";
 import { checkRateLimit } from "./rate-limit";
+import {
+  MAX_SHARE_EXPIRY_DAYS,
+  type ShareLink,
+  createShareLink,
+  getShareLink,
+  listShareLinks,
+  parseShareExpiryDays,
+  revokeShareLink,
+  shareExpiry,
+  sharePath,
+} from "./share-link";
 import { logError, logInfo } from "@/lib/log";
 
 // Tokens look like `clsm_<43 base64url chars>`. The prefix namespaces the secret
@@ -773,6 +784,87 @@ export async function removeMemberFor(
   } catch (e) {
     return apiError(e instanceof Error ? e.message : "Could not remove that member.", 400);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Share links. Same rules as the Manage channel dialog: manage rights on the
+// channel, and only a private channel takes them.
+// ---------------------------------------------------------------------------
+
+// Absolute, so a client can hand the link straight to someone. Built from the
+// same base Better Auth and the notification emails use.
+function siteUrl(path: string): string {
+  return `${(process.env.BETTER_AUTH_URL ?? "http://localhost:3000").replace(/\/$/, "")}${path}`;
+}
+
+// A channel's live links (block links included), newest first. Expired ones
+// stay listed until revoked. Manage-authorized: the list says who the channel
+// has been opened to.
+export async function listShareLinksFor(
+  channelId: number,
+  userId: string,
+): Promise<ShareLink[] | NextResponse> {
+  const denial = await authorizeChannelManage(await getChannel(channelId), userId);
+  if (denial) return denial;
+  return listShareLinks(channelId);
+}
+
+// Make a link to a private channel, or to one block in it with `blockId`.
+// `expiresInDays` omitted takes the default, null means never. The returned
+// `url` is the only time the token is ever available.
+export async function createShareLinkFor(
+  channelId: number,
+  input: { blockId?: unknown; label?: unknown; expiresInDays?: unknown },
+  userId: string,
+): Promise<{ share_link: ShareLink; url: string } | NextResponse> {
+  const channel = await getChannel(channelId);
+  const denial = await authorizeChannelManage(channel, userId);
+  if (denial) return denial;
+  if (!channel!.private) {
+    return apiError(
+      "Share links are for private channels. This one is already readable by anyone.",
+      400,
+    );
+  }
+  let blockId: number | null = null;
+  if (input.blockId != null) {
+    if (typeof input.blockId !== "number" || !Number.isInteger(input.blockId)) {
+      return apiError("`block_id` must be a block id.", 400);
+    }
+    const block = await getColumn(input.blockId, { html: false });
+    if (!block || block.channel_id !== channelId) return apiError("Not found.", 404);
+    blockId = input.blockId;
+  }
+  if (input.label != null && typeof input.label !== "string") {
+    return apiError("`label` must be a string.", 400);
+  }
+  const days = parseShareExpiryDays(input.expiresInDays);
+  if (days === "invalid") {
+    return apiError(
+      `\`expires_in_days\` must be a whole number from 1 to ${MAX_SHARE_EXPIRY_DAYS}, or null for a link that never expires.`,
+      400,
+    );
+  }
+  const { link, token } = await createShareLink({
+    channelId,
+    blockId,
+    label: (input.label as string | null | undefined) ?? null,
+    expiresAt: shareExpiry(days),
+    createdBy: userId,
+  });
+  return { share_link: link, url: siteUrl(sharePath(token)) };
+}
+
+// Revoke one link by id. Manage-authorized against the link's channel; a link
+// on a channel the caller can't see is a 404 like the channel itself.
+// Revoking one that is already revoked succeeds and changes nothing.
+export async function revokeShareLinkFor(id: string, userId: string): Promise<NextResponse | null> {
+  const link = await getShareLink(id);
+  if (!link) return apiError("Not found.", 404);
+  const denial = await authorizeChannelManage(await getChannel(link.channel_id), userId);
+  if (denial) return denial;
+  await revokeShareLink(id, link.channel_id);
+  return null;
 }
 
 // A block's comments. Read-authorized: anyone who can see the block can see

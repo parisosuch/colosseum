@@ -6,7 +6,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { canvasThread, channel, comment, notification } from "@/lib/db/schema";
 import { subscribeRealtime, type RealtimeEvent } from "@/lib/realtime/events";
-import { BLOCKS, CHANNELS, COMMENTS, seed, USERS } from "@/scripts/seed";
+import { BLOCKS, CHANNELS, COMMENTS, GROUP_CHANNELS, GROUPS, seed, USERS } from "@/scripts/seed";
 import { deleteCommentFor, listCommentsFor } from "./api-auth";
 import {
   deleteCanvasThreadComment,
@@ -275,7 +275,7 @@ test("a reply's author or a channel manager may delete it; anyone else gets not 
   expect((await getCanvasThread(thread.id, USERS.alice.id)).comments).toHaveLength(1);
 });
 
-test("deleting a thread's last comment deletes the thread, and the events say which", async () => {
+test("deleting a reply removes it; deleting the starter deletes the thread and its replies", async () => {
   const { events, stop } = collectEvents();
   try {
     const thread = await startCanvasThread({
@@ -284,22 +284,29 @@ test("deleting a thread's last comment deletes the thread, and the events say wh
       anchor: point,
       body: "Short-lived.",
     });
-    const reply = await replyToCanvasThread({
+    const kept = await replyToCanvasThread({
+      threadId: thread.id,
+      userId: USERS.alice.id,
+      body: "Alice's reply.",
+    });
+    const removed = await replyToCanvasThread({
       threadId: thread.id,
       userId: USERS.bob.id,
-      body: "Me again.",
+      body: "Bob's reply.",
     });
 
-    await deleteCanvasThreadComment({ commentId: thread.starter!.id, userId: USERS.bob.id });
-    // The reply is the starter now.
+    expect(
+      await deleteCanvasThreadComment({ commentId: removed.id, userId: USERS.bob.id }),
+    ).toEqual({ threadDeleted: false });
     const after = await getCanvasThread(thread.id, USERS.bob.id);
-    expect(after.starter?.id).toBe(reply.id);
-    expect(after.reply_count).toBe(0);
+    expect(after.comments.map((c) => c.id)).toEqual([thread.starter!.id, kept.id]);
 
-    expect(await deleteCanvasThreadComment({ commentId: reply.id, userId: USERS.bob.id })).toEqual({
-      threadDeleted: true,
-    });
+    // bob started it, so deleting his starter takes alice's reply too.
+    expect(
+      await deleteCanvasThreadComment({ commentId: thread.starter!.id, userId: USERS.bob.id }),
+    ).toEqual({ threadDeleted: true });
     expect(await rejection(getCanvasThread(thread.id, USERS.bob.id))).toBe("Not found.");
+    expect(await db.select().from(comment).where(eq(comment.thread_id, thread.id))).toEqual([]);
     expect(
       await rejection(
         replyToCanvasThread({ threadId: thread.id, userId: USERS.bob.id, body: "?" }),
@@ -309,14 +316,29 @@ test("deleting a thread's last comment deletes the thread, and the events say wh
     expect(events.map((e) => e.type)).toEqual([
       "thread.created",
       "thread.comment.added",
+      "thread.comment.added",
       "thread.comment.deleted",
       "thread.deleted",
     ]);
     expect(events.every((e) => e.channelId === aliceDesign)).toBe(true);
-    expect(events[2]).toMatchObject({ threadId: thread.id, commentId: thread.starter!.id });
+    expect(events[3]).toMatchObject({ threadId: thread.id, commentId: removed.id });
+    expect(events[4]).toMatchObject({ threadId: thread.id });
   } finally {
     stop();
   }
+});
+
+test("a channel manager may delete someone else's starter, which deletes the thread", async () => {
+  const thread = await startCanvasThread({
+    channelId: aliceDesign,
+    userId: USERS.bob.id,
+    anchor: point,
+    body: "Bob's thread.",
+  });
+  expect(
+    await deleteCanvasThreadComment({ commentId: thread.starter!.id, userId: USERS.alice.id }),
+  ).toEqual({ threadDeleted: true });
+  expect(await listChannelThreads(aliceDesign, USERS.alice.id)).toEqual([]);
 });
 
 // ---------------------------------------------------------------------------
@@ -376,7 +398,12 @@ test("a new thread notifies the channel owner, linking to the thread", async () 
     .select()
     .from(notification)
     .where(eq(notification.comment_id, thread.starter!.id));
-  expect(row).toMatchObject({ channel_id: aliceDesign, column_id: null, group_id: null });
+  expect(row).toMatchObject({
+    channel_id: aliceDesign,
+    column_id: null,
+    group_id: null,
+    thread_id: thread.id,
+  });
 
   const [item] = await listNotifications(USERS.alice.id);
   expect(item.href).toBe(`/${USERS.alice.handle}/${aliceDesign}?thread=${thread.id}`);
@@ -435,22 +462,61 @@ test("a mention notifies a reader who isn't in the thread, and skips a non-reade
   expect(await noticesFor(hidden.starter!.id)).toEqual({});
 });
 
-test("a canvas notification whose comment is gone links to the channel", async () => {
+test("a canvas notification keeps its thread link after its comment is deleted", async () => {
   const thread = await startCanvasThread({
     channelId: aliceDesign,
+    userId: USERS.alice.id,
+    anchor: point,
+    body: "Alice asks.",
+  });
+  const reply = await replyToCanvasThread({
+    threadId: thread.id,
+    userId: USERS.bob.id,
+    body: "Bob answers, then thinks better of it.",
+  });
+  await deleteCanvasThreadComment({ commentId: reply.id, userId: USERS.bob.id });
+
+  const [item] = await listNotifications(USERS.alice.id);
+  expect(item.excerpt).toBeUndefined();
+  expect(item.message).toBe(`commented on the canvas of "${CHANNELS.aliceDesign.title}"`);
+  expect(item.href).toBe(`/${USERS.alice.handle}/${aliceDesign}?thread=${thread.id}`);
+
+  // Deleting the thread takes its notifications with it.
+  await deleteCanvasThreadComment({ commentId: thread.starter!.id, userId: USERS.alice.id });
+  expect(await db.select().from(notification).where(eq(notification.thread_id, thread.id))).toEqual(
+    [],
+  );
+});
+
+test("a new thread notifies every member of the channel; a reply only the thread and owner", async () => {
+  // bobGroup is bob's private channel with alice as a member.
+  const bobGroup = await channelId(CHANNELS.bobGroup.title, USERS.bob.ownerId);
+  const started = await startCanvasThread({
+    channelId: bobGroup,
     userId: USERS.bob.id,
     anchor: point,
-    body: "Soon deleted.",
+    body: "Owner starts, member hears.",
   });
-  await replyToCanvasThread({ threadId: thread.id, userId: USERS.bob.id, body: "Keeps it alive." });
-  await deleteCanvasThreadComment({ commentId: thread.starter!.id, userId: USERS.bob.id });
+  expect(await noticesFor(started.starter!.id)).toEqual({ [USERS.alice.id]: "comment" });
 
-  // Newest first: the reply's notice, then the starter's, which lost its comment.
-  const [reply, starter] = await listNotifications(USERS.alice.id);
-  expect(reply.href).toBe(`/${USERS.alice.handle}/${aliceDesign}?thread=${thread.id}`);
-  expect(starter.excerpt).toBeUndefined();
-  expect(starter.message).toBe(`commented on the canvas of "${CHANNELS.aliceDesign.title}"`);
-  expect(starter.href).toBe(`/${USERS.alice.handle}/${aliceDesign}`);
+  // The studio group owns this one: alice owns the group, bob is a plain member.
+  const studio = await channelId(GROUP_CHANNELS.studioPublic.title, GROUPS.studio.id);
+  const groupThread = await startCanvasThread({
+    channelId: studio,
+    userId: USERS.alice.id,
+    anchor: point,
+    body: "To the whole group.",
+  });
+  expect(await noticesFor(groupThread.starter!.id)).toEqual({ [USERS.bob.id]: "comment" });
+
+  // A reply goes to participants and the group's managers. alice is both, and
+  // the author, so plain member bob hears nothing this time.
+  const reply = await replyToCanvasThread({
+    threadId: groupThread.id,
+    userId: USERS.alice.id,
+    body: "Following up.",
+  });
+  expect(await noticesFor(reply.id)).toEqual({});
 });
 
 test("block comment notifications keep their block link and wording", async () => {

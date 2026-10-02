@@ -17,24 +17,36 @@ export function createPgThreadStore(connectionString: string): ThreadAnchorStore
       const rows = await sql<
         {
           id: string;
-          element_id: string;
+          element_id: string | null;
+          last_element_id: string | null;
           offset_x: number | null;
           offset_y: number | null;
           x: number;
           y: number;
         }[]
       >`
-        select id, element_id, offset_x, offset_y, x, y
+        select id, element_id, last_element_id, offset_x, offset_y, x, y
         from canvas_thread
-        where channel_id = ${channelId} and element_id is not null
+        where channel_id = ${channelId}
+          and (element_id is not null or last_element_id is not null)
       `;
       return rows.map((r): AnchoredThread => ({ ...r, id: Number(r.id) }));
     },
 
     async detach(threadId, elementId, x, y) {
       const rows = await sql`
-        update canvas_thread set element_id = null, x = ${x}, y = ${y}
+        update canvas_thread
+        set element_id = null, last_element_id = element_id, x = ${x}, y = ${y}
         where id = ${threadId} and element_id = ${elementId}
+        returning id
+      `;
+      return rows.length > 0;
+    },
+
+    async reattach(threadId, elementId) {
+      const rows = await sql`
+        update canvas_thread set element_id = last_element_id, last_element_id = null
+        where id = ${threadId} and element_id is null and last_element_id = ${elementId}
         returning id
       `;
       return rows.length > 0;

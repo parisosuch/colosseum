@@ -8,7 +8,8 @@
 //   included, same as the canvas itself;
 // - start a thread or reply: anyone signed in who can read the channel, so a
 //   read-only viewer of the canvas can comment;
-// - delete a comment: its author, or anyone who manages the channel.
+// - delete a comment: its author, or anyone who manages the channel. Deleting
+//   a thread's first comment deletes the thread and its replies.
 //
 // Every write publishes a realtime event, and the canvas server passes it on to
 // everyone viewing the channel's canvas. Pinning and freeing threads as their
@@ -17,7 +18,7 @@
 import { asc, count, eq, inArray } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { canvasThread, comment, owner } from "@/lib/db/schema";
+import { canvasThread, channelMember, comment, groupMember, owner } from "@/lib/db/schema";
 import type { CanvasThread, ThreadComment } from "@/lib/realtime/canvas-threads";
 import { publishRealtime } from "@/lib/realtime/events";
 import {
@@ -117,6 +118,7 @@ function toThread(
     id: row.id,
     channel_id: row.channel_id,
     element_id: row.element_id,
+    last_element_id: row.last_element_id,
     offset_x: row.offset_x,
     offset_y: row.offset_y,
     x: row.x,
@@ -247,7 +249,7 @@ export async function startCanvasThread(input: {
   const created = toThread(thread, 1, starter);
 
   publishRealtime({ type: "thread.created", channelId: channel.id, thread: created });
-  await sendThreadNotices({ channel, threadId: thread.id, comment: starter });
+  await sendThreadNotices({ channel, threadId: thread.id, comment: starter, isNew: true });
   return created;
 }
 
@@ -266,21 +268,22 @@ export async function replyToCanvasThread(input: {
   try {
     created = await insertThreadComment({ threadId: thread.id, authorId: input.userId, body });
   } catch (e) {
-    // The thread's last comment was deleted, and the thread with it, between
-    // the lookup above and this insert.
+    // The thread's starter was deleted, and the thread with it, between the
+    // lookup above and this insert.
     if (isForeignKeyViolation(e)) throw new Error(NOT_FOUND, { cause: e });
     throw e;
   }
 
   publishRealtime({ type: "thread.comment.added", channelId: channel.id, comment: created });
-  await sendThreadNotices({ channel, threadId: thread.id, comment: created });
+  await sendThreadNotices({ channel, threadId: thread.id, comment: created, isNew: false });
   return created;
 }
 
 // Delete a thread comment: its author may, and so may anyone who manages the
 // channel, the block comments' rule. A comment the caller may do neither to is
-// "Not found." so this never confirms one exists. Deleting a thread's last
-// comment deletes the thread: a pin with nothing in it is just clutter.
+// "Not found." so this never confirms one exists. Deleting the thread's first
+// comment, the one that started it, deletes the thread and every reply with
+// it; deleting any other removes only that reply.
 export async function deleteCanvasThreadComment(input: {
   commentId: number;
   userId: string;
@@ -305,24 +308,20 @@ export async function deleteCanvasThreadComment(input: {
     }
   }
 
-  const threadDeleted = await db.transaction(async (tx) => {
-    // Locked so a reply can't land in a thread this is about to delete: the
-    // reply's foreign key check waits on this lock, then fails if the thread
-    // went, and a reply that got in first is counted below.
-    await tx
-      .select({ id: canvasThread.id })
-      .from(canvasThread)
-      .where(eq(canvasThread.id, target.thread_id))
-      .for("update");
-    await tx.delete(comment).where(eq(comment.id, input.commentId));
-    const [{ n }] = await tx
-      .select({ n: count() })
-      .from(comment)
-      .where(eq(comment.thread_id, target.thread_id));
-    if (n > 0) return false;
-    await tx.delete(canvasThread).where(eq(canvasThread.id, target.thread_id));
-    return true;
-  });
+  // The starter can't change: it's never deleted without the thread, and every
+  // later comment sorts after it.
+  const [first] = await db
+    .select({ id: comment.id })
+    .from(comment)
+    .where(eq(comment.thread_id, target.thread_id))
+    .orderBy(asc(comment.created_at), asc(comment.id))
+    .limit(1);
+  const threadDeleted = first?.id === input.commentId;
+  if (threadDeleted) {
+    await db.delete(canvasThread).where(eq(canvasThread.id, target.thread_id));
+  } else {
+    await db.delete(comment).where(eq(comment.id, input.commentId));
+  }
 
   publishRealtime(
     threadDeleted
@@ -339,18 +338,21 @@ export async function deleteCanvasThreadComment(input: {
 
 // The notices a thread comment owes, after createCommentWithNotices:
 // - `comment` to everyone else who has commented in the thread, and to the
-//   channel's owner (a group's owners and admins);
+//   channel's owner (a group's owners and admins). A new thread also goes to
+//   every member of the channel: its member rows and, for a group's channel,
+//   the whole group;
 // - `mention` to each person @mentioned who isn't already getting a `comment`
 //   for it, since two notifications for one comment is noise.
 // All of it is filtered to people who can read the channel: a mention resolves
 // any handle, and a participant can lose access when the channel goes private.
 //
-// The notifications carry the channel and the comment and no block; the
-// comment is how the feed finds the thread for its link.
+// The notifications carry the channel, the thread (where the link lands) and
+// the comment, and no block.
 async function sendThreadNotices(input: {
   channel: Channel;
   threadId: number;
   comment: ThreadComment;
+  isNew: boolean;
 }): Promise<void> {
   const { channel, comment: created } = input;
   const authorId = created.author_id;
@@ -362,6 +364,7 @@ async function sendThreadNotices(input: {
   const owed = new Set([
     ...participants.map((p) => p.author_id),
     ...(await ownerRecipients(channel.owned_by)),
+    ...(input.isNew ? await channelRoster(channel) : []),
   ]);
   owed.delete(authorId);
   const mentioned = (await mentionedUsers(created.body))
@@ -375,12 +378,29 @@ async function sendThreadNotices(input: {
       actor_id: authorId,
       type,
       channel_id: channel.id,
+      thread_id: input.threadId,
       comment_id: created.id,
     });
   await Promise.all([
     ...[...owed].filter((id) => readers.has(id)).map((id) => notice(id, "comment")),
     ...mentioned.filter((id) => readers.has(id)).map((id) => notice(id, "mention")),
   ]);
+}
+
+// Everyone who belongs to the channel besides its owner: its member rows, and
+// the members of the group that owns it (none when a person owns it).
+async function channelRoster(channel: Channel): Promise<string[]> {
+  const [members, group] = await Promise.all([
+    db
+      .select({ user_id: channelMember.user_id })
+      .from(channelMember)
+      .where(eq(channelMember.channel_id, channel.id)),
+    db
+      .select({ user_id: groupMember.user_id })
+      .from(groupMember)
+      .where(eq(groupMember.group_id, channel.owned_by)),
+  ]);
+  return [...members, ...group].map((r) => r.user_id);
 }
 
 function isForeignKeyViolation(e: unknown): boolean {

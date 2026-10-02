@@ -419,10 +419,13 @@ export const column = pgTable(
 // A comment thread pinned to a channel's canvas. It sits on an element of the
 // canvas doc (`element_id`, plus an offset from the element's x/y) or on a bare
 // point in world space. When its element is deleted, the realtime server writes
-// the element's last position into `x`/`y` and nulls `element_id`, so the
-// thread stays where it was as a free pin. `x`/`y` are only authoritative while
-// `element_id` is null; for an anchored thread they're the position last seen.
-// The thread's comments are `comment` rows with `thread_id` set.
+// the element's last world position into `x`/`y`, moves `element_id` to
+// `last_element_id` and nulls it, so the thread stays where it was as a free
+// pin. If an element with that id comes back (an undo, a restore), the server
+// pins the thread to it again with its old offset. `x`/`y` are only
+// authoritative while `element_id` is null; for a pinned thread they're the
+// position last seen. The thread's comments are `comment` rows with `thread_id`
+// set.
 export const canvasThread = pgTable(
   "canvas_thread",
   {
@@ -432,6 +435,9 @@ export const canvasThread = pgTable(
       .references(() => channel.id, { onDelete: "cascade" }),
     // Yjs element id (a key of the doc's `elements` map). Null for a free pin.
     element_id: text("element_id"),
+    // The element a free pin was on before that element was deleted. Null for a
+    // thread started on a bare point, and for a pinned one.
+    last_element_id: text("last_element_id"),
     offset_x: real("offset_x"),
     offset_y: real("offset_y"),
     x: doublePrecision("x").notNull(),
@@ -515,6 +521,12 @@ export const notification = pgTable(
     // cascading would let delete-and-repost email the recipient without bound.
     comment_id: bigint("comment_id", { mode: "number" }).references(() => comment.id, {
       onDelete: "set null",
+    }),
+    // Set for comment/mention in a canvas thread, which is where the link
+    // lands. Unlike `comment_id` it survives the comment's deletion; it
+    // cascades with the thread, like `column_id` does with a block.
+    thread_id: bigint("thread_id", { mode: "number" }).references(() => canvasThread.id, {
+      onDelete: "cascade",
     }),
     // When this notification was emailed, or null if it never was (toggle off,
     // or suppressed as part of a burst). Read back to decide whether a later

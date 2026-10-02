@@ -1,5 +1,5 @@
 {
-  "id": "713514f7-7549-45f7-8d71-affe255384b4",
+  "id": "cebba601-9ac1-42a3-a2cb-35036f387dd6",
   "prevId": "20a743a9-0d7c-4d84-90ad-bc6355c1297e",
   "version": "7",
   "dialect": "postgresql",
@@ -321,6 +321,12 @@
         },
         "element_id": {
           "name": "element_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_element_id": {
+          "name": "last_element_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -1612,6 +1618,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "thread_id": {
+          "name": "thread_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
         "email_sent_at": {
           "name": "email_sent_at",
           "type": "timestamp with time zone",
@@ -1701,6 +1713,15 @@
           "columnsFrom": ["comment_id"],
           "columnsTo": ["id"],
           "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "notification_thread_id_canvas_thread_id_fk": {
+          "name": "notification_thread_id_canvas_thread_id_fk",
+          "tableFrom": "notification",
+          "tableTo": "canvas_thread",
+          "columnsFrom": ["thread_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },

@@ -19,7 +19,7 @@ import { elementsOf } from "./canvas-doc";
 import { createCanvasServer, type CanvasServer } from "./canvas-server";
 import { createPgCanvasStore } from "./canvas-store";
 import { createPgThreadStore } from "./canvas-thread-store";
-import { freeOrphanedThreads } from "./canvas-threads";
+import { elementWorldPosition, freeOrphanedThreads } from "./canvas-threads";
 import { subscribeRealtime } from "./events";
 import { MESSAGE_CHANNEL_EVENT, type ChannelEvent } from "./protocol";
 
@@ -194,6 +194,115 @@ test("a thread follows its element and stays where it was when the element is de
       y: 306,
     });
   }
+});
+
+test("an undo that brings the element back pins its thread again, at the old offset", async () => {
+  const editor = connect("write");
+  const viewer = connect("read");
+  await Promise.all([synced(editor.provider), synced(viewer.provider)]);
+  addElement(editor.doc, "shape", { type: "rect", x: 10, y: 20 });
+  const thread = await startCanvasThread({
+    channelId,
+    userId: USERS.bob.id,
+    anchor: { elementId: "shape", offsetX: 5, offsetY: 6, x: 15, y: 26 },
+    body: "Come back.",
+  });
+  await waitFor(() => viewer.events.some((e) => e.type === "thread.created"), "thread.created");
+
+  // The editor's own undo stack, tracking only the delete.
+  const undo = new Y.UndoManager(elementsOf(editor.doc));
+  elementsOf(editor.doc).delete("shape");
+  await waitFor(async () => (await threadRow(thread.id)).element_id === null, "the thread freed");
+  expect(await threadRow(thread.id)).toMatchObject({ last_element_id: "shape", x: 15, y: 26 });
+
+  undo.undo();
+  expect(elementsOf(editor.doc).has("shape")).toBe(true);
+  await waitFor(async () => (await threadRow(thread.id)).element_id === "shape", "re-pinned");
+  expect(await threadRow(thread.id)).toMatchObject({
+    last_element_id: null,
+    offset_x: 5,
+    offset_y: 6,
+  });
+  await waitFor(
+    () => viewer.events.some((e) => e.type === "thread.attached"),
+    "thread.attached on the viewer",
+  );
+  expect(
+    viewer.events.filter((e) => e.type.startsWith("thread.") && e.type !== "thread.created"),
+  ).toEqual([
+    { type: "thread.detached", threadId: thread.id, x: 15, y: 26 },
+    { type: "thread.attached", threadId: thread.id, elementId: "shape" },
+  ]);
+
+  // Pinned again, it follows the element and frees at its new position.
+  elementsOf(editor.doc).get("shape")!.set("x", 70);
+  elementsOf(editor.doc).delete("shape");
+  await waitFor(async () => (await threadRow(thread.id)).element_id === null, "freed again");
+  expect(await threadRow(thread.id)).toMatchObject({ x: 75, y: 26 });
+
+  // A new element under the same id, rather than an undo, pins it too.
+  addElement(editor.doc, "shape", { type: "rect", x: 0, y: 0 });
+  await waitFor(async () => (await threadRow(thread.id)).element_id === "shape", "re-pinned");
+});
+
+test("a thread on an element inside a frame follows the frame", async () => {
+  const editor = connect("write");
+  await synced(editor.provider);
+  addElement(editor.doc, "frame", { type: "frame", x: 100, y: 100, parentId: null });
+  addElement(editor.doc, "child", { type: "rect", x: 10, y: 20, parentId: "frame" });
+  expect(elementWorldPosition(elementsOf(editor.doc), "child")).toEqual({ x: 110, y: 120 });
+
+  const thread = await startCanvasThread({
+    channelId,
+    userId: USERS.alice.id,
+    anchor: { elementId: "child", offsetX: 1, offsetY: 1, x: 111, y: 121 },
+    body: "Nested.",
+  });
+  await waitFor(() => editor.events.some((e) => e.type === "thread.created"), "thread.created");
+
+  // Moving the frame writes the frame's position only; the child's is relative.
+  elementsOf(editor.doc).get("frame")!.set("x", 300);
+  elementsOf(editor.doc).delete("child");
+  await waitFor(async () => (await threadRow(thread.id)).element_id === null, "the thread freed");
+  expect(await threadRow(thread.id)).toMatchObject({ x: 311, y: 121 });
+});
+
+test("elementWorldPosition sums the parent chain and survives a loop", () => {
+  const doc = new Y.Doc();
+  addElement(doc, "outer", { x: 1, y: 2, parentId: null });
+  addElement(doc, "inner", { x: 10, y: 20, parentId: "outer" });
+  addElement(doc, "leaf", { x: 100, y: 200, parentId: "inner" });
+  addElement(doc, "orphan", { x: 5, y: 5, parentId: "missing" });
+  addElement(doc, "a", { x: 0, y: 0, parentId: "b" });
+  addElement(doc, "b", { x: 0, y: 0, parentId: "a" });
+  const elements = elementsOf(doc);
+  expect(elementWorldPosition(elements, "leaf")).toEqual({ x: 111, y: 222 });
+  expect(elementWorldPosition(elements, "orphan")).toEqual({ x: 5, y: 5 });
+  expect(elementWorldPosition(elements, "a")).toBeNull();
+  expect(elementWorldPosition(elements, "nope")).toBeNull();
+});
+
+test("a canvas that loads pins a free thread whose element is back", async () => {
+  const saved = new Y.Doc();
+  addElement(saved, "restored", { type: "rect", x: 40, y: 50 });
+  await db
+    .insert(channelCanvas)
+    .values({ channel_id: channelId, doc: Y.encodeStateAsUpdate(saved) });
+  const [thread] = await db
+    .insert(canvasThread)
+    .values({
+      channel_id: channelId,
+      last_element_id: "restored",
+      offset_x: 1,
+      offset_y: 2,
+      x: 0,
+      y: 0,
+    })
+    .returning();
+
+  const a = connect("write");
+  await synced(a.provider);
+  await waitFor(async () => (await threadRow(thread.id)).element_id === "restored", "re-pinned");
 });
 
 test("a block pruned when the canvas loads frees its thread at the saved position", async () => {

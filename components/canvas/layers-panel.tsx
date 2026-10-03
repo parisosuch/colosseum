@@ -78,7 +78,9 @@ function iconFor(el: ElementSnapshot, column: Column | null | undefined) {
 
 export function layerName(el: ElementSnapshot, column: Column | null | undefined): string {
   if (el.name) return el.name;
-  if (el.type === "block" && column) return column.title || column.url || "Block";
+  if (el.type === "block" && column) {
+    return column.title || column.url || column.text?.trim().slice(0, 60) || "Block";
+  }
   return defaultName(el);
 }
 
@@ -117,7 +119,9 @@ export function LayersPanel({
 
   const click = (e: React.MouseEvent, id: string) => {
     if (e.shiftKey || e.metaKey || e.ctrlKey) {
-      const next = new Set(selection);
+      // The store's selection, not this render's: two quick clicks would
+      // otherwise both start from the same stale set.
+      const next = new Set(store.selection);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       store.setSelection(next);

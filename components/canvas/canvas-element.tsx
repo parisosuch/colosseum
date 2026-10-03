@@ -58,8 +58,10 @@ export const CanvasElement = memo(function CanvasElement({
   const rect = geom.rect;
   const style: React.CSSProperties = {
     transform: `translate(${rect.x}px, ${rect.y}px)`,
-    width: rect.w,
-    height: rect.h,
+    // A zero-size SVG paints nothing, overflow or not: a level line has no
+    // height.
+    width: Math.max(1, rect.w),
+    height: Math.max(1, rect.h),
     clipPath: clipPath(geom.clip, rect),
     opacity: (faded ? 0.25 : 1) * (el.type === "block" || el.type === "frame" ? 1 : el.opacity),
   };

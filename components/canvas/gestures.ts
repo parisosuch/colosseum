@@ -154,14 +154,17 @@ export function resizeBounds(store: CanvasStore): Rect | null {
   return selectionBounds(store);
 }
 
-// Boxes worth snapping to: what's on screen, minus what's moving and lines.
+// Boxes worth snapping to: what's on screen, minus what's moving, lines and
+// pen strokes.
 function snapTargets(store: CanvasStore, exclude: ReadonlySet<string>): Rect[] {
   const view = visibleWorldRect(store.camera, store.viewport);
   const out: Rect[] = [];
   for (const b of store.docState.boxes) {
     if (exclude.has(b.id)) continue;
     const el = store.docState.elements.get(b.id);
-    if (!el || CONNECTOR_TYPES.has(el.type)) continue;
+    // Lines and freehand ink are annotation; their boxes would only add
+    // noise to the guides.
+    if (!el || CONNECTOR_TYPES.has(el.type) || el.type === "stroke") continue;
     const r = b.rect;
     if (r.x > view.x + view.w || r.y > view.y + view.h || r.x + r.w < view.x || r.y + r.h < view.y)
       continue;
@@ -675,6 +678,8 @@ export function endGesture(ctx: GestureContext, g: Gesture, e: PointerEvent, p: 
         return;
       }
       // Text: into an existing text or sticky, or a new one here.
+      // Back to select first: changing tools ends any typing.
+      finishTool();
       const leaf = hitLeaf(store.hitContext(), g.startWorld, store.camera.z);
       const hit = leaf ? store.docState.elements.get(leaf) : undefined;
       if (hit && (hit.type === "text" || hit.type === "sticky")) {
@@ -688,7 +693,6 @@ export function endGesture(ctx: GestureContext, g: Gesture, e: PointerEvent, p: 
           draft: { at: g.startWorld, parentId, parentOrigin: originOf(parentId, all) },
         });
       }
-      finishTool();
       return;
     }
   }

@@ -87,7 +87,7 @@ export function TextEditor({ store }: { store: CanvasStore }) {
     };
     t.observe(onChange);
     return () => t.unobserve(onChange);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the Y.Text is looked up by id; `ytext` reads the current one.
   }, [id, store]);
 
   if (!editing) return null;

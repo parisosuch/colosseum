@@ -1,20 +1,51 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, Bell, Hand, Minus, MousePointer2, PanelLeft, Plus, Search } from "lucide-react";
+import {
+  ArrowLeft,
+  Bell,
+  ChevronDown,
+  Circle,
+  Diamond,
+  Eraser,
+  Frame,
+  Hand,
+  Highlighter,
+  MessageCircle,
+  Minus,
+  MousePointer2,
+  MoveUpRight,
+  PanelLeft,
+  PenLine,
+  Plus,
+  Redo2,
+  Search,
+  Square,
+  StickyNote,
+  Type,
+  Undo2,
+} from "lucide-react";
+import { useState } from "react";
 
 import { openCommandPalette } from "@/components/command-palette";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import { UserMenu } from "@/components/user-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { zoomLabel } from "@/lib/canvas/camera";
 import { cn } from "@/lib/utils";
+import { redo, undo } from "./actions";
 import { zoomStep, zoomToActual } from "./camera-actions";
 import { presenceColorCss } from "./canvas-overlay";
 import type { CanvasStore, Peer } from "./canvas-store";
-import type { Tool } from "./canvas-viewport";
+import { PEN_GROUP, SHAPE_GROUP, TOOL_KEYS, TOOL_LABELS, type Tool } from "./tools";
 import { useCanvas } from "./use-canvas";
 
 // A floating island: the design's white card with a 1px border, a 10px corner
@@ -228,64 +259,206 @@ export function EndIsland({ store, viewer }: { store: CanvasStore; viewer: Viewe
   );
 }
 
-// Bottom centre: the tools. This issue ships select and hand; the drawing
-// tools join them.
+export const TOOL_ICONS: Record<Tool, React.ComponentType<{ className?: string }>> = {
+  select: MousePointer2,
+  hand: Hand,
+  text: Type,
+  pen: PenLine,
+  highlighter: Highlighter,
+  eraser: Eraser,
+  rect: Square,
+  ellipse: Circle,
+  diamond: Diamond,
+  line: Minus,
+  arrow: MoveUpRight,
+  sticky: StickyNote,
+  frame: Frame,
+  comment: MessageCircle,
+};
+
+function ToolDivider() {
+  return <span aria-hidden className="mx-0.5 h-5 w-px shrink-0 bg-border" />;
+}
+
+// Bottom centre: the tools, in the design's groups. Pen and highlighter share
+// a button, and so do the shapes; each shows the last one used, its caret
+// opens the list, and every key still picks its tool directly. Read-only
+// viewers get select (to open blocks), hand and comment.
 export function Toolbar({
   tool,
   onToolChange,
   disabled,
+  viewer,
 }: {
   tool: Tool;
   onToolChange: (tool: Tool) => void;
   disabled: boolean;
+  viewer: boolean;
 }) {
-  const item = (value: Tool, label: string, key: string, icon: React.ReactNode) => (
-    <IconButton
-      label={label}
-      shortcut={key}
-      aria-pressed={tool === value}
-      disabled={disabled}
-      onClick={() => onToolChange(value)}
-      className={tool === value ? "bg-secondary hover:bg-secondary/80" : undefined}
-    >
-      {icon}
-    </IconButton>
-  );
+  const [lastPen, setLastPen] = useState<Tool>("pen");
+  const [lastShape, setLastShape] = useState<Tool>("rect");
+  const pick = (t: Tool) => {
+    if ((PEN_GROUP as readonly Tool[]).includes(t)) setLastPen(t);
+    if ((SHAPE_GROUP as readonly Tool[]).includes(t)) setLastShape(t);
+    onToolChange(t);
+  };
+  // A key that picks a grouped tool updates its button too.
+  const shownPen = (PEN_GROUP as readonly Tool[]).includes(tool) ? tool : lastPen;
+  const shownShape = (SHAPE_GROUP as readonly Tool[]).includes(tool) ? tool : lastShape;
+
+  const item = (value: Tool) => {
+    const Icon = TOOL_ICONS[value];
+    return (
+      <IconButton
+        key={value}
+        label={TOOL_LABELS[value]}
+        shortcut={TOOL_KEYS[value]}
+        aria-pressed={tool === value}
+        disabled={disabled}
+        onClick={() => pick(value)}
+        className={tool === value ? "bg-secondary hover:bg-secondary/80" : undefined}
+      >
+        <Icon />
+      </IconButton>
+    );
+  };
+
+  const group = (shown: Tool, members: readonly Tool[], label: string) => {
+    const Icon = TOOL_ICONS[shown];
+    const on = members.includes(tool);
+    return (
+      <div
+        className={cn(
+          "flex h-9 items-center rounded-md transition-colors duration-micro",
+          on ? "bg-secondary" : "hover:bg-accent",
+        )}
+      >
+        <Tooltip delayDuration={400}>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label={TOOL_LABELS[shown]}
+              aria-pressed={tool === shown}
+              disabled={disabled}
+              onClick={() => pick(shown)}
+              className="focus-ring flex h-9 w-8 items-center justify-end rounded-l-md disabled:opacity-50 [&_svg]:size-4"
+            >
+              <Icon />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent className="flex items-center gap-3">
+            <span>{TOOL_LABELS[shown]}</span>
+            <span className="font-mono">{TOOL_KEYS[shown]}</span>
+          </TooltipContent>
+        </Tooltip>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label={label}
+              disabled={disabled}
+              className="focus-ring flex h-9 w-4 items-center justify-start rounded-r-md text-muted-foreground disabled:opacity-50"
+            >
+              <ChevronDown className="size-3" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align="center" sideOffset={12} className="w-52">
+            {members.map((m) => {
+              const MIcon = TOOL_ICONS[m];
+              return (
+                <DropdownMenuItem key={m} onSelect={() => pick(m)} className="gap-2">
+                  <MIcon />
+                  <span className="flex-1">{TOOL_LABELS[m]}</span>
+                  <span className="font-mono text-xs text-muted-foreground">{TOOL_KEYS[m]}</span>
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    );
+  };
+
   return (
     <Island data-vt="toolbar" role="toolbar" aria-label="Tools" className="gap-0.5">
-      {item("select", "Select", "V", <MousePointer2 />)}
-      {item("hand", "Hand", "H", <Hand />)}
+      {item("select")}
+      {item("hand")}
+      <ToolDivider />
+      {viewer ? (
+        item("comment")
+      ) : (
+        <>
+          {group(shownPen, PEN_GROUP, "Pen tools")}
+          {item("eraser")}
+          {item("text")}
+          <ToolDivider />
+          {group(shownShape, SHAPE_GROUP, "Shapes")}
+          {item("arrow")}
+          <ToolDivider />
+          {item("sticky")}
+          {item("frame")}
+          <ToolDivider />
+          {item("comment")}
+        </>
+      )}
     </Island>
   );
 }
 
-// Bottom right: zoom out, the level, zoom in. The level resets to 100%.
-export function ZoomIsland({ store }: { store: CanvasStore }) {
+// Bottom right: undo and redo (editors only), then zoom out, the level, zoom
+// in. The level resets to 100%.
+export function ZoomIsland({ store, showHistory }: { store: CanvasStore; showHistory: boolean }) {
   const z = useCanvas(store, "camera", (s) => s.camera.z);
+  const history = useCanvas(store, "history", (s) => s.history);
   return (
-    <Island data-vt="zoom">
-      <IconButton label="Zoom out" shortcut="−" onClick={() => zoomStep(store, -1)}>
-        <Minus />
-      </IconButton>
-      <Tooltip delayDuration={400}>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={() => zoomToActual(store)}
-            aria-label={`Zoom ${zoomLabel(z)}, reset to 100%`}
-            className="focus-ring h-9 w-12 rounded-md text-center font-mono text-sm tabular-nums hover:bg-accent"
-          >
-            {zoomLabel(z)}
-          </button>
-        </TooltipTrigger>
-        <TooltipContent className="flex items-center gap-3">
-          <span>Zoom to 100%</span>
-          <span className="font-mono">⇧0</span>
-        </TooltipContent>
-      </Tooltip>
-      <IconButton label="Zoom in" shortcut="+" onClick={() => zoomStep(store, 1)}>
-        <Plus />
-      </IconButton>
+    <Island data-vt="zoom" className="gap-1">
+      {showHistory ? (
+        <>
+          <div className="flex">
+            <IconButton
+              label="Undo"
+              shortcut="⌘Z"
+              disabled={!history.canUndo}
+              onClick={() => undo(store)}
+            >
+              <Undo2 />
+            </IconButton>
+            <IconButton
+              label="Redo"
+              shortcut="⇧⌘Z"
+              disabled={!history.canRedo}
+              onClick={() => redo(store)}
+            >
+              <Redo2 />
+            </IconButton>
+          </div>
+          <span aria-hidden className="h-5 w-px shrink-0 bg-border" />
+        </>
+      ) : null}
+      <div className="flex">
+        <IconButton label="Zoom out" shortcut="−" onClick={() => zoomStep(store, -1)}>
+          <Minus />
+        </IconButton>
+        <Tooltip delayDuration={400}>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={() => zoomToActual(store)}
+              aria-label={`Zoom ${zoomLabel(z)}, reset to 100%`}
+              className="focus-ring h-9 w-12 rounded-md text-center font-mono text-sm tabular-nums hover:bg-accent"
+            >
+              {zoomLabel(z)}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent className="flex items-center gap-3">
+            <span>Zoom to 100%</span>
+            <span className="font-mono">⇧0</span>
+          </TooltipContent>
+        </Tooltip>
+        <IconButton label="Zoom in" shortcut="+" onClick={() => zoomStep(store, 1)}>
+          <Plus />
+        </IconButton>
+      </div>
     </Island>
   );
 }

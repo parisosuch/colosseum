@@ -57,33 +57,66 @@ export type BaseElement = {
   createdBy: string;
 };
 
-// One end of a line or arrow: a free point in world space, or bound to another
-// element at a normalized anchor (0..1 on each axis of its box), so the end
-// follows that element when it moves or resizes.
+// One end of a line or arrow: a free point, or bound to another element at a
+// normalized anchor (0..1 on each axis of its box), so the end follows that
+// element when it moves or resizes. A free point is relative to the
+// connector's parent, like `x`/`y`, so a connector inside a frame or group
+// moves with it; at the top level that is world space. A bound end keeps the
+// last point it resolved to in `x`/`y` (same space), which is where it is drawn
+// if its element disappears without the binding being cleared.
 export type ConnectorEnd =
   | { kind: "point"; x: number; y: number }
-  | { kind: "bound"; elementId: string; ax: number; ay: number };
+  | { kind: "bound"; elementId: string; ax: number; ay: number; x?: number; y?: number };
 
+export type StrokeKind = "pen" | "highlighter";
+export type Routing = "straight" | "elbow";
+
+// Every drawn element but `block` and `group` carries `opacity` (0..1). Colour
+// fields hold token names from lib/canvas/style.ts.
 export type ElementFields = {
   block: { columnId: number };
-  // `text` holds a Y.Text so two people can type in one element.
-  text: { text: Y.Text; fontSize: string; weight: string; align: string };
-  sticky: { text: Y.Text; fill: string };
-  // Pen input points as a flat [x, y, pressure, ...] list, relative to (x, y).
-  stroke: { points: number[]; stroke: string; width: number; opacity: number };
-  rect: { stroke: string; fill: string; width: number };
-  ellipse: { stroke: string; fill: string; width: number };
-  diamond: { stroke: string; fill: string; width: number };
-  line: { start: ConnectorEnd; end: ConnectorEnd; stroke: string; width: number };
+  // `text` holds a Y.Text so two people can type in one element. `stroke` is
+  // the ink colour. `autoSize` is true until someone resizes the box by hand:
+  // until then the width follows the text.
+  text: {
+    text: Y.Text;
+    fontSize: string;
+    weight: string;
+    align: string;
+    stroke: string;
+    opacity: number;
+    autoSize: boolean;
+  };
+  sticky: { text: Y.Text; fill: string; opacity: number };
+  // Pen input points as a flat [x, y, pressure, ...] list, relative to (x, y),
+  // rounded to a tenth of a pixel and pressure to hundredths.
+  stroke: { points: number[]; stroke: string; width: number; opacity: number; kind: StrokeKind };
+  rect: { stroke: string; fill: string; width: number; opacity: number };
+  ellipse: { stroke: string; fill: string; width: number; opacity: number };
+  diamond: { stroke: string; fill: string; width: number; opacity: number };
+  // A connector's x/y/w/h is the box of its route, rewritten by the client that
+  // moves either end, so the server's view of where it sits stays close.
+  line: {
+    start: ConnectorEnd;
+    end: ConnectorEnd;
+    stroke: string;
+    width: number;
+    opacity: number;
+    routing: Routing;
+  };
   arrow: {
     start: ConnectorEnd;
     end: ConnectorEnd;
     stroke: string;
     width: number;
+    opacity: number;
+    routing: Routing;
     startHead: string;
     endHead: string;
   };
   frame: { fill: string };
+  // A group draws nothing. Its x/y is the origin its children are relative to;
+  // its box is the union of its children's.
   group: Record<string, never>;
 };
 

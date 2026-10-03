@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Shapes } from "lucide-react";
 
@@ -8,7 +9,15 @@ import { AddBlockBody, useAddBlockFlow, type PickableChannel } from "@/component
 import BlockModal from "@/components/block-modal";
 import CommandPalette from "@/components/command-palette";
 import { GradientSpin } from "@/components/gradient-spin";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { viewCenter, type Point } from "@/lib/canvas/camera";
 import { placeBlock } from "@/lib/canvas/elements";
@@ -28,7 +37,11 @@ import { BlocksPanel } from "./blocks-panel";
 import { zoomToFit } from "./camera-actions";
 import { EndIsland, StartIsland, Toolbar, ZoomIsland, type ViewerProfile } from "./canvas-chrome";
 import { CanvasStore } from "./canvas-store";
-import { CanvasViewport, type Tool } from "./canvas-viewport";
+import { CanvasViewport } from "./canvas-viewport";
+import { LayersPanel } from "./layers-panel";
+import { PropertiesPanel } from "./properties-panel";
+import { ToolOptions } from "./tool-options";
+import { VIEWER_TOOLS, type Tool } from "./tools";
 import { useCanvas } from "./use-canvas";
 
 // The canvas is view-only on phones and on touch-first devices, per the issue:
@@ -87,7 +100,7 @@ export default function CanvasPage({
 }: CanvasPageProps) {
   const router = useRouter();
   const [store] = useState(
-    () => new CanvasStore(channel.id, canContribute && viewerId ? "write" : "read"),
+    () => new CanvasStore(channel.id, canContribute && viewerId ? "write" : "read", viewerId),
   );
   const connection = useCanvas(store, "connection", (s) => s.connection);
   const doc = useCanvas(store, "doc", (s) => s.docState);
@@ -95,8 +108,32 @@ export default function CanvasPage({
   const canEdit = connection.access === "write" && connection.closed === null;
   const editing = canEdit && !viewOnlyDevice && connection.synced;
 
-  const [tool, setTool] = useState<Tool>("select");
+  const [tool, setToolState] = useState<Tool>("select");
+  const [signInToComment, setSignInToComment] = useState(false);
+  // Picking a tool. A signed-out viewer who picks comment is asked to sign in
+  // instead; a read-only viewer can't pick a drawing tool.
+  const setTool = useCallback(
+    (next: Tool) => {
+      if (next === "comment" && !viewerId) {
+        setSignInToComment(true);
+        return;
+      }
+      if (!store.canEdit && !VIEWER_TOOLS.has(next)) return;
+      store.setEditing(null);
+      setToolState(next);
+    },
+    [store, viewerId],
+  );
+  // The comment tool's click. Threads come with canvas comments; this is where
+  // they start.
+  const startThread = useCallback((_at: Point) => {}, []);
+  // A viewer who loses write access mid-session goes back to a viewer's tool.
+  useEffect(() => {
+    if (!canEdit && !VIEWER_TOOLS.has(tool)) setToolState("select");
+  }, [canEdit, tool]);
   const [panelOpen, setPanelOpen] = useState(true);
+  const [panelTab, setPanelTab] = useState<"blocks" | "layers">("blocks");
+  const selection = useCanvas(store, "selection", (s) => s.selection);
   const showPanel = canEdit && !viewOnlyDevice && panelOpen;
   const [openColumnId, setOpenColumnId] = useState<number | null>(null);
 
@@ -385,45 +422,58 @@ export default function CanvasPage({
           className="absolute bottom-4 left-4 top-20 z-10 flex w-72 flex-col gap-3 rounded-lg border bg-background p-4 shadow-md"
         >
           <div role="tablist" aria-label="Panel" className="flex w-fit rounded-lg border p-0.5">
-            <button
-              type="button"
-              role="tab"
-              aria-selected
-              className="focus-ring h-7 rounded-md bg-secondary px-3 text-sm"
-            >
-              Blocks
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={false}
-              aria-disabled
-              disabled
-              className="h-7 rounded-md px-3 text-sm text-muted-foreground"
-            >
-              Layers
-            </button>
+            {(["blocks", "layers"] as const).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                role="tab"
+                aria-selected={panelTab === tab}
+                onClick={() => setPanelTab(tab)}
+                className={`focus-ring h-7 rounded-md px-3 text-sm transition-colors duration-micro ${panelTab === tab ? "bg-secondary font-medium" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                {tab === "blocks" ? "Blocks" : "Layers"}
+              </button>
+            ))}
           </div>
-          <BlocksPanel
-            store={store}
-            channelId={channel.id}
-            knownColumns={columns}
-            screenshots={screenshots}
-            onLoaded={addColumns}
-            onPlace={placeInView}
-            start={boardReady}
-          />
+          {/* The Blocks tab stays mounted, so its list and scroll survive a
+              trip to Layers. */}
+          <div className={panelTab === "blocks" ? "contents" : "hidden"}>
+            <BlocksPanel
+              store={store}
+              channelId={channel.id}
+              knownColumns={columns}
+              screenshots={screenshots}
+              onLoaded={addColumns}
+              onPlace={placeInView}
+              start={boardReady}
+            />
+          </div>
+          {panelTab === "layers" ? <LayersPanel store={store} columns={columns} /> : null}
         </aside>
       ) : null}
 
       {!viewOnlyDevice ? (
         <>
-          <div className="absolute bottom-4 z-10 -translate-x-1/2" style={{ left: toolbarLeft }}>
-            <Toolbar tool={tool} onToolChange={setTool} disabled={!connection.synced} />
+          <div
+            className="absolute bottom-4 z-10 flex -translate-x-1/2 flex-col items-center gap-3"
+            style={{ left: toolbarLeft }}
+          >
+            {editing ? <ToolOptions store={store} tool={tool} /> : null}
+            <Toolbar
+              tool={tool}
+              onToolChange={setTool}
+              disabled={!connection.synced}
+              viewer={!canEdit}
+            />
           </div>
           <div className="absolute bottom-4 right-4 z-10">
-            <ZoomIsland store={store} />
+            <ZoomIsland store={store} showHistory={canEdit} />
           </div>
+          {editing && selection.size > 0 ? (
+            <div className="pointer-events-none absolute bottom-20 right-4 top-20 z-10 flex flex-col [&>*]:pointer-events-auto">
+              <PropertiesPanel store={store} />
+            </div>
+          ) : null}
         </>
       ) : null}
 
@@ -439,8 +489,30 @@ export default function CanvasPage({
         onToolChange={setTool}
         onOpenBlock={setOpenColumnId}
         onPlaceBlock={(columnId, at) => placeAt(columnId, at)}
+        onComment={startThread}
         ready={boardReady}
       />
+
+      <Dialog open={signInToComment} onOpenChange={setSignInToComment}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Sign in to comment</DialogTitle>
+            <DialogDescription>
+              Anyone who can see this canvas can comment on it once they&apos;re signed in.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSignInToComment(false)}>
+              Not now
+            </Button>
+            <Button asChild>
+              <Link href={`/auth/login?next=${encodeURIComponent(`${channelPath}/canvas`)}`}>
+                Log in
+              </Link>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <BlockModal
         column={openColumn}

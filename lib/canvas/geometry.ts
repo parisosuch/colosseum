@@ -189,3 +189,134 @@ export function nudgeDelta(key: string, shift: boolean): Point | null {
       return null;
   }
 }
+
+// --- distances, for hit-testing lines, pen strokes and the eraser ---
+
+export function distToSegment(p: Point, a: Point, b: Point): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  if (len2 === 0) return Math.hypot(p.x - a.x, p.y - a.y);
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2));
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+
+function cross(o: Point, a: Point, b: Point): number {
+  return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+}
+
+export function segmentsIntersect(a: Point, b: Point, c: Point, d: Point): boolean {
+  const d1 = cross(c, d, a);
+  const d2 = cross(c, d, b);
+  const d3 = cross(a, b, c);
+  const d4 = cross(a, b, d);
+  if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) {
+    return true;
+  }
+  return (
+    (d1 === 0 && distToSegment(a, c, d) === 0) ||
+    (d2 === 0 && distToSegment(b, c, d) === 0) ||
+    (d3 === 0 && distToSegment(c, a, b) === 0) ||
+    (d4 === 0 && distToSegment(d, a, b) === 0)
+  );
+}
+
+export function segmentDistance(a: Point, b: Point, c: Point, d: Point): number {
+  if (segmentsIntersect(a, b, c, d)) return 0;
+  return Math.min(
+    distToSegment(a, c, d),
+    distToSegment(b, c, d),
+    distToSegment(c, a, b),
+    distToSegment(d, a, b),
+  );
+}
+
+// The closest a polyline comes to the segment a-b (a point when a equals b).
+export function polylineDistance(points: readonly Point[], a: Point, b: Point = a): number {
+  if (points.length === 0) return Infinity;
+  if (points.length === 1) return distToSegment(points[0], a, b);
+  let best = Infinity;
+  for (let i = 1; i < points.length; i++) {
+    best = Math.min(best, segmentDistance(points[i - 1], points[i], a, b));
+    if (best === 0) return 0;
+  }
+  return best;
+}
+
+export function rectCorners(r: Rect): Point[] {
+  return [
+    { x: r.x, y: r.y },
+    { x: r.x + r.w, y: r.y },
+    { x: r.x + r.w, y: r.y + r.h },
+    { x: r.x, y: r.y + r.h },
+  ];
+}
+
+export function diamondCorners(r: Rect): Point[] {
+  return [
+    { x: r.x + r.w / 2, y: r.y },
+    { x: r.x + r.w, y: r.y + r.h / 2 },
+    { x: r.x + r.w / 2, y: r.y + r.h },
+    { x: r.x, y: r.y + r.h / 2 },
+  ];
+}
+
+export function closed(points: readonly Point[]): Point[] {
+  return points.length ? [...points, points[0]] : [];
+}
+
+// Whether the segment a-b touches the rect: crosses an edge or lies inside.
+export function segmentHitsRect(a: Point, b: Point, r: Rect): boolean {
+  if (containsPoint(r, a) || containsPoint(r, b)) return true;
+  return polylineDistance(closed(rectCorners(r)), a, b) === 0;
+}
+
+export function insideDiamond(r: Rect, p: Point): boolean {
+  if (r.w === 0 || r.h === 0) return false;
+  const cx = r.x + r.w / 2;
+  const cy = r.y + r.h / 2;
+  return Math.abs(p.x - cx) / (r.w / 2) + Math.abs(p.y - cy) / (r.h / 2) <= 1;
+}
+
+export function insideEllipse(r: Rect, p: Point): boolean {
+  if (r.w === 0 || r.h === 0) return false;
+  const nx = (p.x - (r.x + r.w / 2)) / (r.w / 2);
+  const ny = (p.y - (r.y + r.h / 2)) / (r.h / 2);
+  return nx * nx + ny * ny <= 1;
+}
+
+// An ellipse as a polygon, fine enough for hit-testing its outline.
+export function ellipsePolygon(r: Rect, steps = 48): Point[] {
+  const cx = r.x + r.w / 2;
+  const cy = r.y + r.h / 2;
+  const out: Point[] = [];
+  for (let i = 0; i < steps; i++) {
+    const t = (i / steps) * Math.PI * 2;
+    out.push({ x: cx + (Math.cos(t) * r.w) / 2, y: cy + (Math.sin(t) * r.h) / 2 });
+  }
+  return out;
+}
+
+export function intersectRects(a: Rect, b: Rect): Rect | null {
+  const x = Math.max(a.x, b.x);
+  const y = Math.max(a.y, b.y);
+  const r = Math.min(a.x + a.w, b.x + b.w);
+  const bottom = Math.min(a.y + a.h, b.y + b.h);
+  if (r < x || bottom < y) return null;
+  return { x, y, w: r - x, h: bottom - y };
+}
+
+export function boundsOfPoints(points: readonly Point[]): Rect | null {
+  if (points.length === 0) return null;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of points) {
+    minX = Math.min(minX, p.x);
+    minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x);
+    maxY = Math.max(maxY, p.y);
+  }
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}

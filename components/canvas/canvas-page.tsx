@@ -29,10 +29,8 @@ import {
   supportsViewTransitions,
   transitionReady,
 } from "@/lib/canvas/transition";
-import { getScreenshotsForUrlsAction } from "@/lib/colosseum/actions";
 import { getCanvasBlocksAction } from "@/lib/colosseum/canvas-actions";
 import type { Column } from "@/lib/colosseum/column";
-import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
 import { BlocksPanel } from "./blocks-panel";
 import { zoomToFit } from "./camera-actions";
 import { EndIsland, StartIsland, Toolbar, ZoomIsland, type ViewerProfile } from "./canvas-chrome";
@@ -43,6 +41,8 @@ import { PropertiesPanel } from "./properties-panel";
 import { ToolOptions } from "./tool-options";
 import { VIEWER_TOOLS, type Tool } from "./tools";
 import { useCanvas } from "./use-canvas";
+import { useCanvasScreenshots } from "./use-canvas-screenshots";
+import { usePasteIngest } from "./use-paste-ingest";
 
 // The canvas is view-only on phones and on touch-first devices, per the issue:
 // pan, pinch and tap to open, with no toolbar and no blocks panel.
@@ -240,28 +240,10 @@ export default function CanvasPage({
   }, []);
 
   // --- screenshots for link blocks ---
-  const [screenshots, setScreenshots] = useState<Map<string, ColumnScreenshot>>(() => new Map());
-  const shotsRequested = useRef(new Set<string>());
-  useEffect(() => {
-    const urls = [...columns.values()]
-      .filter((c): c is Column => !!c && c.type === "url" && !!c.url)
-      .map((c) => c.url!)
-      .filter((u) => !shotsRequested.current.has(u));
-    if (urls.length === 0) return;
-    for (const u of urls) shotsRequested.current.add(u);
-    void getScreenshotsForUrlsAction(urls)
-      .then((rows) => {
-        const got = new Map(rows);
-        setScreenshots((prev) => {
-          const next = new Map(prev);
-          for (const u of urls) {
-            next.set(u, got.get(u) ?? { url: u, image_url: null, title: null, captured_at: null });
-          }
-          return next;
-        });
-      })
-      .catch((e) => console.error(e));
-  }, [columns]);
+  const screenshots = useCanvasScreenshots(columns);
+
+  // --- paste and drop from outside the canvas ---
+  usePasteIngest(store, channel.id, addColumns);
 
   // --- placing blocks ---
   const placeAt = useCallback(

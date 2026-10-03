@@ -15,6 +15,7 @@ import { createRestoreWorker } from "./lib/realtime/canvas-restore-pool";
 import { startRetention } from "./lib/realtime/canvas-retention";
 import { createCanvasServer, type Authorization } from "./lib/realtime/canvas-server";
 import { createPgCanvasStore } from "./lib/realtime/canvas-store";
+import { createPgThreadStore } from "./lib/realtime/canvas-thread-store";
 import { subscribeRealtime } from "./lib/realtime/events";
 
 const dev = process.env.NODE_ENV !== "production";
@@ -78,7 +79,8 @@ async function authorize(req: IncomingMessage, channelId: number): Promise<Autho
 }
 
 const store = createPgCanvasStore(databaseUrl);
-const canvas = createCanvasServer({ store, authorize });
+const threads = createPgThreadStore(databaseUrl);
+const canvas = createCanvasServer({ store, authorize, threads });
 subscribeRealtime((event) => canvas.handleEvent(event));
 
 // Canvas version history. The server writes versions as editing sessions go
@@ -126,6 +128,7 @@ async function stop(signal: string) {
     await canvas.shutdown();
     await versionStore.end();
     await store.end();
+    await threads.end();
   } catch (err) {
     console.error("[realtime] shutdown failed", err);
   }

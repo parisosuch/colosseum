@@ -33,6 +33,10 @@ export type ElementType = (typeof ELEMENT_TYPES)[number];
 
 export type BaseElement = {
   type: ElementType;
+  // Position relative to the parent frame or group (`parentId`), so moving a
+  // frame writes one position and its children follow. A top-level element
+  // (parentId null) is in world space, and an element's world position is the
+  // sum along its parent chain (elementWorldPosition in canvas-threads.ts).
   x: number;
   y: number;
   w: number;

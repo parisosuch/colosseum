@@ -225,7 +225,7 @@ export const COLUMN_FILTER_TYPES: Record<Exclude<ColumnFilter, "all">, Column["t
 // the type filter, and the search term. Shared by the list, the count and the
 // neighbour lookup so a filtered board, its result count and its arrows can
 // never disagree about which blocks are in play.
-function columnFilters(channel_id: number, query: ColumnQuery): SQL[] {
+export function columnFilters(channel_id: number, query: ColumnQuery): SQL[] {
   const { search, type = "all" } = query;
   const filters: SQL[] = [eq(column.channel_id, channel_id)];
 

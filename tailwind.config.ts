@@ -56,6 +56,18 @@ export default {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
+        // The canvas floor behind the cards, and the snap-guide red.
+        canvas: {
+          surface: "hsl(var(--canvas-surface))",
+          guide: "hsl(var(--canvas-guide))",
+        },
+        // Editors' colours on the canvas. A PresenceUser's `color` is one of
+        // these names.
+        presence: {
+          violet: "hsl(var(--presence-violet))",
+          orange: "hsl(var(--presence-orange))",
+          teal: "hsl(var(--presence-teal))",
+        },
       },
       // Every radius the app uses derives from --radius, so changing the token
       // moves the whole surface. Only lg/md/sm were wired up, which left bare

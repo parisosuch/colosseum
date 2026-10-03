@@ -16,7 +16,7 @@ export default async function NavBar() {
   const user = await getSessionUser();
   if (!user) {
     return (
-      <nav className="chrome sticky top-0 z-40 w-full flex justify-between p-4">
+      <nav data-vt="nav" className="chrome sticky top-0 z-40 w-full flex justify-between p-4">
         <Link href="/">
           <Logo className="h-6 w-auto" />
         </Link>
@@ -55,7 +55,7 @@ export default async function NavBar() {
   }));
 
   return (
-    <nav className="chrome sticky top-0 z-40 w-full flex justify-between p-4">
+    <nav data-vt="nav" className="chrome sticky top-0 z-40 w-full flex justify-between p-4">
       <Link href="/">
         <Logo className="h-6 w-auto" />
       </Link>

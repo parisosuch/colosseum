@@ -3,7 +3,7 @@ import { Fraunces, Geist } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
 import NavBar from "@/components/nav-bar";
-import { NavBarGate } from "@/components/nav-bar-gate";
+import { MobileBarGate, NavBarGate } from "@/components/nav-bar-gate";
 import { HeroFrame } from "@/components/hero-frame";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -157,9 +157,9 @@ export default async function RootLayout({
                   <SiteFooter />
                 </NavBarGate>
               </div>
-              <NavBarGate>
+              <MobileBarGate>
                 <MobileBottomNav />
-              </NavBarGate>
+              </MobileBarGate>
             </div>
             <Toaster />
             <ServiceWorkerRegister />

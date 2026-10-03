@@ -189,20 +189,18 @@ export default function CanvasPage({
     [store],
   );
 
-  // Tell an open transition the board is ready once it can land on what the
-  // canvas will show: the doc synced, the camera framed and the placed blocks
-  // loaded. Until then the transition holds the channel page on screen (for
-  // at most READY_TIMEOUT_MS in lib/canvas/transition.ts), so nothing pops in
-  // after it lands.
-  const signalled = useRef(false);
+  // The board is ready once the doc has synced, the camera is framed and the
+  // placed blocks are loaded. Until then the board area shows the loader and
+  // the blocks are hidden, so they fade in already framed instead of jumping.
   const boardReady =
     connection.closed !== null ||
     (connection.synced && [...doc.placed].every((id) => columns.has(id)));
+
+  // The open transition starts at once: the chrome runs its storyboard while
+  // the loader covers whatever the board still needs.
   useEffect(() => {
-    if (!boardReady || signalled.current) return;
-    signalled.current = true;
     transitionReady("canvas");
-  }, [boardReady]);
+  }, []);
 
   // --- screenshots for link blocks ---
   const [screenshots, setScreenshots] = useState<Map<string, ColumnScreenshot>>(() => new Map());
@@ -297,16 +295,26 @@ export default function CanvasPage({
   }, []);
 
   const toolbarLeft = showPanel ? `calc(50% + ${(EDGE + PANEL_WIDTH) / 2}px)` : "50%";
-  const empty = connection.synced && doc.ordered.length === 0;
+  const empty = boardReady && connection.closed === null && doc.ordered.length === 0;
+  // Phones keep the app's bottom bar for notifications and the account menu
+  // (signed in, onboarded viewers only, as everywhere else), so the board
+  // stops above it.
+  const aboveBottomBar = viewer
+    ? "bottom-[calc(3.5rem+env(safe-area-inset-bottom))] sm:bottom-0"
+    : "bottom-0";
 
   return (
-    <div className="fixed inset-0 overflow-hidden bg-canvas-surface">
+    <div className={`fixed inset-x-0 top-0 overflow-hidden bg-canvas-surface ${aboveBottomBar}`}>
       <h1 className="sr-only">{`${channel.title} canvas`}</h1>
 
-      {!connection.synced && connection.closed === null ? (
-        <div className="pointer-events-none absolute bottom-20 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full border bg-background px-3 py-1 text-caption shadow-sm">
-          <GradientSpin cellSize={2} />
-          Loading the canvas
+      {!boardReady ? (
+        <div
+          role="status"
+          className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"
+          style={{ paddingLeft: showPanel ? EDGE + PANEL_WIDTH : undefined }}
+        >
+          <GradientSpin />
+          <span className="sr-only">Loading the canvas</span>
         </div>
       ) : null}
 
@@ -364,7 +372,9 @@ export default function CanvasPage({
           showSearch={!!viewer && !viewOnlyDevice}
         />
       </div>
-      <div className={viewOnlyDevice ? "hidden" : "absolute right-4 top-4 z-10"}>
+      {/* On a phone the bottom bar carries notifications and the account
+          menu, so this island steps aside for signed-in viewers there. */}
+      <div className={`absolute right-4 top-4 z-10 ${viewer ? "hidden sm:block" : ""}`}>
         <EndIsland store={store} viewer={viewer} />
       </div>
 
@@ -429,6 +439,7 @@ export default function CanvasPage({
         onToolChange={setTool}
         onOpenBlock={setOpenColumnId}
         onPlaceBlock={(columnId, at) => placeAt(columnId, at)}
+        ready={boardReady}
       />
 
       <BlockModal

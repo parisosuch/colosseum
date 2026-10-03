@@ -507,12 +507,12 @@ test("with no realtime server, history works on the stored doc", async () => {
     const doc = new Y.Doc();
     addShape(doc, "first");
     addBlock(doc, "block", block.id);
-    await store.save(channelId, Y.encodeStateAsUpdate(doc));
+    await store.save(channelId, Y.encodeStateAsUpdate(doc), true);
     const pointId = await history.saveRestorePoint(channelId, "First", USERS.alice.id);
 
     elementsOf(doc).delete("first");
     addShape(doc, "second");
-    await store.save(channelId, Y.encodeStateAsUpdate(doc));
+    await store.save(channelId, Y.encodeStateAsUpdate(doc), true);
     await deleteColumn(block.id);
 
     // The preview already leaves the deleted block out.

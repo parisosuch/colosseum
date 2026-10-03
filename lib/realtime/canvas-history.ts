@@ -355,7 +355,11 @@ export function storedDocs(store: CanvasStore): CanvasDocs {
       const live = await store.columnIds(channelId);
       removeBlockElements(doc, (id) => live.has(id), null);
       const result = fn(doc);
-      if (changed && (await store.save(channelId, Y.encodeStateAsUpdate(doc))) === "gone") {
+      if (
+        changed &&
+        (await store.save(channelId, Y.encodeStateAsUpdate(doc), elementsOf(doc).size > 0)) ===
+          "gone"
+      ) {
         return null;
       }
       return result;

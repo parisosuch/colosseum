@@ -14,23 +14,18 @@ import type { PresenceUser } from "./protocol";
 export type { PresenceUser };
 
 // One colour per person, picked by hashing their user id, so it's the same on
-// every canvas and after every reconnect. A stand-in until the presence design
-// lands: eight hues that hold up on both the light and dark canvas.
-export const PRESENCE_COLORS = [
-  "#e5484d",
-  "#f76b15",
-  "#d6a100",
-  "#30a46c",
-  "#12a594",
-  "#0090ff",
-  "#6e56cf",
-  "#d6409f",
-] as const;
+// every canvas and after every reconnect. These are names, not colours: each
+// one is a `--presence-<name>` token in app/globals.css with a light and a dark
+// value, from the design's `canvas · explore` collection, so a cursor follows
+// the viewer's theme.
+export const PRESENCE_COLORS = ["violet", "orange", "teal"] as const;
+
+export type PresenceColor = (typeof PRESENCE_COLORS)[number];
 
 // What a cursor is labelled with when the editor hasn't picked a handle yet.
 const UNNAMED = "Someone";
 
-export function presenceColor(userId: string): string {
+export function presenceColor(userId: string): PresenceColor {
   // FNV-1a: stable across processes and versions, unlike anything seeded.
   let hash = 0x811c9dc5;
   for (let i = 0; i < userId.length; i++) {

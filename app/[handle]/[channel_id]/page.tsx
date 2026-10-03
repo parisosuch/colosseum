@@ -23,12 +23,16 @@ import {
   getScreenshotsForUrls,
 } from "@/lib/colosseum/screenshot-data";
 import { getSessionUser } from "@/lib/auth";
+import { parseChannelQuery } from "@/lib/canvas/channel-query";
+import { showsCanvasButton } from "@/lib/colosseum/canvas-blocks";
 
 type ChannelPageParams = {
   params: Promise<{ handle: string; channel_id: string }>;
   // `?block=<id>` deep-links a block's modal open on top of the board. Shared
   // links use this form, so the channel is still there when the modal closes.
-  searchParams: Promise<{ block?: string }>;
+  // `sort`, `type`, `q` and `view` are the board's controls
+  // (lib/canvas/channel-query.ts).
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
 // The `?block=` id, or null when absent/malformed.
@@ -56,7 +60,8 @@ export async function generateMetadata({
   // A deep link shares one block, so it gets that block's card rather than the
   // channel's. loadVisibleBlock gates it, so a private block never leaks a
   // title here; an unreadable or bogus id just falls through to channel meta.
-  const blockId = deepLinkedBlockId((await searchParams).block);
+  const block = (await searchParams).block;
+  const blockId = deepLinkedBlockId(Array.isArray(block) ? block[0] : block);
   if (blockId != null) {
     const found = await loadVisibleBlock(id, blockId);
     if (found) {
@@ -132,9 +137,25 @@ export default async function ChannelPage({ params, searchParams }: ChannelPageP
   // the same list — every block is placed at the head as it is added, and the
   // backfill placed the pre-existing ones newest-first — so this changes what a
   // visitor sees only once the owner has actually moved something.
-  const [totalCount, initialColumns] = await Promise.all([
+  //
+  // The URL's controls override that default, so Back from the canvas and a
+  // shared link land on the board as it was left.
+  const query = parseChannelQuery(await searchParams);
+  const filtered = query.q.trim() !== "" || query.type !== "all";
+  const [totalCount, initialColumns, filteredCount, hasCanvas] = await Promise.all([
     getChannelColumnCount(id),
-    getChannelColumns(id, { sort: "manual", limit: PAGE_SIZE }, viewer),
+    getChannelColumns(
+      id,
+      { sort: query.sort, type: query.type, search: query.q, limit: PAGE_SIZE },
+      viewer,
+    ),
+    filtered
+      ? getChannelColumnCount(id, { type: query.type, search: query.q })
+      : Promise.resolve(null),
+    // The canvas button shows for contributors always, and for everyone else
+    // only while the canvas has something on it. One indexed row lookup; the
+    // doc itself isn't read.
+    showsCanvasButton(id, canContribute),
   ]);
 
   const createdOnLabel = new Date(channel.created_at).toLocaleString("default", {
@@ -179,7 +200,8 @@ export default async function ChannelPage({ params, searchParams }: ChannelPageP
   // channel read above is capped at PAGE_SIZE. Re-gated here (not just in
   // generateMetadata) so a link to a block the viewer can't read opens the
   // channel with no modal instead of erroring.
-  const blockId = deepLinkedBlockId((await searchParams).block);
+  const blockParam = (await searchParams).block;
+  const blockId = deepLinkedBlockId(Array.isArray(blockParam) ? blockParam[0] : blockParam);
   const deepLinked = blockId == null ? null : await loadVisibleBlock(id, blockId);
   const initialBlock = deepLinked?.column ?? null;
   // getScreenshot returns a row without its url; the board's map is keyed by
@@ -215,6 +237,9 @@ export default async function ChannelPage({ params, searchParams }: ChannelPageP
       initialScreenshots={initialScreenshots}
       initialBlock={initialBlock}
       initialBlockScreenshot={initialBlockScreenshot}
+      initialQuery={query}
+      initialFilteredCount={filteredCount}
+      showCanvasButton={hasCanvas}
     />
   );
 }

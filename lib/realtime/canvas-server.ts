@@ -16,7 +16,7 @@ import * as awarenessProtocol from "y-protocols/awareness";
 import * as syncProtocol from "y-protocols/sync";
 import * as Y from "yjs";
 
-import { removeBlockElements } from "./canvas-doc";
+import { elementsOf, removeBlockElements } from "./canvas-doc";
 import { affects, isAccessEvent } from "./canvas-permissions";
 import {
   claimClientId,
@@ -62,7 +62,9 @@ export type Authorization = {
 export interface CanvasStore {
   load(channelId: number): Promise<Uint8Array | null>;
   // "gone" when the channel no longer exists (its row was deleted under us).
-  save(channelId: number, doc: Uint8Array): Promise<"ok" | "gone">;
+  // `hasElements`: whether the doc holds any element, stored next to it so the
+  // channel page can tell an empty canvas without loading it.
+  save(channelId: number, doc: Uint8Array, hasElements: boolean): Promise<"ok" | "gone">;
   // Ids of the blocks the channel holds right now.
   columnIds(channelId: number): Promise<Set<number>>;
 }
@@ -202,9 +204,10 @@ class Room {
       this.dirty = false;
       this.firstDirtyAt = null;
       const state = Y.encodeStateAsUpdate(this.doc);
+      const hasElements = elementsOf(this.doc).size > 0;
       this.saving = this.saving.then(async () => {
         try {
-          const result = await this.store.save(this.channelId, state);
+          const result = await this.store.save(this.channelId, state, hasElements);
           if (result === "gone") this.onGone(this);
         } catch (err) {
           console.error(`[realtime] saving canvas ${this.channelId} failed`, err);

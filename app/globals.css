@@ -49,6 +49,30 @@
     --duration-micro: 120ms;
     --duration-ui: 200ms;
     --duration-panel: 260ms;
+    /* Canvas. From the design's `canvas · explore` collection. Selection is
+       monochrome: outlines and handles are drawn in --foreground, and the
+       wash is --foreground at a low alpha. */
+    --canvas-surface: 0 0% 98%;
+    --canvas-wash-alpha: 0.06;
+    --canvas-guide: 346.8 77.2% 49.8%;
+    /* One per editor: cursor, name label, selection outline, avatar ring. The
+       names match PRESENCE_COLORS in lib/realtime/canvas-presence.ts. */
+    --presence-violet: 262.1 83.3% 57.8%;
+    --presence-orange: 17.5 88.3% 40.4%;
+    --presence-teal: 175.3 77.4% 26.1%;
+    /* Drawing palette and sticky fills, for the drawing tools. */
+    --ink-gray: 0 0% 45.1%;
+    --ink-red: 0 72.2% 50.6%;
+    --ink-amber: 32.1 94.6% 43.7%;
+    --ink-green: 142.1 76.2% 36.3%;
+    --ink-blue: 200.4 98% 39.4%;
+    --ink-violet: 271.5 81.3% 55.9%;
+    --sticky-yellow: 48 96.5% 88.8%;
+    --sticky-pink: 325.7 77.8% 94.7%;
+    --sticky-blue: 204 93.8% 93.7%;
+    --sticky-green: 140.6 84.2% 92.5%;
+    --highlight-yellow: 47.9 95.8% 53.1%;
+    --highlight-alpha: 0.45;
   }
   .dark {
     --background: 0 0% 3.9%;
@@ -72,6 +96,23 @@
     --input: 0 0% 40%;
     --ring: 0 0% 83.1%;
     color-scheme: dark;
+    --canvas-surface: 0 0% 5.9%;
+    --canvas-wash-alpha: 0.1;
+    --canvas-guide: 351.3 94.5% 71.4%;
+    --presence-violet: 255.1 91.7% 76.3%;
+    --presence-orange: 27 96% 61%;
+    --presence-teal: 172.5 66% 50.4%;
+    --ink-gray: 0 0% 63.9%;
+    --ink-red: 0 90.6% 70.8%;
+    --ink-amber: 43.3 96.4% 56.3%;
+    --ink-green: 141.9 69.2% 58%;
+    --ink-blue: 198.4 93.2% 59.6%;
+    --ink-violet: 270 95.2% 75.3%;
+    --sticky-yellow: 41.8 80% 13.7%;
+    --sticky-pink: 329.4 55.8% 18.6%;
+    --sticky-blue: 205.4 68.4% 14.9%;
+    --sticky-green: 148.3 54.5% 12.9%;
+    --highlight-alpha: 0.35;
   }
 }
 
@@ -257,6 +298,202 @@
   body:has([data-mobile-bottom-bar]) {
     --toast-offset-bottom: calc(3.5rem + env(safe-area-inset-bottom) + 1rem);
   }
+}
+
+/* The canvas page's open and close transitions (lib/canvas/transition.ts).
+   Elements opt in with data-vt, and only get a view-transition-name while
+   <html data-canvas-vt> says which transition is running, so nothing on either
+   page carries a name the rest of the time and the reduced-motion "fade"
+   transition is a plain root crossfade.
+
+   Open, 480ms: the board grows from the channel grid to the window (260ms),
+   the channel page leaves (120ms), then the islands come in 40ms apart.
+   Close, 260ms: the islands leave together (120ms), then the board shrinks
+   back while the channel page fades in under it (200ms from 60ms). */
+html[data-canvas-vt="open"] [data-vt="board"],
+html[data-canvas-vt="close"] [data-vt="board"] {
+  view-transition-name: channel-board;
+}
+html[data-canvas-vt="open"] [data-vt="header"],
+html[data-canvas-vt="close"] [data-vt="header"] {
+  view-transition-name: channel-header;
+}
+html[data-canvas-vt="open"] [data-vt="nav"],
+html[data-canvas-vt="close"] [data-vt="nav"] {
+  view-transition-name: app-nav;
+}
+html[data-canvas-vt="open"] [data-vt="island-start"],
+html[data-canvas-vt="close"] [data-vt="island-start"] {
+  view-transition-name: canvas-island-start;
+}
+html[data-canvas-vt="open"] [data-vt="island-end"],
+html[data-canvas-vt="close"] [data-vt="island-end"] {
+  view-transition-name: canvas-island-end;
+}
+html[data-canvas-vt="open"] [data-vt="panel"],
+html[data-canvas-vt="close"] [data-vt="panel"] {
+  view-transition-name: canvas-panel;
+}
+html[data-canvas-vt="open"] [data-vt="toolbar"],
+html[data-canvas-vt="close"] [data-vt="toolbar"] {
+  view-transition-name: canvas-toolbar;
+}
+html[data-canvas-vt="open"] [data-vt="zoom"],
+html[data-canvas-vt="close"] [data-vt="zoom"] {
+  view-transition-name: canvas-zoom;
+}
+
+@keyframes canvas-vt-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes canvas-vt-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes canvas-vt-up-out {
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+@keyframes canvas-vt-down-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+@keyframes canvas-vt-right-in {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+}
+@keyframes canvas-vt-up-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes canvas-vt-up-leave {
+  to {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+@keyframes canvas-vt-left-leave {
+  to {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+}
+@keyframes canvas-vt-down-leave {
+  to {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/* The board's corners go from the card's 8px to the window's square edge on
+   the same clock as its size, and back on close. The UA's own group keyframes
+   (position and size) run alongside. */
+@keyframes canvas-vt-corners-open {
+  from {
+    border-radius: 8px;
+  }
+  to {
+    border-radius: 0;
+  }
+}
+@keyframes canvas-vt-corners-close {
+  from {
+    border-radius: 0;
+  }
+  to {
+    border-radius: 8px;
+  }
+}
+html[data-canvas-vt="open"]::view-transition-group(channel-board) {
+  overflow: clip;
+  animation-name: -ua-view-transition-group-anim-channel-board, canvas-vt-corners-open;
+  animation-duration: var(--duration-panel);
+  animation-timing-function: var(--ease-out);
+}
+html[data-canvas-vt="open"]::view-transition-old(channel-board),
+html[data-canvas-vt="open"]::view-transition-new(channel-board) {
+  animation-duration: var(--duration-micro);
+  animation-timing-function: var(--ease-out);
+}
+html[data-canvas-vt="open"]::view-transition-old(root),
+html[data-canvas-vt="open"]::view-transition-old(channel-header),
+html[data-canvas-vt="open"]::view-transition-old(app-nav) {
+  animation: var(--duration-micro) var(--ease-in) both canvas-vt-fade-out;
+}
+html[data-canvas-vt="open"]::view-transition-old(channel-header),
+html[data-canvas-vt="open"]::view-transition-old(app-nav) {
+  animation-name: canvas-vt-up-out;
+}
+html[data-canvas-vt="open"]::view-transition-new(root) {
+  animation: none;
+}
+html[data-canvas-vt="open"]::view-transition-new(canvas-island-start) {
+  animation: var(--duration-ui) var(--ease-out) 160ms both canvas-vt-down-in;
+}
+html[data-canvas-vt="open"]::view-transition-new(canvas-island-end) {
+  animation: var(--duration-ui) var(--ease-out) 200ms both canvas-vt-down-in;
+}
+html[data-canvas-vt="open"]::view-transition-new(canvas-panel) {
+  animation: var(--duration-ui) var(--ease-out) 240ms both canvas-vt-right-in;
+}
+html[data-canvas-vt="open"]::view-transition-new(canvas-toolbar),
+html[data-canvas-vt="open"]::view-transition-new(canvas-zoom) {
+  animation: var(--duration-ui) var(--ease-out) 280ms both canvas-vt-up-in;
+}
+
+html[data-canvas-vt="close"]::view-transition-old(canvas-island-start),
+html[data-canvas-vt="close"]::view-transition-old(canvas-island-end) {
+  animation: var(--duration-micro) var(--ease-in) both canvas-vt-up-leave;
+}
+html[data-canvas-vt="close"]::view-transition-old(canvas-panel) {
+  animation: var(--duration-micro) var(--ease-in) both canvas-vt-left-leave;
+}
+html[data-canvas-vt="close"]::view-transition-old(canvas-toolbar),
+html[data-canvas-vt="close"]::view-transition-old(canvas-zoom) {
+  animation: var(--duration-micro) var(--ease-in) both canvas-vt-down-leave;
+}
+html[data-canvas-vt="close"]::view-transition-group(channel-board) {
+  overflow: clip;
+  animation-name: -ua-view-transition-group-anim-channel-board, canvas-vt-corners-close;
+  animation-duration: var(--duration-ui);
+  animation-delay: 60ms;
+  animation-fill-mode: both;
+  animation-timing-function: var(--ease-out);
+}
+html[data-canvas-vt="close"]::view-transition-old(channel-board),
+html[data-canvas-vt="close"]::view-transition-new(channel-board) {
+  animation-duration: var(--duration-ui);
+  animation-delay: 60ms;
+  animation-fill-mode: both;
+}
+html[data-canvas-vt="close"]::view-transition-old(root) {
+  animation: var(--duration-ui) var(--ease-out) 60ms both canvas-vt-fade-out;
+}
+html[data-canvas-vt="close"]::view-transition-new(root) {
+  animation: var(--duration-ui) var(--ease-out) 60ms both canvas-vt-fade-in;
+}
+html[data-canvas-vt="close"]::view-transition-new(channel-header),
+html[data-canvas-vt="close"]::view-transition-new(app-nav) {
+  animation: var(--duration-ui) var(--ease-out) 60ms both canvas-vt-down-in;
+}
+
+/* Reduced motion, or a trip with no grid to grow from: the pages crossfade. */
+html[data-canvas-vt="fade"]::view-transition-old(root) {
+  animation: var(--duration-ui) var(--ease-in) both canvas-vt-fade-out;
+}
+html[data-canvas-vt="fade"]::view-transition-new(root) {
+  animation: var(--duration-ui) var(--ease-out) both canvas-vt-fade-in;
 }
 
 /* Accessibility media queries, unlayered so they win over the base tokens and

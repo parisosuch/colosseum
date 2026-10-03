@@ -324,6 +324,12 @@ export const channelCanvas = pgTable("channel_canvas", {
     .primaryKey()
     .references(() => channel.id, { onDelete: "cascade" }),
   doc: bytea("doc").notNull(),
+  // Whether the saved doc holds any element, written with every save. The
+  // channel page reads it to decide whether a non-editor gets the canvas
+  // button, without loading the doc. An emptied canvas keeps its row (and its
+  // Yjs delete set, so a stale offline client can't bring elements back) and
+  // has this false.
+  has_elements: boolean("has_elements").notNull().default(false),
   updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

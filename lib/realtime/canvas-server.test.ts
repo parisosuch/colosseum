@@ -40,9 +40,9 @@ async function start({ saveDelayMs = 0 } = {}): Promise<Harness> {
   const canvas = createCanvasServer({
     store: {
       ...store,
-      save: async (id, doc) => {
+      save: async (id, doc, hasElements) => {
         if (saveDelayMs) await new Promise((r) => setTimeout(r, saveDelayMs));
-        return store.save(id, doc);
+        return store.save(id, doc, hasElements);
       },
     },
     authorize: async (req) => {

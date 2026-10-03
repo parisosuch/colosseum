@@ -17,6 +17,7 @@ import {
 import { columnLimitMessage } from "@/lib/quota";
 import { isURL } from "@/lib/utils";
 import type { Channel } from "@/lib/colosseum/channel";
+import type { Column } from "@/lib/colosseum/column";
 import CreateChannelForm from "@/components/create-channel-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,7 +46,14 @@ function fileTooLargeMessage(file: File): string | null {
 // (and kicks off a screenshot), an image/video/PDF becomes a media block, anything
 // else a text block. Both the mobile drawer and the desktop modal drive this
 // exact hook + body, so the behaviour can never drift — only the shell differs.
-export function useAddBlockFlow(channels: PickableChannel[]) {
+//
+// With `channelId` the flow skips the channel step and adds straight to that
+// channel (the canvas's Add, which already knows where the block goes), and
+// `onAdded` hears about the new block.
+export function useAddBlockFlow(
+  channels: PickableChannel[],
+  options: { channelId?: number; onAdded?: (column: Column) => void } = {},
+) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"content" | "channel" | "new-channel">("content");
   const [text, setText] = useState("");
@@ -94,20 +102,22 @@ export function useAddBlockFlow(channels: PickableChannel[]) {
     if (submitting) return false;
     setSubmitting(true);
     try {
+      let added: Column;
       if (file) {
         const formData = new FormData();
         formData.set("channelId", String(channelId));
         formData.set("file", file);
         if (file.type === "application/pdf") {
-          await uploadPdfColumnAction(formData);
+          added = await uploadPdfColumnAction(formData);
         } else if (file.type.startsWith("video/")) {
-          await uploadVideoColumnAction(formData);
+          added = await uploadVideoColumnAction(formData);
         } else {
-          await uploadImageColumnAction(formData);
+          added = await uploadImageColumnAction(formData);
         }
       } else if (isURL(text)) {
         const url = text.startsWith("http") ? text : `https://${text}`;
         const column = await uploadURLColumnAction({ channelId, text: url });
+        added = column;
         // Best-effort: warm the screenshot in the background so the preview is
         // ready by the time the channel is opened. An image URL comes back as an
         // image block, which carries its own bytes and has nothing to capture.
@@ -117,8 +127,9 @@ export function useAddBlockFlow(channels: PickableChannel[]) {
           );
         }
       } else {
-        await uploadTextColumnAction({ channelId, text });
+        added = await uploadTextColumnAction({ channelId, text });
       }
+      options.onAdded?.(added);
       toast.success("Block added.");
       onOpenChange(false);
       return true;
@@ -173,6 +184,7 @@ export function useAddBlockFlow(channels: PickableChannel[]) {
     addToChannel,
     addToNewChannel,
     title,
+    fixedChannelId: options.channelId ?? null,
   };
 }
 
@@ -210,7 +222,14 @@ export function AddBlockBody({
     channels,
     addToChannel,
     addToNewChannel,
+    fixedChannelId,
   } = flow;
+  // Continue goes to the channel picker, or straight in when the channel is
+  // already decided.
+  const advance = () => {
+    if (fixedChannelId != null) void addToChannel(fixedChannelId);
+    else setStep("channel");
+  };
 
   if (step === "content") {
     return (
@@ -232,7 +251,7 @@ export function AddBlockBody({
             // Enter advances to the channel step; Shift+Enter inserts a newline.
             if (advanceOnEnter && e.key === "Enter" && !e.shiftKey && hasContent) {
               e.preventDefault();
-              setStep("channel");
+              advance();
             }
           }}
           placeholder="Paste a link or an image, or type text…"
@@ -275,10 +294,10 @@ export function AddBlockBody({
         {/* Pinned to the bottom of the sheet, where the thumb is. */}
         <Button
           className={`w-full ${tall ? "mt-auto" : ""}`}
-          disabled={!hasContent}
-          onClick={() => setStep("channel")}
+          disabled={!hasContent || submitting}
+          onClick={advance}
         >
-          Continue
+          {fixedChannelId != null ? "Add" : "Continue"}
         </Button>
       </div>
     );

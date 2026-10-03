@@ -24,13 +24,15 @@ export function createPgCanvasStore(connectionString: string): CanvasStore & {
       return row ? new Uint8Array(row.doc) : null;
     },
 
-    async save(channelId, doc) {
+    async save(channelId, doc, hasElements) {
       try {
         await sql`
-          insert into channel_canvas (channel_id, doc, updated_at)
-          values (${channelId}, ${Buffer.from(doc)}, now())
+          insert into channel_canvas (channel_id, doc, has_elements, updated_at)
+          values (${channelId}, ${Buffer.from(doc)}, ${hasElements}, now())
           on conflict (channel_id) do update
-            set doc = excluded.doc, updated_at = excluded.updated_at
+            set doc = excluded.doc,
+                has_elements = excluded.has_elements,
+                updated_at = excluded.updated_at
         `;
         return "ok";
       } catch (err) {

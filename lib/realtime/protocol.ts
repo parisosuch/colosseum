@@ -31,8 +31,9 @@ export type PresenceUser = {
   // handle, so this is the handle, or a placeholder when there isn't one.
   name: string;
   avatarUrl: string | null;
-  // A colour from PRESENCE_COLORS (canvas-presence.ts), the same for this user
-  // on every canvas and in every session.
+  // A colour name from PRESENCE_COLORS (canvas-presence.ts), the same for this
+  // user on every canvas and in every session. Clients draw it with the
+  // matching `--presence-<name>` token.
   color: string;
 };
 

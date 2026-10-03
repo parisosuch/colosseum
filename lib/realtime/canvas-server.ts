@@ -17,6 +17,13 @@ import * as syncProtocol from "y-protocols/sync";
 import * as Y from "yjs";
 
 import { removeBlockElements } from "./canvas-doc";
+import {
+  attachThreadAnchors,
+  isThreadEvent,
+  toThreadChannelEvent,
+  type ThreadAnchors,
+  type ThreadAnchorStore,
+} from "./canvas-threads";
 import type { RealtimeEvent } from "./events";
 import {
   CANVAS_PATH,
@@ -49,6 +56,9 @@ export type CanvasServerOptions = {
   // Null rejects the upgrade: the channel doesn't exist, or the viewer can't
   // read it. The two aren't told apart, same as the channel page.
   authorize: (req: IncomingMessage, channelId: number) => Promise<Authorization | null>;
+  // Comment threads pinned to elements (canvas-threads.ts). Without it, rooms
+  // still relay thread events but don't free a thread whose element is deleted.
+  threads?: ThreadAnchorStore;
   // Save this long after the last change...
   debounceMs?: number;
   // ...but never later than this after the first unsaved one, so a long
@@ -90,6 +100,7 @@ class Room {
   closeCode = 0;
   // Settles once the saved doc is loaded and pruned. Set by getRoom.
   ready: Promise<void> = Promise.resolve();
+  anchors: ThreadAnchors | null = null;
 
   constructor(
     readonly channelId: number,
@@ -184,6 +195,7 @@ class Room {
     this.closed = true;
     this.closeCode = code;
     if (this.timer) clearTimeout(this.timer);
+    void this.anchors?.detach();
     for (const ws of this.conns.keys()) ws.close(code, reason);
     this.conns.clear();
     this.awareness.destroy();
@@ -217,6 +229,7 @@ export function createCanvasServer(options: CanvasServerOptions) {
   const {
     store,
     authorize,
+    threads,
     debounceMs = 1000,
     maxWaitMs = 10_000,
     pingIntervalMs = 30_000,
@@ -249,6 +262,19 @@ export function createCanvasServer(options: CanvasServerOptions) {
     room.ready = (async () => {
       const saved = await store.load(channelId);
       if (saved) Y.applyUpdate(room.doc, saved, LOAD_ORIGIN);
+      // Before the prune, so a pruned block frees its threads where it was. A
+      // failure here costs thread anchoring, not the canvas.
+      if (threads) {
+        room.anchors = await attachThreadAnchors({
+          channelId,
+          doc: room.doc,
+          store: threads,
+          send: (event) => room.sendEvent(event),
+        }).catch((err) => {
+          console.error(`[realtime] loading threads for canvas ${channelId} failed`, err);
+          return null;
+        });
+      }
       // Blocks deleted or moved away while nobody had the canvas open still
       // have elements in the saved doc. Drop them now; the removal saves like
       // any other change.
@@ -441,6 +467,11 @@ export function createCanvasServer(options: CanvasServerOptions) {
       room.ready.then(
         () => {
           if (room.closed) return;
+          if (isThreadEvent(event)) {
+            room.sendEvent(toThreadChannelEvent(event));
+            room.anchors?.handle(event);
+            return;
+          }
           switch (event.type) {
             case "block.added":
               room.sendEvent({ type: "block.added", columnId: event.columnId });
@@ -470,6 +501,7 @@ export function createCanvasServer(options: CanvasServerOptions) {
             return;
           }
           await room.flush();
+          await room.anchors?.detach();
           room.close(1012, "server restarting");
         }),
       );

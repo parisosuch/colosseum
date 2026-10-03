@@ -11,13 +11,17 @@
 // the canvas prunes blocks that no longer exist whenever it loads a channel,
 // so a missed event only matters for a canvas someone has open right now.
 
+import type { ThreadRealtimeEvent } from "./canvas-threads";
+
 export type RealtimeEvent =
   // A block was added to a channel: created, copied in, or moved in.
   | { type: "block.added"; channelId: number; columnId: number }
   // A block left a channel: deleted, or moved out to another one.
   | { type: "block.removed"; channelId: number; columnId: number }
   // The channel is gone; its canvas row went with it (ON DELETE CASCADE).
-  | { type: "channel.deleted"; channelId: number };
+  | { type: "channel.deleted"; channelId: number }
+  // Canvas comment threads: new threads, replies and deletions.
+  | ThreadRealtimeEvent;
 
 type Listener = (event: RealtimeEvent) => void;
 

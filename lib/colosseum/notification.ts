@@ -23,9 +23,10 @@ import { getUserProfile, updateUserProfile } from "./user";
 
 export const NOTIFICATION_PAGE = 30;
 
-// One email per (recipient, type, channel, block) inside this window. A burst of
-// comments on one block announces itself once; the in-app rows and the unread
-// badge still fire per event, and the per-type toggles still apply.
+// One email per (recipient, type, channel, block or canvas thread) inside this
+// window. A burst of comments on one block announces itself once; the in-app
+// rows and the unread badge still fire per event, and the per-type toggles
+// still apply.
 export const EMAIL_QUIET_PERIOD_MINUTES = 15;
 
 // How much of a comment body rides along in the row and the email.
@@ -156,6 +157,12 @@ function subjectBlock(r: JoinedNotification): string | null {
   });
 }
 
+// A comment or mention in a canvas thread, which records the thread instead of
+// a block.
+function isCanvasComment(r: { n: NotificationRow }): boolean {
+  return r.n.thread_id !== null;
+}
+
 // A `connect` notification is in the old shape when it has no column: those rows
 // recorded the recipient's own channel in `channel_id` rather than the host, so
 // they keep rendering the message and link they always did.
@@ -176,6 +183,10 @@ function hasPrivateHost(r: JoinedNotification): boolean {
 function messageFor(r: JoinedNotification): string {
   const inChannel = r.channel_title ? ` in ${quoted(r.channel_title)}` : "";
   const block = subjectBlock(r);
+  if (isCanvasComment(r)) {
+    const on = r.channel_title ? `the canvas of ${quoted(r.channel_title)}` : "a canvas";
+    return r.n.type === "mention" ? `mentioned you on ${on}` : `commented on ${on}`;
+  }
   switch (r.n.type) {
     case "comment":
       return block ? `commented on ${quoted(block)}${inChannel}` : "commented on your block";
@@ -215,6 +226,8 @@ function hrefFor(r: JoinedNotification): string {
     return r.owner_handle ? `/${r.owner_handle}/${r.n.channel_id}` : "/";
   }
   if (!r.owner_handle) return "/";
+  // A canvas comment opens the canvas on its thread.
+  if (isCanvasComment(r)) return `/${r.owner_handle}/${r.n.channel_id}?thread=${r.n.thread_id}`;
   return r.n.column_id !== null
     ? `/${r.owner_handle}/${r.n.channel_id}/${r.n.column_id}`
     : `/${r.owner_handle}/${r.n.channel_id}`;
@@ -264,6 +277,7 @@ async function inEmailQuietPeriod(n: NotificationRow): Promise<boolean> {
         sql`${notification.channel_id} IS NOT DISTINCT FROM ${n.channel_id}`,
         sql`${notification.group_id} IS NOT DISTINCT FROM ${n.group_id}`,
         sql`${notification.column_id} IS NOT DISTINCT FROM ${n.column_id}`,
+        sql`${notification.thread_id} IS NOT DISTINCT FROM ${n.thread_id}`,
         lt(notification.id, n.id),
         gt(notification.email_sent_at, since),
       ),
@@ -288,12 +302,15 @@ async function emailNotification(n: NotificationRow): Promise<boolean> {
     heading: "New on Colosseum",
     // The excerpt is user-written; renderEmail escapes what it interpolates.
     body: excerpt ? `${message}\n\n“${excerpt}”` : message,
-    // Mirrors hrefFor: only a non-connect row with a block lands on one.
+    // Mirrors hrefFor: only a non-connect row with a block lands on one, and a
+    // canvas comment lands on its thread.
     buttonLabel: n.group_id
       ? "View group"
       : n.type !== "connect" && n.column_id !== null
         ? "View block"
-        : "View channel",
+        : isCanvasComment(row)
+          ? "View thread"
+          : "View channel",
     buttonUrl: base + hrefFor(row),
     footnote: "Turn these off anytime in your Colosseum settings.",
   });
@@ -312,6 +329,7 @@ export async function createNotification(
     type: NotificationType;
     column_id?: number;
     comment_id?: number;
+    thread_id?: number;
   } & ({ channel_id: number } | { group_id: string }),
 ): Promise<void> {
   if (input.recipient_id === input.actor_id) return;
@@ -326,6 +344,7 @@ export async function createNotification(
         group_id: "group_id" in input ? input.group_id : null,
         column_id: input.column_id ?? null,
         comment_id: input.comment_id ?? null,
+        thread_id: input.thread_id ?? null,
       })
       .returning();
     if (await emailNotification(row)) {

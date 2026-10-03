@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNotNull } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { comment, owner } from "@/lib/db/schema";
@@ -12,6 +12,9 @@ import { getPublicUserProfile } from "./user";
 // can't be used to store arbitrarily large blobs.
 export const MAX_COMMENT_LENGTH = 2000;
 
+// A comment on a block. Canvas thread comments share the table (with
+// `thread_id` set instead of `column_id`) and have their own type and reads in
+// ./canvas-thread; nothing here returns one.
 export type Comment = {
   id: number;
   created_at: string;
@@ -24,11 +27,16 @@ export type Comment = {
 };
 
 type CommentRow = typeof comment.$inferSelect;
-function toComment(row: CommentRow, handle: string, avatar_url: string | null): Comment {
+function toComment(
+  row: CommentRow,
+  column_id: number,
+  handle: string,
+  avatar_url: string | null,
+): Comment {
   return {
     id: row.id,
     created_at: row.created_at.toISOString(),
-    column_id: row.column_id,
+    column_id,
     author_id: row.author_id,
     body: row.body,
     author_handle: handle,
@@ -49,7 +57,7 @@ export async function getColumnComments(column_id: number): Promise<Comment[]> {
     .innerJoin(owner, eq(owner.user_id, comment.author_id))
     .where(eq(comment.column_id, column_id))
     .orderBy(asc(comment.created_at));
-  return rows.map(({ c, handle, avatar_url }) => toComment(c, handle, avatar_url));
+  return rows.map(({ c, handle, avatar_url }) => toComment(c, column_id, handle, avatar_url));
 }
 
 // Post a comment. Returns it with the author's display info resolved. Callers
@@ -65,11 +73,14 @@ export async function createComment(input: {
     .from(owner)
     .where(eq(owner.user_id, input.author_id))
     .limit(1);
-  return toComment(row, profile.handle, profile.avatar_url);
+  return toComment(row, input.column_id, profile.handle, profile.avatar_url);
 }
 
 // Just the fields needed to authorize a delete (author, and the block it hangs
-// off so the channel owner can be checked). Null when it doesn't exist.
+// off so the channel owner can be checked). Null when it doesn't exist, and
+// for a canvas thread comment: the block-comment delete paths (web, REST, MCP)
+// would otherwise look up a null block, and a thread comment's delete rule
+// goes through its thread's channel instead (./canvas-thread).
 export async function getCommentAuthorization(
   comment_id: number,
 ): Promise<{ author_id: string; column_id: number } | null> {
@@ -79,13 +90,36 @@ export async function getCommentAuthorization(
   const [row] = await db
     .select({ author_id: comment.author_id, column_id: comment.column_id })
     .from(comment)
-    .where(eq(comment.id, comment_id))
+    .where(and(eq(comment.id, comment_id), isNotNull(comment.column_id)))
     .limit(1);
-  return row ?? null;
+  return row?.column_id != null ? { author_id: row.author_id, column_id: row.column_id } : null;
 }
 
 export async function deleteComment(comment_id: number): Promise<void> {
   await db.delete(comment).where(eq(comment.id, comment_id));
+}
+
+// A comment body as stored: trimmed, non-empty, at most MAX_COMMENT_LENGTH.
+// Throws a message fit to show the person who wrote it.
+export function validateCommentBody(body: string): string {
+  const trimmed = body.trim();
+  if (!trimmed) throw new Error("Comment can't be empty.");
+  if (trimmed.length > MAX_COMMENT_LENGTH) {
+    throw new Error(`Comment is too long (max ${MAX_COMMENT_LENGTH} characters).`);
+  }
+  return trimmed;
+}
+
+// The people a comment body @mentions, once each, skipping handles that name
+// nobody (or a group). Not yet filtered to who can read the channel; callers
+// do that with the rest of their recipients.
+export async function mentionedUsers(body: string): Promise<{ user_id: string }[]> {
+  const handles = [
+    ...new Set(parseMentions(body).flatMap((s) => (s.type === "mention" ? [s.handle] : []))),
+  ];
+  return (await Promise.all(handles.map((h) => getPublicUserProfile(h)))).filter(
+    (p): p is NonNullable<typeof p> => p !== null,
+  );
 }
 
 // Post a comment and send the notices it owes: one to the block's author, and
@@ -109,11 +143,7 @@ export async function createCommentWithNotices(input: {
   authorId: string;
   body: string;
 }): Promise<Comment> {
-  const trimmed = input.body.trim();
-  if (!trimmed) throw new Error("Comment can't be empty.");
-  if (trimmed.length > MAX_COMMENT_LENGTH) {
-    throw new Error(`Comment is too long (max ${MAX_COMMENT_LENGTH} characters).`);
-  }
+  const trimmed = validateCommentBody(input.body);
 
   const created = await createComment({
     column_id: input.column.id,
@@ -121,11 +151,8 @@ export async function createCommentWithNotices(input: {
     body: trimmed,
   });
 
-  const handles = [
-    ...new Set(parseMentions(trimmed).flatMap((s) => (s.type === "mention" ? [s.handle] : []))),
-  ];
-  const mentioned = (await Promise.all(handles.map((h) => getPublicUserProfile(h)))).filter(
-    (p): p is NonNullable<typeof p> => p !== null && p.user_id !== input.column.created_by,
+  const mentioned = (await mentionedUsers(trimmed)).filter(
+    (p) => p.user_id !== input.column.created_by,
   );
   const readers = new Set(
     await channelReaders(input.channel, [

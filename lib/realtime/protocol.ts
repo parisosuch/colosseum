@@ -3,6 +3,7 @@
 // Colosseum adds on top uses a type number far above them.
 
 import * as encoding from "lib0/encoding";
+import type { ThreadChannelEvent } from "./canvas-threads";
 
 export const MESSAGE_SYNC = 0;
 export const MESSAGE_AWARENESS = 1;
@@ -46,7 +47,9 @@ export type ChannelEvent =
   // joins, and again whenever a permission change re-checks it and the answer
   // differs. `read` means the server drops this client's updates and awareness
   // from then on: show the canvas read-only. `user` is null for read access.
-  | { type: "session"; access: "read" | "write"; user: PresenceUser | null };
+  | { type: "session"; access: "read" | "write"; user: PresenceUser | null }
+  // Canvas comment threads (canvas-threads.ts).
+  | ThreadChannelEvent;
 
 export function encodeChannelEvent(event: ChannelEvent): Uint8Array {
   const encoder = encoding.createEncoder();

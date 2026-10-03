@@ -11,6 +11,8 @@
 // the canvas prunes blocks that no longer exist whenever it loads a channel,
 // so a missed event only matters for a canvas someone has open right now.
 
+import type { ThreadRealtimeEvent } from "./canvas-threads";
+
 export type RealtimeEvent =
   // A block was added to a channel: created, copied in, or moved in.
   | { type: "block.added"; channelId: number; columnId: number }
@@ -25,7 +27,9 @@ export type RealtimeEvent =
   // One person's access changed: removed from a channel (`channelId` set), or
   // their group role, group membership or ban changed (no `channelId`, since
   // that can reach any channel). Their open sockets are re-authorized.
-  | { type: "user.access-changed"; userId: string; channelId?: number };
+  | { type: "user.access-changed"; userId: string; channelId?: number }
+  // Canvas comment threads: new threads, replies and deletions.
+  | ThreadRealtimeEvent;
 
 type Listener = (event: RealtimeEvent) => void;
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import {
   cameraTransform,
@@ -15,32 +15,58 @@ import {
   type Point,
   type Rect,
 } from "@/lib/canvas/camera";
-import { BLOCK_MIN_SIZE, removeElements, setGeometry } from "@/lib/canvas/elements";
+import { setProps } from "@/lib/canvas/elements";
 import {
   HANDLE_CURSOR,
   cullBoxes,
   expandRect,
   hitHandle,
-  hitTest,
-  marqueeHits,
   needsRecull,
-  normalizeRect,
   nudgeDelta,
   pastThreshold,
-  resizeRect,
-  scaleRects,
-  unionRects,
-  type Handle,
 } from "@/lib/canvas/geometry";
+import { hitLeaf } from "@/lib/canvas/hit";
+import { strokePath } from "@/lib/canvas/pen";
+import { HIGHLIGHT, inkCss } from "@/lib/canvas/style";
+import { moveUpdates } from "@/lib/canvas/transform";
 import type { Column } from "@/lib/colosseum/column";
 import type { ColumnScreenshot } from "@/lib/colosseum/screenshot-data";
+import {
+  alignSelection,
+  deleteSelection,
+  distributeSelection,
+  duplicate,
+  groupSelection,
+  redo,
+  reorderSelection,
+  selectAll,
+  selectChildren,
+  selectParents,
+  undo,
+  ungroupSelection,
+} from "./actions";
 import { zoomStep, zoomToActual, zoomToFit, zoomToSelection } from "./camera-actions";
-import { CanvasBlock } from "./canvas-block";
+import { CanvasElement } from "./canvas-element";
 import { CanvasOverlay, HANDLE_SIZE } from "./canvas-overlay";
 import type { CanvasStore } from "./canvas-store";
+import {
+  beginGesture,
+  doubleClick,
+  endGesture,
+  moveGesture,
+  previewGeom,
+  resizeBounds,
+  syncConnectorBoxes,
+  toolCursor,
+  type Gesture,
+  type GestureContext,
+} from "./gestures";
+import { handleCopy, handlePaste } from "./paste";
+import { TextEditor } from "./text-editor";
+import { toolForKey, VIEWER_TOOLS, type Tool } from "./tools";
 import { useCanvas } from "./use-canvas";
 
-export type Tool = "select" | "hand";
+export type { Tool } from "./tools";
 
 // The MIME type a sidebar block carries while it's dragged onto the canvas.
 export const BLOCK_DRAG_TYPE = "application/x-colosseum-block";
@@ -59,36 +85,8 @@ const WILL_CHANGE_MIN_ZOOM = 0;
 const TAP_MS = 350;
 const TAP_SLOP = 8;
 
-type Gesture =
-  | { kind: "pan"; pointerId: number; last: Point }
-  | {
-      kind: "move";
-      pointerId: number;
-      start: Point;
-      moving: boolean;
-      // Stored (parent-relative) positions at the start, per element.
-      origins: Map<string, Point>;
-      // A press on an already-selected block in a multi-selection: if it never
-      // becomes a move, the release selects only that block.
-      collapseTo: string | null;
-    }
-  | {
-      kind: "marquee";
-      pointerId: number;
-      start: Point;
-      startWorld: Point;
-      active: boolean;
-      base: Set<string>;
-    }
-  | {
-      kind: "resize";
-      pointerId: number;
-      handle: Handle;
-      start: Point;
-      bounds: Rect;
-      // World rects and stored offsets (stored = world - offset) at the start.
-      items: { id: string; world: Rect; offset: Point }[];
-    };
+type Pan = { kind: "pan"; last: Point; start: Point; clickable: boolean };
+type Active = { pointerId: number; g: Gesture | Pan };
 
 type TouchGesture = {
   points: Map<number, Point>;
@@ -97,6 +95,8 @@ type TouchGesture = {
   startDist: number;
   tapStart: { at: Point; time: number } | null;
 };
+
+const BLOCKS_ONLY = { includeLocked: true, types: (e: { type: string }) => e.type === "block" };
 
 export function CanvasViewport({
   store,
@@ -108,12 +108,14 @@ export function CanvasViewport({
   onToolChange,
   onOpenBlock,
   onPlaceBlock,
+  onComment,
   ready,
 }: {
   store: CanvasStore;
   columns: ReadonlyMap<number, Column | null>;
   screenshots: ReadonlyMap<string, ColumnScreenshot>;
-  // Selection, moves, resizes and drops. Off for read-only viewers and phones.
+  // The drawing tools, selection, moves, resizes and drops. Off for read-only
+  // viewers and phones.
   editing: boolean;
   // A phone or tablet: one finger pans, two pinch, a tap opens a block.
   touchOnly: boolean;
@@ -121,6 +123,8 @@ export function CanvasViewport({
   onToolChange: (tool: Tool) => void;
   onOpenBlock: (columnId: number) => void;
   onPlaceBlock: (columnId: number, at: Point) => void;
+  // The comment tool's click, in world space.
+  onComment: (at: Point) => void;
   // Whether the board has its blocks and opening camera. The world stays
   // hidden until then and fades in, rather than its cards appearing one batch
   // at a time under the loader.
@@ -129,11 +133,30 @@ export function CanvasViewport({
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const worldRef = useRef<HTMLDivElement | null>(null);
   const doc = useCanvas(store, "doc", (s) => s.docState);
+  const erasing = useCanvas(store, "interaction", (s) => s.erasing);
+  const editingText = useCanvas(store, "editing", (s) => s.editing);
+  const editingId = editingText && "id" in editingText ? editingText.id : null;
 
   // The latest props, for the native listeners registered once below.
-  const props = useRef({ editing, touchOnly, tool, onToolChange, onOpenBlock, onPlaceBlock });
+  const props = useRef({
+    editing,
+    touchOnly,
+    tool,
+    onToolChange,
+    onOpenBlock,
+    onPlaceBlock,
+    onComment,
+  });
   useLayoutEffect(() => {
-    props.current = { editing, touchOnly, tool, onToolChange, onOpenBlock, onPlaceBlock };
+    props.current = {
+      editing,
+      touchOnly,
+      tool,
+      onToolChange,
+      onOpenBlock,
+      onPlaceBlock,
+      onComment,
+    };
   });
 
   const [visible, setVisible] = useState<ReadonlySet<string>>(() => new Set());
@@ -199,10 +222,10 @@ export function CanvasViewport({
     };
   }, [store]);
 
-  // --- pointer, wheel, gesture and keyboard input ---
+  // --- pointer, wheel, gesture, keyboard and clipboard input ---
   useEffect(() => {
     const el = viewportRef.current!;
-    let gesture: Gesture | null = null;
+    let active: Active | null = null;
     let touch: TouchGesture | null = null;
     let space = false;
     let frame = 0;
@@ -233,191 +256,139 @@ export function CanvasViewport({
       run?.();
     };
 
-    const selectionBounds = (): Rect | null =>
-      unionRects(
-        [...store.selection]
-          .map((id) => store.docState.boxById.get(id)?.rect)
-          .filter((r) => r !== undefined),
-      );
+    const ctx = (): GestureContext => ({
+      store,
+      tool: props.current.tool,
+      setTool: props.current.onToolChange,
+      schedule,
+      flush,
+      onOpenBlock: props.current.onOpenBlock,
+      onComment: props.current.onComment,
+    });
 
     const panning = () => space || props.current.tool === "hand";
 
+    const blockAt = (p: Point): number | null => {
+      const hit = hitLeaf(store.hitContext(), toWorld(p), store.camera.z, BLOCKS_ONLY);
+      return hit ? (store.docState.elements.get(hit)?.columnId ?? null) : null;
+    };
+
     const updateHoverCursor = (p: Point) => {
       if (panning()) return setCursor("grab");
-      if (!props.current.editing) return setCursor("default");
-      const b = selectionBounds();
+      const tool = props.current.tool;
+      if (!props.current.editing) {
+        if (tool === "comment") return setCursor("crosshair");
+        // Read-only viewers open blocks with a click and pan with a drag.
+        return setCursor(blockAt(p) != null ? "pointer" : "grab");
+      }
+      if (tool !== "select") return setCursor(toolCursor(tool));
+      const b = resizeBounds(store);
       const h = b ? hitHandle(worldRectToScreen(store.camera, b), p, HANDLE_SIZE) : null;
       setCursor(h ? HANDLE_CURSOR[h] : "default");
     };
 
-    const blockAt = (world: Point): string | null => hitTest(store.docState.boxes, world);
-    const columnOf = (id: string) => store.docState.elements.get(id)?.columnId ?? null;
+    const inEditor = (e: Event) =>
+      !!(e.target as HTMLElement | null)?.closest?.("[data-canvas-editor]");
 
     // ----- mouse and pen -----
     const onPointerDown = (e: PointerEvent) => {
+      if (inEditor(e)) return;
       if (e.pointerType === "touch" || props.current.touchOnly) return onTouchDown(e);
       // No text selection or native drag from a press on the board.
       e.preventDefault();
+      // A press on the board ends typing.
+      if (store.editing) (document.activeElement as HTMLElement | null)?.blur();
       el.focus({ preventScroll: true });
       const p = local(e);
-      if (
-        e.button === 1 ||
-        (e.button === 0 && panning()) ||
-        (e.button === 0 && !props.current.editing)
-      ) {
-        e.preventDefault();
-        gesture = { kind: "pan", pointerId: e.pointerId, last: p };
+      const tool = props.current.tool;
+      const viewerSelect = !props.current.editing && tool !== "comment";
+      if (e.button === 1 || (e.button === 0 && (panning() || viewerSelect))) {
+        active = {
+          pointerId: e.pointerId,
+          g: {
+            kind: "pan",
+            last: p,
+            start: p,
+            clickable: e.button === 0 && viewerSelect && !panning(),
+          },
+        };
         el.setPointerCapture(e.pointerId);
         setCursor("grabbing");
         return;
       }
       if (e.button !== 0) return;
-      const world = toWorld(p);
-
-      const bounds = selectionBounds();
-      if (bounds) {
-        const handle = hitHandle(worldRectToScreen(store.camera, bounds), p, HANDLE_SIZE);
-        if (handle) {
-          const items = [...store.selection].flatMap((id) => {
-            const box = store.docState.boxById.get(id);
-            const snap = store.docState.elements.get(id);
-            if (!box || !snap) return [];
-            return [
-              { id, world: box.rect, offset: { x: box.rect.x - snap.x, y: box.rect.y - snap.y } },
-            ];
-          });
-          gesture = { kind: "resize", pointerId: e.pointerId, handle, start: p, bounds, items };
-          el.setPointerCapture(e.pointerId);
-          return;
-        }
-      }
-
-      const hit = blockAt(world);
-      if (hit) {
-        let collapseTo: string | null = null;
-        if (e.shiftKey) {
-          const next = new Set(store.selection);
-          if (next.has(hit)) next.delete(hit);
-          else next.add(hit);
-          store.setSelection(next);
-          if (!next.has(hit)) return;
-        } else if (!store.selection.has(hit)) {
-          store.setSelection([hit]);
-        } else if (store.selection.size > 1) {
-          collapseTo = hit;
-        }
-        const origins = new Map<string, Point>();
-        for (const id of store.selection) {
-          const snap = store.docState.elements.get(id);
-          if (snap && !snap.locked) origins.set(id, { x: snap.x, y: snap.y });
-        }
-        gesture = {
-          kind: "move",
-          pointerId: e.pointerId,
-          start: p,
-          moving: false,
-          origins,
-          collapseTo,
-        };
-      } else {
-        const base = e.shiftKey ? new Set(store.selection) : new Set<string>();
-        if (!e.shiftKey) store.setSelection([]);
-        gesture = {
-          kind: "marquee",
-          pointerId: e.pointerId,
-          start: p,
-          startWorld: world,
-          active: false,
-          base,
-        };
-      }
+      // Read-only viewers only get this far with the comment tool.
+      if (!props.current.editing && tool !== "comment") return;
+      const g = beginGesture(ctx(), e, p);
+      if (!g) return;
+      active = { pointerId: e.pointerId, g };
       el.setPointerCapture(e.pointerId);
     };
 
     const onPointerMove = (e: PointerEvent) => {
       if (e.pointerType === "touch" || props.current.touchOnly) return onTouchMove(e);
       const p = local(e);
-      if (props.current.editing) store.setCursor(toWorld(p));
-      if (!gesture || gesture.pointerId !== e.pointerId) {
+      const w = toWorld(p);
+      store.pointer = w;
+      if (props.current.editing) store.setCursor(w);
+      if (!active || active.pointerId !== e.pointerId) {
         updateHoverCursor(p);
         return;
       }
-      const g = gesture;
+      const g = active.g;
       if (g.kind === "pan") {
         store.setCamera(panBy(store.camera, p.x - g.last.x, p.y - g.last.y));
         g.last = p;
-      } else if (g.kind === "move") {
-        if (!g.moving && !pastThreshold(g.start, p)) return;
-        g.moving = true;
-        const dx = (p.x - g.start.x) / store.camera.z;
-        const dy = (p.y - g.start.y) / store.camera.z;
-        schedule(() =>
-          setGeometry(
-            store.doc,
-            [...g.origins].map(([id, o]) => ({ id, x: o.x + dx, y: o.y + dy })),
-            store.origin,
-          ),
-        );
-      } else if (g.kind === "marquee") {
-        if (!g.active && !pastThreshold(g.start, p)) return;
-        g.active = true;
-        const rect = normalizeRect(g.startWorld, toWorld(p));
-        store.setMarquee(rect);
-        store.setSelection([...g.base, ...marqueeHits(store.docState.boxes, rect)]);
-      } else if (g.kind === "resize") {
-        const dx = (p.x - g.start.x) / store.camera.z;
-        const dy = (p.y - g.start.y) / store.camera.z;
-        const single = g.items.length === 1;
-        const next = resizeRect(g.bounds, g.handle, dx, dy, {
-          keepAspect: e.shiftKey,
-          min: single ? BLOCK_MIN_SIZE : { w: 8, h: 8 },
-        });
-        const rects = single
-          ? [next]
-          : scaleRects(
-              g.items.map((i) => i.world),
-              g.bounds,
-              next,
-            );
-        schedule(() =>
-          setGeometry(
-            store.doc,
-            g.items.map((item, i) => ({
-              id: item.id,
-              x: rects[i].x - item.offset.x,
-              y: rects[i].y - item.offset.y,
-              w: Math.max(BLOCK_MIN_SIZE.w, rects[i].w),
-              h: Math.max(BLOCK_MIN_SIZE.h, rects[i].h),
-            })),
-            store.origin,
-          ),
-        );
+        return;
       }
+      moveGesture(ctx(), g, e, p);
     };
 
-    const endGesture = (e: PointerEvent) => {
+    const onPointerUp = (e: PointerEvent) => {
       if (e.pointerType === "touch" || props.current.touchOnly) return onTouchUp(e);
-      const g = gesture;
-      if (!g || g.pointerId !== e.pointerId) return;
-      gesture = null;
-      flush();
-      if (g.kind === "move" && !g.moving && g.collapseTo && !e.shiftKey) {
-        store.setSelection([g.collapseTo]);
-      }
-      if (g.kind === "marquee") store.setMarquee(null);
+      const a = active;
+      if (!a || a.pointerId !== e.pointerId) return;
+      active = null;
       if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
-      updateHoverCursor(local(e));
+      const p = local(e);
+      const g = a.g;
+      if (g.kind === "pan") {
+        if (g.clickable && !pastThreshold(g.start, p)) {
+          const columnId = blockAt(p);
+          if (columnId != null) props.current.onOpenBlock(columnId);
+        }
+      } else {
+        endGesture(ctx(), g, e, p);
+      }
+      updateHoverCursor(p);
+    };
+
+    const onPointerCancel = (e: PointerEvent) => {
+      if (e.pointerType === "touch" || props.current.touchOnly) return onTouchUp(e);
+      const a = active;
+      if (!a || a.pointerId !== e.pointerId) return;
+      active = null;
+      flush();
+      store.setMarquee(null);
+      store.setInteraction({ guides: [], preview: null, erasing: new Set(), bindHover: null });
     };
 
     const onPointerLeave = () => {
-      if (!gesture) store.setCursor(null);
+      if (!active) {
+        store.setCursor(null);
+        store.pointer = null;
+      }
     };
 
     const onDoubleClick = (e: MouseEvent) => {
-      if (props.current.touchOnly) return;
-      const hit = blockAt(toWorld(local(e)));
-      const columnId = hit ? columnOf(hit) : null;
-      if (columnId != null) props.current.onOpenBlock(columnId);
+      if (props.current.touchOnly || inEditor(e)) return;
+      if (!props.current.editing) {
+        const columnId = blockAt(local(e));
+        if (columnId != null) props.current.onOpenBlock(columnId);
+        return;
+      }
+      if (props.current.tool !== "select") return;
+      doubleClick(ctx(), toWorld(local(e)));
     };
 
     // ----- touch: view-only -----
@@ -467,8 +438,7 @@ export function CanvasViewport({
         const quick = performance.now() - t.tapStart.time < TAP_MS;
         const still = Math.hypot(at.x - t.tapStart.at.x, at.y - t.tapStart.at.y) < TAP_SLOP;
         if (quick && still) {
-          const hit = blockAt(toWorld(at));
-          const columnId = hit ? columnOf(hit) : null;
+          const columnId = blockAt(at);
           if (columnId != null) props.current.onOpenBlock(columnId);
         }
       }
@@ -519,32 +489,70 @@ export function CanvasViewport({
       );
     };
     const dialogOpen = () =>
-      document.querySelector('[role="dialog"], [role="alertdialog"]') !== null;
+      document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"]') !== null;
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented || isTyping(e.target) || dialogOpen()) return;
       const onControl = (e.target as HTMLElement | null)?.closest?.(
-        "button, a, [role=button], [role=menuitem], [role=tab]",
+        "button, a, [role=button], [role=menuitem], [role=tab], [role=treeitem]",
       );
       const mod = e.metaKey || e.ctrlKey;
+      const canEdit = props.current.editing;
 
       if (e.key === " " && !onControl) {
         e.preventDefault();
         if (!space) {
           space = true;
           setSpaceHeld(true);
-          if (!gesture) setCursor("grab");
+          if (!active) setCursor("grab");
         }
         return;
       }
       if (mod) {
-        if (e.key === "a" && props.current.editing) {
+        if (!canEdit) return;
+        const run = (fn: () => void) => {
           e.preventDefault();
-          store.setSelection(store.docState.boxes.map((b) => b.id));
+          fn();
+        };
+        switch (e.code) {
+          case "KeyA":
+            return run(() => selectAll(store));
+          case "KeyZ":
+            return run(() => (e.shiftKey ? redo(store) : undo(store)));
+          case "KeyY":
+            return e.ctrlKey ? run(() => redo(store)) : undefined;
+          case "KeyG":
+            return run(() => (e.shiftKey ? ungroupSelection(store) : groupSelection(store)));
+          case "KeyD":
+            return run(() => duplicate(store));
+          case "BracketRight":
+            return run(() => reorderSelection(store, "forward"));
+          case "BracketLeft":
+            return run(() => reorderSelection(store, "backward"));
+        }
+        // Copy, cut and paste arrive as clipboard events below.
+        return;
+      }
+      if (e.altKey) {
+        if (!canEdit || store.selection.size === 0) return;
+        const align: Record<string, Parameters<typeof alignSelection>[1]> = {
+          KeyA: "left",
+          KeyD: "right",
+          KeyW: "top",
+          KeyS: "bottom",
+          KeyH: "hcenter",
+          KeyV: "vcenter",
+        };
+        const mode = align[e.code];
+        if (mode && !e.shiftKey) {
+          e.preventDefault();
+          alignSelection(store, mode);
+        } else if (e.shiftKey && (e.code === "KeyH" || e.code === "KeyV")) {
+          e.preventDefault();
+          distributeSelection(store, e.code === "KeyH" ? "x" : "y");
         }
         return;
       }
-      if (e.altKey) return;
       if (e.code === "Digit1" && e.shiftKey) {
         e.preventDefault();
         zoomToFit(store);
@@ -571,40 +579,69 @@ export function CanvasViewport({
         return;
       }
       if (props.current.touchOnly) return;
-      if (e.key === "v" || e.key === "V") return props.current.onToolChange("select");
-      if (e.key === "h" || e.key === "H") return props.current.onToolChange("hand");
+      const picked = toolForKey(e.code, e.shiftKey);
+      if (picked) {
+        if (!canEdit && !VIEWER_TOOLS.has(picked)) return;
+        e.preventDefault();
+        props.current.onToolChange(picked);
+        return;
+      }
       if (e.key === "Escape") {
-        store.setSelection([]);
+        if (props.current.tool !== "select") props.current.onToolChange("select");
+        else store.setSelection([]);
         return;
       }
       if (onControl) return;
       if (e.key === "Enter" && store.selection.size === 1) {
         const [id] = store.selection;
-        const columnId = columnOf(id);
-        if (columnId != null) {
+        const sel = store.docState.elements.get(id);
+        if (sel?.columnId != null) {
           e.preventDefault();
-          props.current.onOpenBlock(columnId);
+          props.current.onOpenBlock(sel.columnId);
+          return;
+        }
+      }
+      if (!canEdit || store.selection.size === 0) return;
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (e.shiftKey) selectParents(store);
+        else if (!selectChildren(store) && store.selection.size === 1) {
+          const [id] = store.selection;
+          const sel = store.docState.elements.get(id);
+          if (sel && (sel.type === "text" || sel.type === "sticky")) store.setEditing({ id });
         }
         return;
       }
-      if (!props.current.editing || store.selection.size === 0) return;
+      if (e.code === "BracketRight") {
+        e.preventDefault();
+        reorderSelection(store, "front");
+        return;
+      }
+      if (e.code === "BracketLeft") {
+        e.preventDefault();
+        reorderSelection(store, "back");
+        return;
+      }
       if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
-        removeElements(store.doc, [...store.selection], store.origin);
-        store.setSelection([]);
+        deleteSelection(store);
         return;
       }
       const nudge = nudgeDelta(e.key, e.shiftKey);
       if (nudge) {
         e.preventDefault();
-        setGeometry(
+        setProps(
           store.doc,
-          [...store.selection].flatMap((id) => {
-            const snap = store.docState.elements.get(id);
-            return snap && !snap.locked ? [{ id, x: snap.x + nudge.x, y: snap.y + nudge.y }] : [];
-          }),
+          moveUpdates(
+            store.docState.elements,
+            store.selection,
+            nudge.x,
+            nudge.y,
+            store.docState.layout,
+          ),
           store.origin,
         );
+        syncConnectorBoxes(store);
       }
     };
 
@@ -612,12 +649,27 @@ export function CanvasViewport({
       if (e.key === " " && space) {
         space = false;
         setSpaceHeld(false);
-        if (!gesture) setCursor(props.current.tool === "hand" ? "grab" : "default");
+        if (!active) setCursor(toolCursor(props.current.tool));
       }
+      // Arrow-key nudges held down merge into one undo step; letting go ends it.
+      if (e.key.startsWith("Arrow")) store.undo.stopCapturing();
     };
     const onBlur = () => {
       space = false;
       setSpaceHeld(false);
+    };
+
+    // ----- clipboard -----
+    const clipboardTarget = (e: Event) =>
+      !isTyping(e.target) && !dialogOpen() && !props.current.touchOnly && !store.editing;
+    const onCopy = (e: ClipboardEvent) => {
+      if (clipboardTarget(e)) handleCopy(store, e, false);
+    };
+    const onCut = (e: ClipboardEvent) => {
+      if (clipboardTarget(e) && props.current.editing) handleCopy(store, e, true);
+    };
+    const onPaste = (e: ClipboardEvent) => {
+      if (clipboardTarget(e) && props.current.editing) handlePaste(store, e);
     };
 
     // ----- drop from the sidebar -----
@@ -641,8 +693,8 @@ export function CanvasViewport({
 
     el.addEventListener("pointerdown", onPointerDown);
     el.addEventListener("pointermove", onPointerMove);
-    el.addEventListener("pointerup", endGesture);
-    el.addEventListener("pointercancel", endGesture);
+    el.addEventListener("pointerup", onPointerUp);
+    el.addEventListener("pointercancel", onPointerCancel);
     el.addEventListener("pointerleave", onPointerLeave);
     el.addEventListener("dblclick", onDoubleClick);
     el.addEventListener("wheel", onWheel, { passive: false });
@@ -653,13 +705,16 @@ export function CanvasViewport({
     el.addEventListener("drop", onDrop);
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("keyup", onKeyUp);
+    document.addEventListener("copy", onCopy);
+    document.addEventListener("cut", onCut);
+    document.addEventListener("paste", onPaste);
     window.addEventListener("blur", onBlur);
     return () => {
       if (frame) cancelAnimationFrame(frame);
       el.removeEventListener("pointerdown", onPointerDown);
       el.removeEventListener("pointermove", onPointerMove);
-      el.removeEventListener("pointerup", endGesture);
-      el.removeEventListener("pointercancel", endGesture);
+      el.removeEventListener("pointerup", onPointerUp);
+      el.removeEventListener("pointercancel", onPointerCancel);
       el.removeEventListener("pointerleave", onPointerLeave);
       el.removeEventListener("dblclick", onDoubleClick);
       el.removeEventListener("wheel", onWheel);
@@ -670,16 +725,17 @@ export function CanvasViewport({
       el.removeEventListener("drop", onDrop);
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("keyup", onKeyUp);
+      document.removeEventListener("copy", onCopy);
+      document.removeEventListener("cut", onCut);
+      document.removeEventListener("paste", onPaste);
       window.removeEventListener("blur", onBlur);
     };
   }, [store]);
 
   const shownCursor =
-    tool === "hand" && cursor === "default"
+    (tool === "hand" || spaceHeld) && (cursor === "default" || cursor === "crosshair")
       ? "grab"
-      : spaceHeld && cursor === "default"
-        ? "grab"
-        : cursor;
+      : cursor;
 
   return (
     <div
@@ -700,22 +756,24 @@ export function CanvasViewport({
         className={`pointer-events-none absolute left-0 top-0 origin-top-left transition-opacity duration-ui ease-out ${ready ? "opacity-100" : "opacity-0"}`}
       >
         {doc.ordered.map((el) => {
-          if (!visible.has(el.id)) return null;
-          const box = doc.boxById.get(el.id);
-          if (!box || el.columnId == null) return null;
-          const column = columns.get(el.columnId);
+          if (el.type === "group" || !visible.has(el.id)) return null;
+          const geom = doc.layout.geom.get(el.id);
+          if (!geom) return null;
+          const column = el.columnId != null ? columns.get(el.columnId) : undefined;
           return (
-            <CanvasBlock
+            <CanvasElement
               key={el.id}
-              rect={box.rect}
+              el={el}
+              geom={geom}
               column={column}
               screenshot={column?.url ? screenshots.get(column.url) : undefined}
+              faded={erasing.has(el.id)}
+              editing={editingId === el.id}
             />
           );
         })}
-        {/* Vector elements (pen, shapes, connectors) render here, in the same
-            world transform, so they stay sharp at any zoom. */}
-        <svg className="absolute left-0 top-0 overflow-visible" width="1" height="1" aria-hidden />
+        <DrawingPreview store={store} />
+        <TextEditor store={store} />
       </div>
       <CanvasOverlay store={store} showHandles={editing} />
       {dropping ? (
@@ -726,4 +784,37 @@ export function CanvasViewport({
       ) : null}
     </div>
   );
+}
+
+// What's being drawn and not written yet: a shape or line, or a pen stroke.
+function DrawingPreview({ store }: { store: CanvasStore }) {
+  const preview = useCanvas(store, "interaction", (s) => s.preview);
+  const style = useCanvas(store, "style", (s) => s.toolStyle);
+  const pen = preview?.kind === "pen" ? preview : null;
+  const d = useMemo(() => {
+    if (!pen) return "";
+    const pts: number[] = [];
+    for (const p of pen.points) pts.push(p.x, p.y, p.pressure);
+    const width = pen.tool === "highlighter" ? style.highlightWidth : style.width;
+    return strokePath(pts, width, pen.tool);
+  }, [pen, style.width, style.highlightWidth]);
+  if (!preview) return null;
+  if (preview.kind === "element") {
+    const el = preview.element;
+    const parent = el.parentId ? store.docState.layout.geom.get(el.parentId) : undefined;
+    const parentOrigin = parent ? { x: parent.rect.x, y: parent.rect.y } : { x: 0, y: 0 };
+    return <CanvasElement el={el} geom={previewGeom(store, el, parentOrigin)} />;
+  }
+  if (pen) {
+    return (
+      <svg
+        className="pointer-events-none absolute left-0 top-0 overflow-visible"
+        width={1}
+        height={1}
+      >
+        <path d={d} fill={inkCss(pen.tool === "highlighter" ? HIGHLIGHT : style.stroke)} />
+      </svg>
+    );
+  }
+  return null;
 }

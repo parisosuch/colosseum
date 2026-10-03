@@ -16,15 +16,20 @@ import {
   type Point,
   type Rect,
 } from "@/lib/canvas/camera";
+import { DEFAULT_TOOL_STYLE, type ToolStyle } from "@/lib/canvas/create";
 import {
-  boxesOf,
   paintOrder,
   placedColumns,
   readElements,
   type ElementSnapshot,
 } from "@/lib/canvas/elements";
 import type { Box } from "@/lib/canvas/geometry";
-import { elementsOf, type ElementType } from "@/lib/realtime/canvas-doc";
+import type { HitContext } from "@/lib/canvas/hit";
+import { computeLayout, stabilizeLayout, type Layout } from "@/lib/canvas/layout";
+import type { InputPoint } from "@/lib/canvas/pen";
+import type { Guide } from "@/lib/canvas/snapping";
+import { createUndoManager } from "@/lib/canvas/undo";
+import { elementsOf } from "@/lib/realtime/canvas-doc";
 import {
   CANVAS_PATH,
   CLOSE_ACCESS_REVOKED,
@@ -34,17 +39,27 @@ import {
   type PresenceUser,
 } from "@/lib/realtime/protocol";
 
-// Element types this page draws. The drawing tools add theirs.
-const DRAWN_TYPES: ReadonlySet<ElementType> = new Set<ElementType>(["block"]);
-
 export type DocState = {
   elements: ReadonlyMap<string, ElementSnapshot>;
-  // Drawn elements in paint order, bottom first, and their world boxes.
+  // Visible elements in paint order, bottom first, groups included (they draw
+  // nothing), and the world boxes of the ones that draw something.
   ordered: readonly ElementSnapshot[];
   boxes: readonly Box[];
+  // Every visible element's world box, groups included.
   boxById: ReadonlyMap<string, Box>;
   placed: ReadonlySet<number>;
+  layout: Layout;
 };
+
+// Something being drawn that isn't in the doc yet: it's written when the
+// pointer comes up, so the doc gets one write per stroke or shape.
+export type Preview =
+  | { kind: "element"; element: ElementSnapshot }
+  | { kind: "pen"; points: InputPoint[]; tool: "pen" | "highlighter"; parentOrigin: Point }
+  | { kind: "eraser"; trail: Point[] };
+
+// Where a new text element is being typed before its first character exists.
+export type TextDraft = { at: Point; parentId: string | null; parentOrigin: Point };
 
 export type ConnectionState = {
   // Whether the first sync has landed. Until then the board shows skeletons
@@ -65,7 +80,16 @@ export type Peer = {
   selection: readonly string[];
 };
 
-type Slice = "doc" | "connection" | "selection" | "camera" | "peers" | "interaction";
+type Slice =
+  | "doc"
+  | "connection"
+  | "selection"
+  | "camera"
+  | "peers"
+  | "interaction"
+  | "history"
+  | "editing"
+  | "style";
 
 const EMPTY_DOC: DocState = {
   elements: new Map(),
@@ -73,6 +97,7 @@ const EMPTY_DOC: DocState = {
   boxes: [],
   boxById: new Map(),
   placed: new Set(),
+  layout: { geom: new Map(), ends: new Map() },
 };
 
 export class CanvasStore {
@@ -80,6 +105,8 @@ export class CanvasStore {
   // Every local write uses this origin, so an undo manager can scope itself to
   // this client's own edits.
   readonly origin = Symbol("canvas-local");
+  // Undo and redo for this client's edits only.
+  readonly undo = createUndoManager(this.doc, this.origin);
   private provider: WebsocketProvider | null = null;
   private listeners = new Map<Slice, Set<() => void>>();
   private eventListeners = new Set<(event: ChannelEvent) => void>();
@@ -103,6 +130,19 @@ export class CanvasStore {
   // the camera or the selection is under way (the overlay hides the size label
   // and the cursor stays put while it is).
   marquee: Rect | null = null;
+  // Snap guides while dragging, the thing being drawn, the eraser's pending
+  // hits and the element a line end would bind to.
+  guides: readonly Guide[] = [];
+  preview: Preview | null = null;
+  erasing: ReadonlySet<string> = new Set();
+  bindHover: string | null = null;
+  // The text or sticky being typed in, or a new text not written yet.
+  editing: { id: string } | { draft: TextDraft } | null = null;
+  // The drawing tools' current colour, width and text style, for this session.
+  toolStyle: ToolStyle = DEFAULT_TOOL_STYLE;
+  history = { canUndo: false, canRedo: false };
+  // The last pointer position over the board, in world space, for pastes.
+  pointer: Point | null = null;
 
   // `access` is what the page already resolved for this viewer with the same
   // rule the realtime server uses, so the editing chrome is there on the first
@@ -111,9 +151,27 @@ export class CanvasStore {
   constructor(
     readonly channelId: number,
     access: "read" | "write" | null = null,
+    readonly viewerId: string | null = null,
   ) {
     this.connection = { ...this.connection, access };
     elementsOf(this.doc).observeDeep(() => this.refreshDoc());
+    const onStack = () => {
+      const next = { canUndo: this.undo.canUndo(), canRedo: this.undo.canRedo() };
+      if (next.canUndo === this.history.canUndo && next.canRedo === this.history.canRedo) return;
+      this.history = next;
+      this.emit("history");
+    };
+    this.undo.on("stack-item-added", onStack);
+    this.undo.on("stack-item-popped", onStack);
+    this.undo.on("stack-cleared", onStack);
+    // Undo brings back the selection the edit was made with.
+    this.undo.on("stack-item-added", (event: { stackItem: { meta: Map<string, unknown> } }) => {
+      event.stackItem.meta.set("selection", [...this.selection]);
+    });
+    this.undo.on("stack-item-popped", (event: { stackItem: { meta: Map<string, unknown> } }) => {
+      const sel = event.stackItem.meta.get("selection");
+      if (Array.isArray(sel)) this.setSelection(sel.filter((id) => this.docState.elements.has(id)));
+    });
   }
 
   connect(): void {
@@ -150,6 +208,7 @@ export class CanvasStore {
     this.provider?.awareness.setLocalState(null);
     this.provider?.destroy();
     this.provider = null;
+    this.undo.destroy();
     this.doc.destroy();
     this.listeners.clear();
     this.eventListeners.clear();
@@ -177,19 +236,44 @@ export class CanvasStore {
 
   private refreshDoc(): void {
     const elements = readElements(this.doc, this.docState.elements);
-    const ordered = paintOrder(elements, DRAWN_TYPES);
-    const boxes = boxesOf(ordered, elements);
+    const ordered = paintOrder(elements);
+    const layout = stabilizeLayout(computeLayout(elements), this.docState.layout);
+    const boxes: Box[] = [];
+    const boxById = new Map<string, Box>();
+    for (const el of ordered) {
+      const g = layout.geom.get(el.id);
+      if (!g) continue;
+      const box = { id: el.id, rect: g.rect };
+      boxById.set(el.id, box);
+      if (el.type !== "group") boxes.push(box);
+    }
     this.docState = {
       elements,
       ordered,
       boxes,
-      boxById: new Map(boxes.map((b) => [b.id, b])),
+      boxById,
       placed: placedColumns(elements),
+      layout,
     };
-    // Someone else may have deleted what this client had selected.
-    const kept = [...this.selection].filter((id) => elements.has(id));
+    // Someone else may have deleted (or hidden) what this client had selected.
+    const kept = [...this.selection].filter((id) => elements.has(id) && boxById.has(id));
     if (kept.length !== this.selection.size) this.setSelection(kept);
+    const editing = this.editing;
+    if (editing && "id" in editing && !elements.has(editing.id)) this.setEditing(null);
     this.emit("doc");
+  }
+
+  hitContext(): HitContext {
+    return {
+      all: this.docState.elements,
+      ordered: this.docState.ordered,
+      geom: this.docState.layout.geom,
+    };
+  }
+
+  // The user id new elements are credited to.
+  get userId(): string {
+    return this.connection.self?.id ?? this.viewerId ?? "";
   }
 
   // --- connection ---
@@ -243,6 +327,44 @@ export class CanvasStore {
     if (rect === this.marquee) return;
     this.marquee = rect;
     this.emit("interaction");
+  }
+
+  setInteraction(patch: {
+    guides?: readonly Guide[];
+    preview?: Preview | null;
+    erasing?: ReadonlySet<string>;
+    bindHover?: string | null;
+  }): void {
+    let changed = false;
+    if (patch.guides !== undefined && patch.guides !== this.guides) {
+      // An empty list replacing an empty list is no change.
+      if (!(patch.guides.length === 0 && this.guides.length === 0)) changed = true;
+      this.guides = patch.guides;
+    }
+    if (patch.preview !== undefined && patch.preview !== this.preview) {
+      this.preview = patch.preview;
+      changed = true;
+    }
+    if (patch.erasing !== undefined && patch.erasing !== this.erasing) {
+      this.erasing = patch.erasing;
+      changed = true;
+    }
+    if (patch.bindHover !== undefined && patch.bindHover !== this.bindHover) {
+      this.bindHover = patch.bindHover;
+      changed = true;
+    }
+    if (changed) this.emit("interaction");
+  }
+
+  setEditing(editing: CanvasStore["editing"]): void {
+    if (editing === this.editing) return;
+    this.editing = editing;
+    this.emit("editing");
+  }
+
+  setToolStyle(patch: Partial<ToolStyle>): void {
+    this.toolStyle = { ...this.toolStyle, ...patch };
+    this.emit("style");
   }
 
   // --- presence ---

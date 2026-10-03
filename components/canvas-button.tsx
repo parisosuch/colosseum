@@ -44,7 +44,7 @@ export default function CanvasButton({
   return (
     <Tooltip delayDuration={400}>
       <TooltipTrigger asChild>
-        <Button variant="outline" size="icon" asChild>
+        <Button variant="secondary" size="icon" asChild>
           <Link
             href={href}
             prefetch={false}

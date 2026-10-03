@@ -203,6 +203,15 @@ export function markReturningFromCanvas(channelPath: string): void {
   }
 }
 
+// Whether this load of the channel page is a return from its canvas.
+export function isReturningFromCanvas(channelPath: string): boolean {
+  try {
+    return sessionStorage.getItem(BACK_KEY) === channelPath;
+  } catch {
+    return false;
+  }
+}
+
 // The snapshot to restore, if this load is a return from the canvas. Read
 // without removing it, since React runs a dev-mode effect twice; the caller
 // clears it once the scroll is back.

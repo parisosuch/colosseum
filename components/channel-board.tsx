@@ -17,6 +17,7 @@ import CanvasButton from "@/components/canvas-button";
 import { channelHref, DEFAULT_CHANNEL_QUERY, type ChannelQuery } from "@/lib/canvas/channel-query";
 import {
   clearChannelSnapshot,
+  isReturningFromCanvas,
   peekChannelSnapshot,
   setLandingRect,
   transitionReady,
@@ -820,6 +821,7 @@ export default function ChannelBoard({
   useEffect(() => {
     if (share) return;
     const href = channelHref(channelPath, currentQuery.current);
+    const returning = isReturningFromCanvas(channelPath);
     const snap = peekChannelSnapshot(channelPath, href);
     let cancelled = false;
     // Timers rather than animation frames: during the close transition the
@@ -830,7 +832,13 @@ export default function ChannelBoard({
       if (snap) {
         const root = document.querySelector<HTMLElement>("[data-scroll-root]");
         if (root) root.scrollTop = snap.scrollTop;
+      }
+      if (returning) {
         clearChannelSnapshot(href);
+        // Focus goes back to what opened the canvas.
+        document
+          .querySelector<HTMLElement>('a[aria-label="Open canvas"]')
+          ?.focus({ preventScroll: true });
       }
       setLandingRect(visibleRect(blockAreaRef.current));
       transitionReady("channel");

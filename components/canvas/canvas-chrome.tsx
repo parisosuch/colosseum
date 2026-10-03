@@ -28,8 +28,8 @@ export function Island({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
-function Divider({ short = false }: { short?: boolean }) {
-  return <span aria-hidden className={cn("w-px shrink-0 bg-border", short ? "h-5" : "h-10")} />;
+function Divider() {
+  return <span aria-hidden className="h-10 w-px shrink-0 bg-border" />;
 }
 
 // An icon button with a tooltip. The first tooltip waits 400ms; its
@@ -96,7 +96,9 @@ export function StartIsland({
         <Link href={`/${handle}`} className="link-subtle shrink-0 rounded-sm focus-ring">
           {handle}
         </Link>
-        <span className="text-muted-foreground" aria-hidden>
+        {/* The design sets the slash in the handle's 75% ink, as the page
+            header's links are. */}
+        <span className="link-subtle" aria-hidden>
           /
         </span>
         <Link
@@ -174,7 +176,8 @@ function PresenceAvatars({ store }: { store: CanvasStore }) {
           <li className="px-1 text-xs tabular-nums text-muted-foreground">+{more}</li>
         ) : null}
       </ul>
-      <Divider short />
+      {/* Full height, like the design's divider before the bell. */}
+      <Divider />
     </>
   );
 }
@@ -182,7 +185,9 @@ function PresenceAvatars({ store }: { store: CanvasStore }) {
 // Top right: who's here, notifications and the account menu.
 export function EndIsland({ store, viewer }: { store: CanvasStore; viewer: ViewerProfile | null }) {
   return (
-    <Island data-vt="island-end" className="gap-1 pl-2">
+    // 50px like the left island, whose full-height dividers set its height;
+    // without presence this one has no divider to do that.
+    <Island data-vt="island-end" className="min-h-[3.125rem] gap-1 pl-2">
       <PresenceAvatars store={store} />
       {viewer ? (
         <>

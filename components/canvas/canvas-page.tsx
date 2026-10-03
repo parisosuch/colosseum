@@ -54,7 +54,9 @@ const PANEL_WIDTH = 288;
 const EDGE = 16;
 const ISLAND = 50;
 
-const FETCH_BATCH = 200;
+// Next runs a page's server actions one at a time, so a big canvas loads in as
+// few round trips as the action allows (MAX_IDS in canvas-blocks.ts).
+const FETCH_BATCH = 1000;
 
 export type CanvasPageProps = {
   channel: { id: number; title: string; private: boolean };
@@ -84,7 +86,9 @@ export default function CanvasPage({
   channels,
 }: CanvasPageProps) {
   const router = useRouter();
-  const [store] = useState(() => new CanvasStore(channel.id));
+  const [store] = useState(
+    () => new CanvasStore(channel.id, canContribute && viewerId ? "write" : "read"),
+  );
   const connection = useCanvas(store, "connection", (s) => s.connection);
   const doc = useCanvas(store, "doc", (s) => s.docState);
   const viewOnlyDevice = useMediaQuery(VIEW_ONLY_QUERY);
@@ -96,10 +100,8 @@ export default function CanvasPage({
   const showPanel = canEdit && !viewOnlyDevice && panelOpen;
   const [openColumnId, setOpenColumnId] = useState<number | null>(null);
 
-  // --- connect, and tell an open transition the canvas is up ---
   useEffect(() => {
     store.connect();
-    transitionReady("canvas");
     return () => store.destroy();
   }, [store]);
 
@@ -186,6 +188,21 @@ export default function CanvasPage({
       }),
     [store],
   );
+
+  // Tell an open transition the board is ready once it can land on what the
+  // canvas will show: the doc synced, the camera framed and the placed blocks
+  // loaded. Until then the transition holds the channel page on screen (for
+  // at most READY_TIMEOUT_MS in lib/canvas/transition.ts), so nothing pops in
+  // after it lands.
+  const signalled = useRef(false);
+  const boardReady =
+    connection.closed !== null ||
+    (connection.synced && [...doc.placed].every((id) => columns.has(id)));
+  useEffect(() => {
+    if (!boardReady || signalled.current) return;
+    signalled.current = true;
+    transitionReady("canvas");
+  }, [boardReady]);
 
   // --- screenshots for link blocks ---
   const [screenshots, setScreenshots] = useState<Map<string, ColumnScreenshot>>(() => new Map());
@@ -285,20 +302,9 @@ export default function CanvasPage({
   return (
     <div className="fixed inset-0 overflow-hidden bg-canvas-surface">
       <h1 className="sr-only">{`${channel.title} canvas`}</h1>
-      <CanvasViewport
-        store={store}
-        columns={columns}
-        screenshots={screenshots}
-        editing={editing}
-        touchOnly={viewOnlyDevice}
-        tool={tool}
-        onToolChange={setTool}
-        onOpenBlock={setOpenColumnId}
-        onPlaceBlock={(columnId, at) => placeAt(columnId, at)}
-      />
 
       {!connection.synced && connection.closed === null ? (
-        <div className="pointer-events-none absolute bottom-20 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full border bg-background px-3 py-1 text-caption shadow-sm">
+        <div className="pointer-events-none absolute bottom-20 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full border bg-background px-3 py-1 text-caption shadow-sm">
           <GradientSpin cellSize={2} />
           Loading the canvas
         </div>
@@ -306,7 +312,7 @@ export default function CanvasPage({
 
       {empty ? (
         <div
-          className="pointer-events-none absolute inset-0 flex items-center justify-center p-6"
+          className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-6"
           style={{ paddingLeft: showPanel ? EDGE + PANEL_WIDTH + 24 : undefined }}
         >
           <EmptyState
@@ -323,7 +329,7 @@ export default function CanvasPage({
       ) : null}
 
       {connection.closed ? (
-        <div className="absolute inset-0 flex items-center justify-center bg-background/80 p-6">
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/80 p-6">
           <EmptyState
             icon={Shapes}
             title={
@@ -336,14 +342,14 @@ export default function CanvasPage({
         </div>
       ) : connection.status === "disconnected" && connection.synced ? (
         <div
-          className="absolute left-1/2 top-4 -translate-x-1/2 rounded-full border bg-background px-3 py-1 text-caption shadow-sm"
+          className="absolute left-1/2 top-4 z-10 -translate-x-1/2 rounded-full border bg-background px-3 py-1 text-caption shadow-sm"
           role="status"
         >
           Reconnecting…
         </div>
       ) : null}
 
-      <div className="absolute left-4 top-4 max-w-[calc(100%-2rem)]">
+      <div className="absolute left-4 top-4 z-10 max-w-[calc(100%-2rem)]">
         <StartIsland
           handle={handle}
           channelTitle={channel.title}
@@ -358,7 +364,7 @@ export default function CanvasPage({
           showSearch={!!viewer && !viewOnlyDevice}
         />
       </div>
-      <div className={viewOnlyDevice ? "hidden" : "absolute right-4 top-4"}>
+      <div className={viewOnlyDevice ? "hidden" : "absolute right-4 top-4 z-10"}>
         <EndIsland store={store} viewer={viewer} />
       </div>
 
@@ -366,7 +372,7 @@ export default function CanvasPage({
         <aside
           data-vt="panel"
           aria-label="Blocks"
-          className="absolute bottom-4 left-4 top-20 flex w-72 flex-col gap-3 rounded-lg border bg-background p-4 shadow-md"
+          className="absolute bottom-4 left-4 top-20 z-10 flex w-72 flex-col gap-3 rounded-lg border bg-background p-4 shadow-md"
         >
           <div role="tablist" aria-label="Panel" className="flex w-fit rounded-lg border p-0.5">
             <button
@@ -395,20 +401,35 @@ export default function CanvasPage({
             screenshots={screenshots}
             onLoaded={addColumns}
             onPlace={placeInView}
+            start={boardReady}
           />
         </aside>
       ) : null}
 
       {!viewOnlyDevice ? (
         <>
-          <div className="absolute bottom-4 -translate-x-1/2" style={{ left: toolbarLeft }}>
+          <div className="absolute bottom-4 z-10 -translate-x-1/2" style={{ left: toolbarLeft }}>
             <Toolbar tool={tool} onToolChange={setTool} disabled={!connection.synced} />
           </div>
-          <div className="absolute bottom-4 right-4">
+          <div className="absolute bottom-4 right-4 z-10">
             <ZoomIsland store={store} />
           </div>
         </>
       ) : null}
+
+      {/* After the chrome in the DOM, so Back is first in the tab order; the
+          chrome's z-10 keeps it painted on top. */}
+      <CanvasViewport
+        store={store}
+        columns={columns}
+        screenshots={screenshots}
+        editing={editing}
+        touchOnly={viewOnlyDevice}
+        tool={tool}
+        onToolChange={setTool}
+        onOpenBlock={setOpenColumnId}
+        onPlaceBlock={(columnId, at) => placeAt(columnId, at)}
+      />
 
       <BlockModal
         column={openColumn}

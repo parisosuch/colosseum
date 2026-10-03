@@ -39,6 +39,7 @@ export function BlocksPanel({
   screenshots,
   onLoaded,
   onPlace,
+  start,
 }: {
   store: CanvasStore;
   channelId: number;
@@ -50,6 +51,10 @@ export function BlocksPanel({
   // and resolve their screenshots.
   onLoaded: (columns: Column[]) => void;
   onPlace: (column: Column) => void;
+  // Hold the first page until the board has what it needs. Next runs server
+  // actions one at a time, so the list would otherwise queue ahead of the
+  // placed blocks the open transition is waiting on.
+  start: boolean;
 }) {
   const doc = useCanvas(store, "doc", (s) => s.docState);
   const synced = useCanvas(store, "connection", (s) => s.connection.synced);
@@ -108,11 +113,11 @@ export function BlocksPanel({
   // First page once the doc has synced (the placed set is only known then),
   // and again whenever the search changes.
   useEffect(() => {
-    if (!synced) return;
+    if (!synced || !start) return;
     seen.current = new Set();
     void loadPage(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- loadPage reads the latest state through refs.
-  }, [synced, query, channelId]);
+  }, [synced, start, query, channelId]);
 
   // A block taken off the canvas comes back into the list, at its place in
   // the order, if it falls inside what's loaded so far.
@@ -275,7 +280,7 @@ export function BlocksPanel({
                   <div
                     className={`pointer-events-none aspect-square w-full overflow-hidden border bg-card ${CARD_MEDIA_RADIUS}`}
                   >
-                    <BlockMedia column={c} screenshot={shot} />
+                    <BlockMedia column={c} screenshot={shot} compact />
                   </div>
                   <p className="truncate pt-1.5 text-xs font-medium">{title}</p>
                 </div>

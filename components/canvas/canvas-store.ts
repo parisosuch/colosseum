@@ -104,7 +104,15 @@ export class CanvasStore {
   // and the cursor stays put while it is).
   marquee: Rect | null = null;
 
-  constructor(readonly channelId: number) {
+  // `access` is what the page already resolved for this viewer with the same
+  // rule the realtime server uses, so the editing chrome is there on the first
+  // render instead of appearing when the socket's session event lands. The
+  // server's answer replaces it, and is the one that counts.
+  constructor(
+    readonly channelId: number,
+    access: "read" | "write" | null = null,
+  ) {
+    this.connection = { ...this.connection, access };
     elementsOf(this.doc).observeDeep(() => this.refreshDoc());
   }
 

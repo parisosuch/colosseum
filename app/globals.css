@@ -396,7 +396,28 @@ html[data-canvas-vt="close"] [data-vt="zoom"] {
   }
 }
 
+/* The board's corners go from the card's 8px to the window's square edge on
+   the same clock as its size, and back on close. The UA's own group keyframes
+   (position and size) run alongside. */
+@keyframes canvas-vt-corners-open {
+  from {
+    border-radius: 8px;
+  }
+  to {
+    border-radius: 0;
+  }
+}
+@keyframes canvas-vt-corners-close {
+  from {
+    border-radius: 0;
+  }
+  to {
+    border-radius: 8px;
+  }
+}
 html[data-canvas-vt="open"]::view-transition-group(channel-board) {
+  overflow: clip;
+  animation-name: -ua-view-transition-group-anim-channel-board, canvas-vt-corners-open;
   animation-duration: var(--duration-panel);
   animation-timing-function: var(--ease-out);
 }
@@ -443,6 +464,8 @@ html[data-canvas-vt="close"]::view-transition-old(canvas-zoom) {
   animation: var(--duration-micro) var(--ease-in) both canvas-vt-down-leave;
 }
 html[data-canvas-vt="close"]::view-transition-group(channel-board) {
+  overflow: clip;
+  animation-name: -ua-view-transition-group-anim-channel-board, canvas-vt-corners-close;
   animation-duration: var(--duration-ui);
   animation-delay: 60ms;
   animation-fill-mode: both;

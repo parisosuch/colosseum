@@ -114,10 +114,13 @@ export function BlockMedia({
   column,
   screenshot,
   priority = false,
+  compact = false,
 }: {
   column: Column;
   screenshot?: ColumnScreenshot;
   priority?: boolean;
+  // A small tile; see ScreenShotPreview.
+  compact?: boolean;
 }) {
   const imageURL = screenshot?.image_url ?? null;
   // cache-busting token for the shared storage object (bumped on refresh)
@@ -199,6 +202,7 @@ export function BlockMedia({
       version={screenshotVersion}
       url={column.url}
       priority={priority}
+      compact={compact}
     />
   );
 }

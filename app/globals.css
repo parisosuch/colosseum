@@ -60,6 +60,11 @@
     --presence-violet: 262.1 83.3% 57.8%;
     --presence-orange: 17.5 88.3% 40.4%;
     --presence-teal: 175.3 77.4% 26.1%;
+    --presence-blue: 221.2 83.2% 53.3%;
+    --presence-pink: 333.3 71.4% 50.6%;
+    --presence-lime: 85.9 78.4% 27.3%;
+    --presence-fuchsia: 293.4 69.5% 48.8%;
+    --presence-cyan: 192.9 82.3% 31%;
     /* Drawing palette and sticky fills, for the drawing tools. */
     --ink-gray: 0 0% 45.1%;
     --ink-red: 0 72.2% 50.6%;
@@ -102,6 +107,11 @@
     --presence-violet: 255.1 91.7% 76.3%;
     --presence-orange: 27 96% 61%;
     --presence-teal: 172.5 66% 50.4%;
+    --presence-blue: 213.1 93.9% 67.8%;
+    --presence-pink: 328.6 85.5% 70.2%;
+    --presence-lime: 82.7 78% 55.5%;
+    --presence-fuchsia: 292 91.4% 72.5%;
+    --presence-cyan: 187.9 85.7% 53.3%;
     --ink-gray: 0 0% 63.9%;
     --ink-red: 0 90.6% 70.8%;
     --ink-amber: 43.3 96.4% 56.3%;

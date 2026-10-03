@@ -18,7 +18,16 @@ export type { PresenceUser };
 // one is a `--presence-<name>` token in app/globals.css with a light and a dark
 // value, from the design's `canvas · explore` collection, so a cursor follows
 // the viewer's theme.
-export const PRESENCE_COLORS = ["violet", "orange", "teal"] as const;
+export const PRESENCE_COLORS = [
+  "violet",
+  "orange",
+  "teal",
+  "blue",
+  "pink",
+  "lime",
+  "fuchsia",
+  "cyan",
+] as const;
 
 export type PresenceColor = (typeof PRESENCE_COLORS)[number];
 

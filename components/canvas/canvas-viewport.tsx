@@ -49,6 +49,12 @@ export const BLOCK_DRAG_TYPE = "application/x-colosseum-block";
 // `will-change` comes off so the browser re-rasterizes text at the new scale.
 const GESTURE_IDLE_MS = 150;
 
+// The lowest zoom at which a camera gesture sets `will-change: transform`. 0
+// means always, as the issue asks. Headless Chrome on software raster panned 500
+// blocks at 5-18fps below 100% with the hint and ~60fps without (see the PR),
+// so raise this to 1 if GPU hardware shows the same.
+const WILL_CHANGE_MIN_ZOOM = 0;
+
 // A tap on a phone: under this long and this far.
 const TAP_MS = 350;
 const TAP_SLOP = 8;
@@ -102,6 +108,7 @@ export function CanvasViewport({
   onToolChange,
   onOpenBlock,
   onPlaceBlock,
+  ready,
 }: {
   store: CanvasStore;
   columns: ReadonlyMap<number, Column | null>;
@@ -114,6 +121,10 @@ export function CanvasViewport({
   onToolChange: (tool: Tool) => void;
   onOpenBlock: (columnId: number) => void;
   onPlaceBlock: (columnId: number, at: Point) => void;
+  // Whether the board has its blocks and opening camera. The world stays
+  // hidden until then and fades in, rather than its cards appearing one batch
+  // at a time under the loader.
+  ready: boolean;
 }) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const worldRef = useRef<HTMLDivElement | null>(null);
@@ -153,14 +164,10 @@ export function CanvasViewport({
 
     const applyCamera = () => {
       world.style.transform = cameraTransform(store.camera);
-      // While the camera moves at 100% or closer, the world gets its own
-      // compositor layer so a pan is a re-composite instead of a repaint, and
-      // the hint comes off once the gesture stops so text is re-rasterized
-      // sharp at the new scale. Below 100% the hint is left off: Chrome
-      // rasterizes a will-change layer at a scale the zoom-out doesn't shrink,
-      // so the layer covers the whole zoomed-out world, and measured pans with
-      // 500 blocks fell from 60fps to 5-18fps with it on (see the PR).
-      if (store.camera.z >= 1) {
+      // While the camera moves, the world gets its own compositor layer so a
+      // pan is a re-composite instead of a repaint, and the hint comes off once
+      // the gesture stops so text is re-rasterized sharp at the new scale.
+      if (store.camera.z >= WILL_CHANGE_MIN_ZOOM) {
         if (world.style.willChange !== "transform") world.style.willChange = "transform";
       } else if (world.style.willChange === "transform") {
         world.style.willChange = "auto";
@@ -688,7 +695,10 @@ export function CanvasViewport({
       className="absolute inset-0 touch-none select-none overflow-hidden bg-canvas-surface outline-none"
       style={{ cursor: shownCursor }}
     >
-      <div ref={worldRef} className="pointer-events-none absolute left-0 top-0 origin-top-left">
+      <div
+        ref={worldRef}
+        className={`pointer-events-none absolute left-0 top-0 origin-top-left transition-opacity duration-ui ease-out ${ready ? "opacity-100" : "opacity-0"}`}
+      >
         {doc.ordered.map((el) => {
           if (!visible.has(el.id)) return null;
           const box = doc.boxById.get(el.id);

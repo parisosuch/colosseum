@@ -74,6 +74,24 @@ test("a user's colour is stable and comes from the palette", () => {
   expect(new Set(ids.map(presenceColor)).size).toBeGreaterThan(1);
 });
 
+test("the palette is the design's eight tokens, and user ids reach all of them", () => {
+  expect([...PRESENCE_COLORS]).toEqual([
+    "violet",
+    "orange",
+    "teal",
+    "blue",
+    "pink",
+    "lime",
+    "fuchsia",
+    "cyan",
+  ]);
+  const ids = Array.from(
+    { length: 200 },
+    (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+  );
+  expect(new Set(ids.map(presenceColor)).size).toBe(8);
+});
+
 test("only editors get a presence identity", () => {
   expect(presenceFor({ access: "read", userId: alice.id, handle: "alice" })).toBeNull();
   expect(presenceFor({ access: "write", userId: null })).toBeNull();

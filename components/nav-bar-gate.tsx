@@ -14,3 +14,9 @@ export function NavBarGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   return HERO_ROUTES.has(pathname) || isCanvasPath(pathname) ? null : children;
 }
+
+// The mobile bottom bar stays on the canvas: at phone width it's where
+// notifications and the account menu live, there as on every other page.
+export function MobileBarGate({ children }: { children: React.ReactNode }) {
+  return HERO_ROUTES.has(usePathname()) ? null : children;
+}

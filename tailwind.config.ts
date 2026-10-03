@@ -67,6 +67,11 @@ export default {
           violet: "hsl(var(--presence-violet))",
           orange: "hsl(var(--presence-orange))",
           teal: "hsl(var(--presence-teal))",
+          blue: "hsl(var(--presence-blue))",
+          pink: "hsl(var(--presence-pink))",
+          lime: "hsl(var(--presence-lime))",
+          fuchsia: "hsl(var(--presence-fuchsia))",
+          cyan: "hsl(var(--presence-cyan))",
         },
       },
       // Every radius the app uses derives from --radius, so changing the token

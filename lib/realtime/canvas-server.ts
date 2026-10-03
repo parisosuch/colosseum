@@ -17,6 +17,13 @@ import * as syncProtocol from "y-protocols/sync";
 import * as Y from "yjs";
 
 import { removeBlockElements } from "./canvas-doc";
+import { affects, isAccessEvent } from "./canvas-permissions";
+import {
+  claimClientId,
+  presenceFor,
+  stampAwarenessUpdate,
+  type PresenceUser,
+} from "./canvas-presence";
 import {
   attachThreadAnchors,
   isThreadEvent,
@@ -27,7 +34,9 @@ import {
 import type { RealtimeEvent } from "./events";
 import {
   CANVAS_PATH,
+  CLOSE_ACCESS_REVOKED,
   CLOSE_CHANNEL_GONE,
+  encodeChannelEvent,
   MESSAGE_AWARENESS,
   MESSAGE_CHANNEL_EVENT,
   MESSAGE_QUERY_AWARENESS,
@@ -41,7 +50,14 @@ import {
 // request, so they can't edit and never show up in presence.
 export type CanvasAccess = "read" | "write";
 
-export type Authorization = { access: CanvasAccess; userId: string | null };
+// `handle` and `avatarUrl` are the signed-in user's, for their presence
+// identity (canvas-presence.ts). Only editors need them.
+export type Authorization = {
+  access: CanvasAccess;
+  userId: string | null;
+  handle?: string | null;
+  avatarUrl?: string | null;
+};
 
 export interface CanvasStore {
   load(channelId: number): Promise<Uint8Array | null>;
@@ -82,6 +98,15 @@ type Conn = {
   // cursor doesn't linger for everyone else.
   clientIds: Set<number>;
   alive: boolean;
+  // The upgrade request, kept so a permission change can run `authorize` again
+  // with the same cookie.
+  req: IncomingMessage;
+  // Who this socket appears as in presence, set from `authorize`. Null for
+  // read access.
+  user: PresenceUser | null;
+  // Bumped for each re-authorization, so a slow answer can't land over a newer
+  // one.
+  checks: number;
 };
 
 class Room {
@@ -126,7 +151,9 @@ class Room {
         { added, updated, removed }: { added: number[]; updated: number[]; removed: number[] },
         origin: unknown,
       ) => {
-        const conn = origin instanceof WebSocket ? this.conns.get(origin) : undefined;
+        // Look the socket up rather than test `instanceof WebSocket`: under Bun
+        // the sockets aren't instances of the ws package's class.
+        const conn = this.conns.get(origin as WebSocket);
         if (conn) {
           for (const id of added) conn.clientIds.add(id);
           for (const id of removed) conn.clientIds.delete(id);
@@ -321,12 +348,15 @@ export function createCanvasServer(options: CanvasServerOptions) {
         break;
       }
       case MESSAGE_AWARENESS: {
-        if (conn.access === "write") {
-          awarenessProtocol.applyAwarenessUpdate(
-            room.awareness,
+        if (conn.access === "write" && conn.user) {
+          // The editor's identity replaces whatever it sent, and it can only
+          // touch the client ids it announced.
+          const update = stampAwarenessUpdate(
             decoding.readVarUint8Array(decoder),
-            ws,
+            conn.user,
+            (id) => claimClientId(room.conns, ws, id),
           );
+          if (update) awarenessProtocol.applyAwarenessUpdate(room.awareness, update, ws);
         }
         break;
       }
@@ -347,12 +377,22 @@ export function createCanvasServer(options: CanvasServerOptions) {
     }
   }
 
-  async function onConnection(ws: WebSocket, channelId: number, auth: Authorization) {
+  async function onConnection(
+    ws: WebSocket,
+    req: IncomingMessage,
+    channelId: number,
+    auth: Authorization,
+    // accessEpoch when `authorize` was asked.
+    epoch: number,
+  ) {
     const conn: Conn = {
       access: auth.access,
       userId: auth.userId,
       clientIds: new Set(),
       alive: true,
+      req,
+      user: presenceFor(auth),
+      checks: 0,
     };
     // Messages can arrive while the room loads. Hold them until it's ready
     // rather than dropping the client's first sync step.
@@ -409,6 +449,9 @@ export function createCanvasServer(options: CanvasServerOptions) {
     room = joining;
     room.conns.set(ws, conn);
 
+    // Tell the client what it may do before anything else arrives.
+    send(ws, encodeChannelEvent({ type: "session", access: conn.access, user: conn.user }));
+
     // Ask for whatever the client has that the server doesn't (offline edits).
     const encoder = encoding.createEncoder();
     encoding.writeVarUint(encoder, MESSAGE_SYNC);
@@ -435,6 +478,49 @@ export function createCanvasServer(options: CanvasServerOptions) {
         return;
       }
     }
+
+    // A permission change landed between `authorize` and joining, which no
+    // re-check could reach while the socket wasn't in the room. Check again.
+    if (epoch !== accessEpoch) void reauthorize(room, ws, conn);
+  }
+
+  // Bumped by every access event, so a socket can tell whether one arrived
+  // while it was being authorized.
+  let accessEpoch = 0;
+
+  // Run `authorize` again for an open socket after a permission change, and
+  // apply the answer: close it if the viewer can't read the channel any more,
+  // otherwise switch it to whatever access they have now.
+  async function reauthorize(room: Room, ws: WebSocket, conn: Conn): Promise<void> {
+    const check = ++conn.checks;
+    let next: Authorization | null;
+    try {
+      next = await authorize(conn.req, room.channelId);
+    } catch (err) {
+      console.error(`[realtime] re-authorizing on canvas ${room.channelId} failed`, err);
+      // Without an answer the old access can't be trusted. 1011 is retried, and
+      // the reconnect authorizes from scratch.
+      if (check === conn.checks && room.conns.has(ws)) ws.close(1011, "authorization failed");
+      return;
+    }
+    if (check !== conn.checks || room.closed || !room.conns.has(ws)) return;
+    if (!next) {
+      ws.close(CLOSE_ACCESS_REVOKED, "access revoked");
+      return;
+    }
+    const was = conn.access;
+    conn.access = next.access;
+    conn.userId = next.userId;
+    conn.user = presenceFor(next);
+    if (was === "write" && next.access === "read") {
+      // From here the read-only filters drop its updates and awareness. Take
+      // its cursor off everyone's screen now rather than at its next message.
+      awarenessProtocol.removeAwarenessStates(room.awareness, [...conn.clientIds], null);
+      conn.clientIds.clear();
+    }
+    if (was !== next.access) {
+      send(ws, encodeChannelEvent({ type: "session", access: conn.access, user: conn.user }));
+    }
   }
 
   // Drop sockets that stopped answering pings (a laptop lid closed mid-edit)
@@ -459,10 +545,24 @@ export function createCanvasServer(options: CanvasServerOptions) {
     handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): boolean {
       const channelId = channelIdFromPath(req.url);
       if (channelId === null) return false;
+      const epoch = accessEpoch;
       authorize(req, channelId).then(
         (auth) => {
-          if (!auth) return reject(socket, 403, "Forbidden");
-          wss.handleUpgrade(req, socket, head, (ws) => void onConnection(ws, channelId, auth));
+          if (!auth) {
+            // Refused after the handshake rather than with an HTTP 403, which
+            // y-websocket would retry forever. 4403 tells it to stop, and the
+            // same code for a missing channel keeps the two indistinguishable.
+            wss.handleUpgrade(req, socket, head, (ws) =>
+              ws.close(CLOSE_ACCESS_REVOKED, "forbidden"),
+            );
+            return;
+          }
+          wss.handleUpgrade(
+            req,
+            socket,
+            head,
+            (ws) => void onConnection(ws, req, channelId, auth, epoch),
+          );
         },
         (err) => {
           console.error(`[realtime] authorizing canvas ${channelId} failed`, err);
@@ -475,6 +575,16 @@ export function createCanvasServer(options: CanvasServerOptions) {
     // React to a data-layer event (lib/realtime/events.ts). Only rooms already
     // open or loading care; a closed canvas prunes on its next load.
     handleEvent(event: RealtimeEvent): void {
+      if (isAccessEvent(event)) {
+        accessEpoch++;
+        for (const room of rooms.values()) {
+          if (room.closed) continue;
+          for (const [ws, conn] of room.conns) {
+            if (affects(event, room.channelId, conn.userId)) void reauthorize(room, ws, conn);
+          }
+        }
+        return;
+      }
       const room = rooms.get(event.channelId);
       if (!room) return;
       room.ready.then(

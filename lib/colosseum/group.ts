@@ -1,7 +1,8 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { group, groupMember, owner, userProfile, type GroupRole } from "@/lib/db/schema";
+import { channel, group, groupMember, owner, userProfile, type GroupRole } from "@/lib/db/schema";
+import { publishRealtime } from "@/lib/realtime/events";
 import { normalizeHandle, validateHandle } from "./handle";
 import { HandleTakenError } from "./user";
 
@@ -247,6 +248,7 @@ export async function setGroupRole(
     .update(groupMember)
     .set({ role })
     .where(and(eq(groupMember.group_id, group_id), eq(groupMember.user_id, user_id)));
+  publishRealtime({ type: "user.access-changed", userId: user_id });
 }
 
 // Hand the owner role to an existing member, demoting the current owner to
@@ -273,6 +275,8 @@ export async function transferGroupOwnership(
       .set({ role: "owner" })
       .where(and(eq(groupMember.group_id, group_id), eq(groupMember.user_id, to_user_id)));
   });
+  publishRealtime({ type: "user.access-changed", userId: from_user_id });
+  publishRealtime({ type: "user.access-changed", userId: to_user_id });
 }
 
 // Remove a member. The owner cannot be removed — the group would be left with
@@ -285,6 +289,9 @@ export async function removeGroupMember(group_id: string, user_id: string): Prom
   await db
     .delete(groupMember)
     .where(and(eq(groupMember.group_id, group_id), eq(groupMember.user_id, user_id)));
+  // Their open canvases on the group's channels drop to read-only, or close on
+  // private ones.
+  publishRealtime({ type: "user.access-changed", userId: user_id });
 }
 
 export async function updateGroup(
@@ -315,5 +322,12 @@ export async function updateGroup(
 // there — the same path a deleted person's channels take. Callers authorize
 // that the caller is the group's owner first.
 export async function deleteGroup(group_id: string): Promise<void> {
+  // The cascade deletes the channels without going through deleteChannel, so
+  // close their open canvases here the way it would.
+  const channels = await db
+    .select({ id: channel.id })
+    .from(channel)
+    .where(eq(channel.owned_by, group_id));
   await db.delete(owner).where(eq(owner.id, group_id));
+  for (const { id } of channels) publishRealtime({ type: "channel.deleted", channelId: id });
 }

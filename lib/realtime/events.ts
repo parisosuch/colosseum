@@ -19,7 +19,15 @@ export type RealtimeEvent =
   // A block left a channel: deleted, or moved out to another one.
   | { type: "block.removed"; channelId: number; columnId: number }
   // The channel is gone; its canvas row went with it (ON DELETE CASCADE).
+  // Published for each channel a deleted group took with it, too.
   | { type: "channel.deleted"; channelId: number }
+  // Who may read or write the channel changed for everyone at once: its access
+  // mode or its owner. Every open socket on it is re-authorized.
+  | { type: "channel.access-changed"; channelId: number }
+  // One person's access changed: removed from a channel (`channelId` set), or
+  // their group role, group membership or ban changed (no `channelId`, since
+  // that can reach any channel). Their open sockets are re-authorized.
+  | { type: "user.access-changed"; userId: string; channelId?: number }
   // Canvas comment threads: new threads, replies and deletions.
   | ThreadRealtimeEvent;
 

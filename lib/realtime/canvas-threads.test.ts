@@ -148,9 +148,12 @@ test("new threads, replies and deletions reach editors and read-only viewers liv
   await deleteCanvasThreadComment({ commentId: reply.id, userId: USERS.alice.id });
   await deleteCanvasThreadComment({ commentId: thread.starter!.id, userId: USERS.bob.id });
 
+  // Only the thread events: a socket also gets its own `session` event on join.
+  const threadEvents = (events: ChannelEvent[]) =>
+    events.filter((e) => e.type.startsWith("thread."));
   for (const { events } of [editor, viewer]) {
-    await waitFor(() => events.length === 4, "four thread events");
-    expect(events).toEqual([
+    await waitFor(() => threadEvents(events).length === 4, "four thread events");
+    expect(threadEvents(events)).toEqual([
       { type: "thread.created", thread },
       { type: "thread.comment.added", comment: reply },
       { type: "thread.comment.deleted", threadId: thread.id, commentId: reply.id },

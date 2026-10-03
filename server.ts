@@ -8,6 +8,11 @@ import { createServer, type IncomingMessage, type Server } from "node:http";
 
 import next from "next";
 
+import { createCanvasHistory } from "./lib/realtime/canvas-history";
+import { setCanvasHistory } from "./lib/realtime/canvas-history-registry";
+import { createPgVersionStore } from "./lib/realtime/canvas-history-store";
+import { createRestoreWorker } from "./lib/realtime/canvas-restore-pool";
+import { startRetention } from "./lib/realtime/canvas-retention";
 import { createCanvasServer, type Authorization } from "./lib/realtime/canvas-server";
 import { createPgCanvasStore } from "./lib/realtime/canvas-store";
 import { createPgThreadStore } from "./lib/realtime/canvas-thread-store";
@@ -78,6 +83,23 @@ const threads = createPgThreadStore(databaseUrl);
 const canvas = createCanvasServer({ store, authorize, threads });
 subscribeRealtime((event) => canvas.handleEvent(event));
 
+// Canvas version history. The server writes versions as editing sessions go
+// quiet, the server actions reach it through the registry, and old automatic
+// versions are thinned on a timer here, so self-hosters need no scheduler.
+// Restores are computed on a worker thread so a heavy one doesn't stall every
+// other room.
+const versionStore = createPgVersionStore(databaseUrl);
+const restoreWorker = createRestoreWorker();
+const history = createCanvasHistory({
+  versions: versionStore,
+  canvases: store,
+  docs: canvas,
+  computeRevert: restoreWorker.compute,
+});
+canvas.onEdit((channelId, userId) => history.recordEdit(channelId, userId));
+setCanvasHistory(history);
+const retention = startRetention(versionStore);
+
 const server = createServer((req, res) => void handle(req, res));
 server.on("upgrade", (req, socket, head) => {
   if (canvas.handleUpgrade(req, socket, head)) return;
@@ -100,7 +122,11 @@ async function stop(signal: string) {
   console.log(`> ${signal}: saving open canvases`);
   server.close();
   try {
+    retention.stop();
+    await history.shutdown();
+    restoreWorker.terminate();
     await canvas.shutdown();
+    await versionStore.end();
     await store.end();
     await threads.end();
   } catch (err) {

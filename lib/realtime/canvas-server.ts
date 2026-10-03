@@ -238,6 +238,11 @@ export function createCanvasServer(options: CanvasServerOptions) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES });
   const rooms = new Map<number, Room>();
 
+  // Version history (canvas-history.ts): who sent each accepted edit, and rooms
+  // held open while `withDoc` works on them.
+  const editListeners = new Set<(channelId: number, userId: string | null) => void>();
+  const held = new Map<Room, number>();
+
   function dropRoom(room: Room, code: number, reason: string): void {
     // A replacement may already be loading under the same id; leave it be.
     if (rooms.get(room.channelId) === room) rooms.delete(room.channelId);
@@ -246,10 +251,10 @@ export function createCanvasServer(options: CanvasServerOptions) {
 
   // Save and unload a room once its last socket has gone.
   function releaseIfIdle(room: Room): void {
-    if (room.conns.size > 0 || room.closed) return;
+    if (room.conns.size > 0 || room.closed || held.has(room)) return;
     void room.flush().then(() => {
       // Someone may have joined while the save ran.
-      if (room.conns.size === 0 && !room.closed) dropRoom(room, 1000, "idle");
+      if (room.conns.size === 0 && !room.closed && !held.has(room)) dropRoom(room, 1000, "idle");
     });
   }
 
@@ -259,6 +264,14 @@ export function createCanvasServer(options: CanvasServerOptions) {
     const room = new Room(channelId, store, debounceMs, maxWaitMs, (r) =>
       dropRoom(r, CLOSE_CHANNEL_GONE, "channel deleted"),
     );
+    // Writers' updates arrive with their socket as the transaction origin.
+    // Looked up rather than checked with instanceof: under Bun, sockets from
+    // WebSocketServer aren't instances of the `ws` package's WebSocket.
+    room.doc.on("update", (_update: Uint8Array, origin: unknown) => {
+      const conn = editListeners.size > 0 ? room.conns.get(origin as WebSocket) : undefined;
+      if (!conn) return;
+      for (const listener of editListeners) listener(channelId, conn.userId);
+    });
     room.ready = (async () => {
       const saved = await store.load(channelId);
       if (saved) Y.applyUpdate(room.doc, saved, LOAD_ORIGIN);
@@ -507,6 +520,39 @@ export function createCanvasServer(options: CanvasServerOptions) {
       );
       rooms.clear();
       wss.close();
+    },
+
+    // Version history hooks (canvas-history.ts).
+    //
+    // `onEdit` hears every update a writer's socket sends.
+    onEdit(listener: (channelId: number, userId: string | null) => void): () => void {
+      editListeners.add(listener);
+      return () => editListeners.delete(listener);
+    },
+
+    // Run `fn` on the channel's live doc and save what it changed. An open
+    // room's clients get the change like any edit. A closed canvas is loaded
+    // into a room for the duration, so a client joining meanwhile sees the
+    // change too, and unloaded again once saved. Null when the channel is gone.
+    async withDoc<R>(channelId: number, fn: (doc: Y.Doc) => R): Promise<R | null> {
+      for (;;) {
+        const room = getRoom(channelId);
+        held.set(room, (held.get(room) ?? 0) + 1);
+        try {
+          await room.ready;
+          // Caught unloading after its last client left: load it afresh.
+          if (room.closed && room.closeCode === 1000) continue;
+          if (room.closed) return null;
+          const result = fn(room.doc);
+          await room.flush();
+          return room.closed ? null : result;
+        } finally {
+          const holds = held.get(room)! - 1;
+          if (holds > 0) held.set(room, holds);
+          else held.delete(room);
+          releaseIfIdle(room);
+        }
+      }
     },
 
     // For tests: how many rooms are loaded.

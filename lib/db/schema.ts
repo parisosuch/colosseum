@@ -327,6 +327,32 @@ export const channelCanvas = pgTable("channel_canvas", {
   updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// Version history for a channel's canvas: full Yjs docs, written by the
+// realtime server (lib/realtime/canvas-history.ts) when an editing session goes
+// quiet and right before a restore, plus named restore points a channel
+// manager saves. `editors` holds who edited since the channel's previous
+// version, which is how a manager finds who wiped the canvas. It has no FK, so
+// a deleted user's id stays and simply stops resolving to a handle. Automatic
+// versions thin out over time (lib/realtime/canvas-retention.ts); named ones
+// never expire.
+export const channelCanvasVersion = pgTable(
+  "channel_canvas_version",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+    channel_id: bigint("channel_id", { mode: "number" })
+      .notNull()
+      .references(() => channel.id, { onDelete: "cascade" }),
+    doc: bytea("doc").notNull(),
+    // Set for a named restore point, null for an automatic version.
+    name: text("name"),
+    // Who saved a named restore point; null for automatic versions.
+    created_by: uuid("created_by").references(() => user.id, { onDelete: "set null" }),
+    editors: uuid("editors").array().notNull(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("channel_canvas_version_channel_id_idx").on(t.channel_id, t.id)],
+);
+
 // "column" is a reserved SQL keyword; Drizzle quotes the table name for us.
 export const column = pgTable(
   "column",

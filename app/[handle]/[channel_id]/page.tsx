@@ -24,7 +24,7 @@ import {
 } from "@/lib/colosseum/screenshot-data";
 import { getSessionUser } from "@/lib/auth";
 import { parseChannelQuery } from "@/lib/canvas/channel-query";
-import { channelHasCanvas } from "@/lib/colosseum/canvas-blocks";
+import { showsCanvasButton } from "@/lib/colosseum/canvas-blocks";
 
 type ChannelPageParams = {
   params: Promise<{ handle: string; channel_id: string }>;
@@ -153,9 +153,9 @@ export default async function ChannelPage({ params, searchParams }: ChannelPageP
       ? getChannelColumnCount(id, { type: query.type, search: query.q })
       : Promise.resolve(null),
     // The canvas button shows for contributors always, and for everyone else
-    // once there's a canvas to look at. One indexed row lookup; the doc itself
-    // isn't read.
-    canContribute ? Promise.resolve(true) : channelHasCanvas(id),
+    // only while the canvas has something on it. One indexed row lookup; the
+    // doc itself isn't read.
+    showsCanvasButton(id, canContribute),
   ]);
 
   const createdOnLabel = new Date(channel.created_at).toLocaleString("default", {

@@ -1,19 +1,39 @@
-import { beforeAll, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
+
+import { eq } from "drizzle-orm";
+import * as Y from "yjs";
 
 import { db } from "@/lib/db";
 import { channelCanvas } from "@/lib/db/schema";
+import { elementsOf } from "@/lib/realtime/canvas-doc";
+import {
+  connectAs,
+  destroyClients,
+  startHarness,
+  synced,
+  type Harness,
+} from "@/lib/realtime/canvas-test-harness";
 import { seed, USERS } from "@/scripts/seed";
 import {
-  channelHasCanvas,
   countUnplacedColumns,
   getChannelColumnsByIds,
   getUnplacedColumns,
+  showsCanvasButton,
 } from "./canvas-blocks";
-import { createChannel } from "./channel";
+import { canContributeChannel, createChannel, getChannel, resolveChannelViewer } from "./channel";
 import { uploadTextColumn, type Column } from "./column";
+
+let harness: Harness;
 
 beforeAll(async () => {
   await seed();
+  harness = await startHarness();
+});
+
+afterEach(() => destroyClients());
+
+afterAll(async () => {
+  await harness.close();
 });
 
 let seq = 0;
@@ -36,11 +56,52 @@ async function channelWith(n: number) {
   return { ch, cols };
 }
 
-test("channelHasCanvas is false until the canvas row exists", async () => {
-  const { ch } = await channelWith(0);
-  expect(await channelHasCanvas(ch.id)).toBe(false);
-  await db.insert(channelCanvas).values({ channel_id: ch.id, doc: new Uint8Array([0, 0]) });
-  expect(await channelHasCanvas(ch.id)).toBe(true);
+// The channel page's rule, for a real viewer of the channel.
+async function buttonFor(channelId: number, userId: string): Promise<boolean> {
+  const channel = (await getChannel(channelId))!;
+  const viewer = await resolveChannelViewer(channel, userId);
+  return showsCanvasButton(channelId, canContributeChannel(channel, viewer));
+}
+
+async function storedFlag(channelId: number): Promise<boolean | null> {
+  const [row] = await db
+    .select({ hasElements: channelCanvas.has_elements })
+    .from(channelCanvas)
+    .where(eq(channelCanvas.channel_id, channelId));
+  return row ? row.hasElements : null;
+}
+
+// Poll until the realtime server's save has stored `want`.
+async function flagBecomes(channelId: number, want: boolean): Promise<boolean | null> {
+  let flag: boolean | null = null;
+  for (let i = 0; i < 150 && (flag = await storedFlag(channelId)) !== want; i++) {
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  return flag;
+}
+
+test("an empty canvas hides the button from non-editors, emptied after editing included", async () => {
+  // Public: alice (the owner) edits, bob can only read.
+  const { ch, cols } = await channelWith(1);
+  expect(await buttonFor(ch.id, USERS.bob.id)).toBe(false);
+  expect(await buttonFor(ch.id, USERS.alice.id)).toBe(true);
+
+  const alice = connectAs(harness, ch.id, USERS.alice.id);
+  await synced(alice.provider);
+  const el = new Y.Map<unknown>();
+  el.set("type", "block");
+  el.set("columnId", cols[0].id);
+  el.set("x", 0);
+  el.set("y", 0);
+  elementsOf(alice.doc).set("placed", el);
+  expect(await flagBecomes(ch.id, true)).toBe(true);
+  expect(await buttonFor(ch.id, USERS.bob.id)).toBe(true);
+
+  // Emptied: the row stays (its delete set with it) and the flag goes false.
+  elementsOf(alice.doc).delete("placed");
+  expect(await flagBecomes(ch.id, false)).toBe(false);
+  expect(await buttonFor(ch.id, USERS.bob.id)).toBe(false);
+  expect(await buttonFor(ch.id, USERS.alice.id)).toBe(true);
 });
 
 test("by-id reads are scoped to the channel", async () => {

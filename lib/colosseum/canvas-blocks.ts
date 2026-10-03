@@ -16,18 +16,27 @@ import { SIGNED_OUT, type ViewerScope } from "./viewer";
 export const MAX_IDS = 1000;
 export const MAX_UNPLACED_PAGE = 100;
 
-// Whether the channel has a stored canvas, without loading it. The canvas
-// server writes the row on the first edit and never before, so a channel
-// nobody has drawn on or placed a block on has none. It can't tell an emptied
-// canvas from a full one: a canvas whose every element was removed still has
-// its row.
-export async function channelHasCanvas(channelId: number): Promise<boolean> {
+// Whether the channel's canvas has anything on it, without loading the doc:
+// the realtime server stores the flag with every save. A channel nobody has
+// edited has no row, and a canvas emptied after editing keeps its row with the
+// flag false.
+export async function channelCanvasHasElements(channelId: number): Promise<boolean> {
   const [row] = await db
-    .select({ one: sql<number>`1` })
+    .select({ hasElements: channelCanvas.has_elements })
     .from(channelCanvas)
     .where(eq(channelCanvas.channel_id, channelId))
     .limit(1);
-  return row !== undefined;
+  return row?.hasElements === true;
+}
+
+// Whether the channel page shows the canvas button. Editors always get it, to
+// start a canvas. Everyone else gets it only when there's something on the
+// canvas; an empty one isn't worth loading.
+export async function showsCanvasButton(
+  channelId: number,
+  canContribute: boolean,
+): Promise<boolean> {
+  return canContribute || channelCanvasHasElements(channelId);
 }
 
 function cleanIds(ids: readonly number[]): number[] {

@@ -61,7 +61,8 @@ import {
   type Gesture,
   type GestureContext,
 } from "./gestures";
-import { handleCopy, handlePaste } from "./paste";
+import { carriesOutsideContent, handleCopy, handleDrop, handlePaste } from "./paste";
+import { PastePlaceholders } from "./paste-placeholders";
 import { TextEditor } from "./text-editor";
 import { toolForKey, VIEWER_TOOLS, type Tool } from "./tools";
 import { useCanvas } from "./use-canvas";
@@ -672,10 +673,12 @@ export function CanvasViewport({
       if (clipboardTarget(e) && props.current.editing) handlePaste(store, e);
     };
 
-    // ----- drop from the sidebar -----
+    // ----- drop from the sidebar, or from outside the page -----
     const carriesBlock = (e: DragEvent) => e.dataTransfer?.types.includes(BLOCK_DRAG_TYPE) ?? false;
+    const carriesOutside = (e: DragEvent) =>
+      !carriesBlock(e) && carriesOutsideContent(e.dataTransfer?.types ?? []);
     const onDragOver = (e: DragEvent) => {
-      if (!props.current.editing || !carriesBlock(e)) return;
+      if (!props.current.editing || !(carriesBlock(e) || carriesOutside(e))) return;
       e.preventDefault();
       if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
       setDropping(true);
@@ -685,7 +688,14 @@ export function CanvasViewport({
     };
     const onDrop = (e: DragEvent) => {
       setDropping(false);
-      if (!props.current.editing || !carriesBlock(e)) return;
+      if (!props.current.editing) return;
+      if (carriesOutside(e)) {
+        // Taken even when there's nothing to add, or the browser opens the file.
+        e.preventDefault();
+        handleDrop(store, e, toWorld(local(e)));
+        return;
+      }
+      if (!carriesBlock(e)) return;
       e.preventDefault();
       const id = Number(e.dataTransfer?.getData(BLOCK_DRAG_TYPE));
       if (Number.isSafeInteger(id)) props.current.onPlaceBlock(id, toWorld(local(e)));
@@ -772,6 +782,7 @@ export function CanvasViewport({
             />
           );
         })}
+        <PastePlaceholders store={store} />
         <DrawingPreview store={store} />
         <TextEditor store={store} />
       </div>

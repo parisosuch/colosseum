@@ -1,20 +1,34 @@
-// The canvas's clipboard handlers. Copy and cut put the selection on the
-// clipboard under the canvas MIME type with a plain-text version; paste reads
-// it back. Content from outside the canvas (links, images, files, text) gets
-// its own branches in `handlePaste` and isn't handled yet: such a paste does
-// nothing.
+// The canvas's clipboard and drop handlers. Copy and cut put the selection on
+// the clipboard under the canvas MIME type with a plain-text version; paste
+// reads it back. Content from outside the canvas (links, images, files, text),
+// pasted or dropped, goes to paste-ingest.ts.
 
-import { CANVAS_MIME, clipboardText, parseClipboard, pasteClipboard } from "@/lib/canvas/clipboard";
+import {
+  CANVAS_MIME,
+  clipboardText,
+  parseClipboard,
+  pasteClipboard,
+  type CanvasClipboard,
+} from "@/lib/canvas/clipboard";
 import { viewCenter, type Point } from "@/lib/canvas/camera";
+import { readPasteContent, type TransferLike } from "@/lib/canvas/paste-content";
 import { copyPayload, deleteSelection } from "./actions";
 import type { CanvasStore } from "./canvas-store";
+import { canIngest, ingestContent } from "./paste-ingest";
+
+// The last copy from this page. A browser that doesn't keep our MIME type on
+// the system clipboard still hands back the plain text, and that text is how
+// the paste is recognised as our own instead of becoming a text element.
+let lastCopy: { text: string; payload: CanvasClipboard } | null = null;
 
 export function handleCopy(store: CanvasStore, e: ClipboardEvent, cut: boolean): boolean {
   const payload = copyPayload(store);
   if (!payload || !e.clipboardData) return false;
   e.preventDefault();
+  const text = clipboardText(payload);
   e.clipboardData.setData(CANVAS_MIME, JSON.stringify(payload));
-  e.clipboardData.setData("text/plain", clipboardText(payload));
+  e.clipboardData.setData("text/plain", text);
+  lastCopy = { text, payload };
   if (cut) deleteSelection(store);
   return true;
 }
@@ -27,7 +41,9 @@ export function pasteTarget(store: CanvasStore): Point {
 
 export function handlePaste(store: CanvasStore, e: ClipboardEvent): boolean {
   if (!store.canEdit || !e.clipboardData) return false;
-  const clip = parseClipboard(e.clipboardData.getData(CANVAS_MIME));
+  const clip =
+    parseClipboard(e.clipboardData.getData(CANVAS_MIME)) ??
+    (lastCopy && e.clipboardData.getData("text/plain") === lastCopy.text ? lastCopy.payload : null);
   if (clip) {
     e.preventDefault();
     store.undo.stopCapturing();
@@ -45,6 +61,31 @@ export function handlePaste(store: CanvasStore, e: ClipboardEvent): boolean {
     if (ids.length) store.setSelection(ids);
     return true;
   }
-  // Links, images, files and plain text from outside the canvas go here.
-  return false;
+  return ingestTransfer(store, e.clipboardData, pasteTarget(store), () => e.preventDefault());
+}
+
+// A drag from outside the page (files from the desktop, a link or text from
+// another tab) that the board would take.
+export function carriesOutsideContent(types: readonly string[]): boolean {
+  return types.includes("Files") || types.includes("text/uri-list") || types.includes("text/plain");
+}
+
+// A drop of outside content at `at` (world space).
+export function handleDrop(store: CanvasStore, e: DragEvent, at: Point): boolean {
+  if (!e.dataTransfer) return false;
+  return ingestTransfer(store, e.dataTransfer, at, () => e.preventDefault());
+}
+
+function ingestTransfer(
+  store: CanvasStore,
+  data: TransferLike,
+  at: Point,
+  claim: () => void,
+): boolean {
+  if (!canIngest(store)) return false;
+  const content = readPasteContent(data);
+  if (!content) return false;
+  claim();
+  void ingestContent(store, content, at);
+  return true;
 }

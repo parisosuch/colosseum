@@ -570,6 +570,9 @@ export const notification = pgTable(
   (t) => [
     // The bell feed and unread count both scan one recipient's rows, newest first.
     index("notification_recipient_id_created_at_idx").on(t.recipient_id, t.created_at.desc()),
+    // Deleting a canvas thread cascades here; without it each delete scans the
+    // table.
+    index("notification_thread_id_idx").on(t.thread_id),
     // A notification points at exactly one subject; the render path picks its
     // message and its link off whichever one is set.
     check(

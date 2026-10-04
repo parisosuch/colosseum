@@ -1,0 +1,1 @@
+CREATE INDEX "notification_thread_id_idx" ON "notification" USING btree ("thread_id");

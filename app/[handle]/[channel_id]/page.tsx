@@ -24,6 +24,7 @@ import {
 } from "@/lib/colosseum/screenshot-data";
 import { getSessionUser } from "@/lib/auth";
 import { parseChannelQuery } from "@/lib/canvas/channel-query";
+import { canvasThreadHref, threadParam } from "@/lib/canvas/route";
 import { showsCanvasButton } from "@/lib/colosseum/canvas-blocks";
 
 type ChannelPageParams = {
@@ -31,7 +32,8 @@ type ChannelPageParams = {
   // `?block=<id>` deep-links a block's modal open on top of the board. Shared
   // links use this form, so the channel is still there when the modal closes.
   // `sort`, `type`, `q` and `view` are the board's controls
-  // (lib/canvas/channel-query.ts).
+  // (lib/canvas/channel-query.ts). `?thread=<id>` is a canvas comment thread,
+  // which lives on the canvas page, so it's sent on there.
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
@@ -108,6 +110,11 @@ export default async function ChannelPage({ params, searchParams }: ChannelPageP
   const { handle, channel_id } = await params;
   const id = parseInt(channel_id, 10);
   if (Number.isNaN(id)) redirect("/");
+
+  // Canvas comment notifications link here with `?thread=`. The canvas page
+  // checks access itself and opens centred on the thread.
+  const thread = threadParam((await searchParams).thread);
+  if (thread !== null) redirect(canvasThreadHref(`/${handle}/${id}`, thread));
 
   // null = the channel doesn't exist; the visibility check below hides a private
   // channel from anyone but its owner. Don't leak which; redirect. Independent

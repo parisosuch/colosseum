@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import CanvasPage from "@/components/canvas/canvas-page";
 import { getSessionUser } from "@/lib/auth";
+import { threadParam } from "@/lib/canvas/route";
 import {
   canContributeChannel,
   canManageChannel,
@@ -16,6 +17,9 @@ import { getUserProfile } from "@/lib/colosseum/user";
 
 type CanvasPageParams = {
   params: Promise<{ handle: string; channel_id: string }>;
+  // `?thread=<id>` opens centred on that comment thread, for notification
+  // links (the channel page sends them on here).
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
 // The canvas has nothing a link preview could show yet, so it borrows the
@@ -31,8 +35,9 @@ export async function generateMetadata({ params }: CanvasPageParams): Promise<Me
 // /<handle>/<channel>/canvas. The page resolves who's looking and what they
 // may do; the doc itself comes over the canvas socket once the client is up,
 // and the realtime server checks access again on its own.
-export default async function ChannelCanvasPage({ params }: CanvasPageParams) {
+export default async function ChannelCanvasPage({ params, searchParams }: CanvasPageParams) {
   const { handle, channel_id } = await params;
+  const initialThreadId = threadParam((await searchParams)?.thread);
   const id = parseInt(channel_id, 10);
   if (Number.isNaN(id)) redirect("/");
 
@@ -76,6 +81,7 @@ export default async function ChannelCanvasPage({ params }: CanvasPageParams) {
           : null
       }
       channels={myChannels}
+      initialThreadId={initialThreadId}
     />
   );
 }

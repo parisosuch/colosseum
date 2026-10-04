@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Shapes } from "lucide-react";
+import { toast } from "sonner";
 
 import { AddBlockBody, useAddBlockFlow, type PickableChannel } from "@/components/add-block-flow";
 import BlockModal from "@/components/block-modal";
@@ -19,7 +20,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
-import { viewCenter, type Point } from "@/lib/canvas/camera";
+import { centerOn, viewCenter, type Point } from "@/lib/canvas/camera";
 import { placeBlock } from "@/lib/canvas/elements";
 import { setPopStateInterceptor } from "@/lib/canvas/popstate-gate";
 import {
@@ -29,21 +30,26 @@ import {
   supportsViewTransitions,
   transitionReady,
 } from "@/lib/canvas/transition";
+import { pinPosition } from "@/lib/canvas/threads";
+import { elementsOf } from "@/lib/realtime/canvas-doc";
 import { getCanvasBlocksAction } from "@/lib/colosseum/canvas-actions";
 import type { Column } from "@/lib/colosseum/column";
 import { BlocksPanel } from "./blocks-panel";
-import { zoomToFit } from "./camera-actions";
+import { centreOn, zoomToFit } from "./camera-actions";
 import { EndIsland, StartIsland, Toolbar, ZoomIsland, type ViewerProfile } from "./canvas-chrome";
 import { CanvasStore } from "./canvas-store";
 import { CanvasViewport } from "./canvas-viewport";
+import { CommentsButton, CommentsPanel } from "./comments-panel";
 import { HistoryButton, HistoryLayer } from "./history-panel";
 import { useCanvasHistory } from "./history-state";
-import { LayersPanel } from "./layers-panel";
+import { LayersPanel, layerName } from "./layers-panel";
 import { PropertiesPanel } from "./properties-panel";
+import { ThreadLayer } from "./thread-layer";
 import { ToolOptions } from "./tool-options";
 import { VIEWER_TOOLS, type Tool } from "./tools";
 import { useCanvas } from "./use-canvas";
 import { useCanvasScreenshots } from "./use-canvas-screenshots";
+import { useCanvasThreads } from "./use-canvas-threads";
 import { usePasteIngest } from "./use-paste-ingest";
 
 // The canvas is view-only on phones and on touch-first devices, per the issue:
@@ -87,6 +93,8 @@ export type CanvasPageProps = {
   viewer: ViewerProfile | null;
   // The viewer's own channels, for the block modal's Move and Copy.
   channels: PickableChannel[];
+  // `?thread=<id>`: open centred on that comment thread.
+  initialThreadId?: number | null;
 };
 
 export default function CanvasPage({
@@ -99,6 +107,7 @@ export default function CanvasPage({
   viewerId,
   viewer,
   channels,
+  initialThreadId = null,
 }: CanvasPageProps) {
   const router = useRouter();
   const [store] = useState(
@@ -139,9 +148,16 @@ export default function CanvasPage({
     },
     [store, viewerId],
   );
-  // The comment tool's click. Threads come with canvas comments; this is where
-  // they start.
-  const startThread = useCallback((_at: Point) => {}, []);
+  // --- comment threads ---
+  // Everyone who can see the canvas reads them; anyone signed in writes,
+  // read-only viewers included.
+  const threads = useCanvasThreads({
+    store,
+    channelId: channel.id,
+    viewerId,
+    canManage: isOwner,
+  });
+  const [commentsOpen, setCommentsOpen] = useState(false);
   // A viewer who loses write access mid-session goes back to a viewer's tool.
   useEffect(() => {
     if (!canEdit && !VIEWER_TOOLS.has(tool)) setToolState("select");
@@ -150,11 +166,26 @@ export default function CanvasPage({
   const [panelTab, setPanelTab] = useState<"blocks" | "layers">("blocks");
   const selection = useCanvas(store, "selection", (s) => s.selection);
   const showPanel = canEdit && !viewOnlyDevice && panelOpen && !previewing;
+  // The comments and history panels share the top-right spot with the
+  // properties panel; one shows at a time.
+  const showComments = commentsOpen && !viewOnlyDevice && !previewing;
+  const { setOpen: setHistoryOpen } = history;
+  const toggleComments = useCallback(() => {
+    setCommentsOpen((o) => {
+      if (!o) setHistoryOpen(false);
+      return !o;
+    });
+  }, [setHistoryOpen]);
+  useEffect(() => {
+    if (history.open) setCommentsOpen(false);
+  }, [history.open]);
   const [openColumnId, setOpenColumnId] = useState<number | null>(null);
 
+  // Disconnect rather than destroy on cleanup: the same store reconnects if
+  // React runs this effect again, and its undo history has to survive that.
   useEffect(() => {
     store.connect();
-    return () => store.destroy();
+    return () => store.disconnect();
   }, [store]);
 
   // Focus goes to the board, so shortcuts work at once.
@@ -173,11 +204,11 @@ export default function CanvasPage({
       ? { top: EDGE + ISLAND, right: 0, bottom: 0, left: 0 }
       : {
           top: EDGE + ISLAND,
-          right: 0,
           bottom: EDGE + 46,
           left: showPanel ? EDGE + PANEL_WIDTH : 0,
+          right: showComments ? EDGE + PANEL_WIDTH : 0,
         };
-  }, [store, viewOnlyDevice, showPanel]);
+  }, [store, viewOnlyDevice, showPanel, showComments]);
 
   // The opening camera: everything on the canvas, at no more than 100%.
   const framed = useRef(false);
@@ -246,6 +277,59 @@ export default function CanvasPage({
   // the blocks are hidden, so they fade in already framed instead of jumping.
   const boardReady =
     connection.closed !== null || (connection.synced && [...placed].every((id) => columns.has(id)));
+
+  // What a thread's "On …" names: the element as the layers panel names it.
+  const nameOf = useCallback(
+    (elementId: string) => {
+      const el = store.docState.elements.get(elementId);
+      if (!el) return null;
+      return layerName(el, el.columnId != null ? columns.get(el.columnId) : undefined);
+    },
+    [store, columns],
+  );
+
+  // Picking a thread in the panel glides the board to its pin and opens it.
+  const { open: openThread } = threads;
+  const jumpToThread = useCallback(
+    (threadId: number, animate = true) => {
+      const t = threads.state.threads.get(threadId);
+      if (!t) return false;
+      centreOn(store, pinPosition(elementsOf(store.doc), t), { animate });
+      openThread(threadId);
+      return true;
+    },
+    [store, threads.state, openThread],
+  );
+
+  // `?thread=<id>` (a notification's link): once the board and the thread list
+  // are in, open at 100% centred on the pin, with the thread open. The query
+  // comes off afterwards, so a reload doesn't reopen it.
+  const deepLinked = useRef(false);
+  useEffect(() => {
+    if (initialThreadId === null || deepLinked.current) return;
+    if (!boardReady || !threads.loaded || connection.closed) return;
+    deepLinked.current = true;
+    const t = threads.state.threads.get(initialThreadId);
+    if (t) {
+      store.setCamera(
+        centerOn(pinPosition(elementsOf(store.doc), t), 1, store.viewport, store.insets),
+      );
+      openThread(t.id);
+    } else {
+      toast("That thread isn't on this canvas any more.");
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.delete("thread");
+    window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+  }, [
+    initialThreadId,
+    boardReady,
+    threads.loaded,
+    threads.state,
+    connection.closed,
+    store,
+    openThread,
+  ]);
 
   // The open transition starts at once: the chrome runs its storyboard while
   // the loader covers whatever the board still needs.
@@ -328,7 +412,15 @@ export default function CanvasPage({
   }, []);
 
   const toolbarLeft = showPanel ? `calc(50% + ${(EDGE + PANEL_WIDTH) / 2}px)` : "50%";
-  const empty = boardReady && connection.closed === null && !previewing && doc.ordered.length === 0;
+  // A canvas with only comment pins on it isn't empty: the notice would sit
+  // over them.
+  const empty =
+    boardReady &&
+    connection.closed === null &&
+    !previewing &&
+    doc.ordered.length === 0 &&
+    threads.loaded &&
+    threads.list.length === 0;
   // Phones keep the app's bottom bar for notifications and the account menu
   // (signed in, onboarded viewers only, as everywhere else), so the board
   // stops above it.
@@ -411,7 +503,12 @@ export default function CanvasPage({
         <EndIsland
           store={store}
           viewer={viewer}
-          actions={history.enabled ? <HistoryButton history={history} /> : null}
+          actions={
+            <>
+              <CommentsButton open={showComments} onToggle={toggleComments} />
+              {history.enabled ? <HistoryButton history={history} /> : null}
+            </>
+          }
         />
       </div>
 
@@ -469,7 +566,15 @@ export default function CanvasPage({
           <div className="absolute bottom-4 right-4 z-10">
             <ZoomIsland store={viewStore} showHistory={canEdit && !previewing} />
           </div>
-          {editing && selection.size > 0 ? (
+          {showComments ? (
+            <div className="pointer-events-none absolute bottom-4 right-4 top-20 z-10 flex flex-col [&>*]:pointer-events-auto">
+              <CommentsPanel
+                threads={threads}
+                nameOf={nameOf}
+                onPick={(id) => void jumpToThread(id)}
+              />
+            </div>
+          ) : editing && selection.size > 0 ? (
             <div className="pointer-events-none absolute bottom-20 right-4 top-20 z-10 flex flex-col [&>*]:pointer-events-auto">
               <PropertiesPanel store={store} />
             </div>
@@ -491,9 +596,28 @@ export default function CanvasPage({
         onToolChange={setTool}
         onOpenBlock={setOpenColumnId}
         onPlaceBlock={(columnId, at) => placeAt(columnId, at)}
-        onComment={startThread}
+        onComment={threads.startDraft}
+        onBoardPress={() => {
+          if (threads.openId !== null || threads.draft !== null) threads.close();
+        }}
         ready={boardReady}
-      />
+      >
+        {boardReady && !previewing && connection.closed === null ? (
+          <ThreadLayer
+            store={store}
+            threads={threads}
+            nameOf={nameOf}
+            viewer={
+              viewerId
+                ? { handle: viewer?.handle ?? "you", avatarUrl: viewer?.avatarUrl ?? null }
+                : null
+            }
+            touchOnly={viewOnlyDevice}
+            channelPath={channelPath}
+            loginHref={`/auth/login?next=${encodeURIComponent(`${channelPath}/canvas`)}`}
+          />
+        ) : null}
+      </CanvasViewport>
 
       <Dialog open={signInToComment} onOpenChange={setSignInToComment}>
         <DialogContent className="sm:max-w-sm">

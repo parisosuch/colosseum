@@ -204,10 +204,19 @@ export class CanvasStore {
     provider.awareness.on("change", () => this.refreshPeers());
   }
 
-  destroy(): void {
+  // Close the socket and keep the doc and the undo history, so a connect()
+  // after it carries on where this left off. React runs an effect's cleanup
+  // and then the effect again on the same component (Strict Mode does it on a
+  // client-side navigation in dev), and the page's store has to survive that.
+  disconnect(): void {
     this.provider?.awareness.setLocalState(null);
     this.provider?.destroy();
     this.provider = null;
+  }
+
+  // For a store nothing will connect again (a version preview's).
+  destroy(): void {
+    this.disconnect();
     this.undo.destroy();
     this.doc.destroy();
     this.listeners.clear();

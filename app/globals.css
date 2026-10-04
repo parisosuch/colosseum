@@ -55,6 +55,11 @@
     --canvas-surface: 0 0% 98%;
     --canvas-wash-alpha: 0.06;
     --canvas-guide: 346.8 77.2% 49.8%;
+    /* The grid's dots and lines (components/canvas/canvas-grid.tsx): the
+       foreground at 20% and 6%, since a line covers far more pixels than a
+       dot. */
+    --canvas-grid-dot: 0 0% 3.9% / 0.2;
+    --canvas-grid-line: 0 0% 3.9% / 0.06;
     /* One per editor: cursor, name label, selection outline, avatar ring. The
        names match PRESENCE_COLORS in lib/realtime/canvas-presence.ts. */
     --presence-violet: 262.1 83.3% 57.8%;
@@ -104,6 +109,8 @@
     --canvas-surface: 0 0% 5.9%;
     --canvas-wash-alpha: 0.1;
     --canvas-guide: 351.3 94.5% 71.4%;
+    --canvas-grid-dot: 0 0% 98% / 0.2;
+    --canvas-grid-line: 0 0% 98% / 0.06;
     --presence-violet: 255.1 91.7% 76.3%;
     --presence-orange: 27 96% 61%;
     --presence-teal: 172.5 66% 50.4%;

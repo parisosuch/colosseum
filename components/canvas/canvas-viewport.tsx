@@ -47,6 +47,7 @@ import {
 } from "./actions";
 import { zoomStep, zoomToActual, zoomToFit, zoomToSelection } from "./camera-actions";
 import { CanvasElement } from "./canvas-element";
+import { CanvasGrid } from "./canvas-grid";
 import { CanvasOverlay, HANDLE_SIZE } from "./canvas-overlay";
 import type { CanvasStore } from "./canvas-store";
 import {
@@ -784,6 +785,7 @@ export function CanvasViewport({
       className="absolute inset-0 touch-none select-none overflow-hidden bg-canvas-surface outline-none"
       style={{ cursor: shownCursor }}
     >
+      {touchOnly ? null : <CanvasGrid store={store} />}
       <div
         ref={worldRef}
         className={`pointer-events-none absolute left-0 top-0 origin-top-left transition-opacity duration-ui ease-out ${ready ? "opacity-100" : "opacity-0"}`}

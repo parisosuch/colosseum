@@ -59,6 +59,7 @@ import { frameAt, moveTo, reparentAfterMove, topmostOnly } from "@/lib/canvas/tr
 import { elementsOf, type ConnectorEnd } from "@/lib/realtime/canvas-doc";
 import { HANDLE_SIZE } from "./canvas-overlay";
 import type { CanvasStore } from "./canvas-store";
+import { snapGridStep } from "./grid-setting";
 import { fitTextElements } from "./measure-text";
 import { STICKY_TOOLS, type Tool } from "./tools";
 
@@ -177,6 +178,12 @@ function threshold(store: CanvasStore) {
   return SNAP_THRESHOLD / store.camera.z;
 }
 
+// The grid step to snap to, or null with this browser's grid hidden or its
+// snapping off.
+function grid(store: CanvasStore) {
+  return snapGridStep(store.camera.z);
+}
+
 function originOf(id: string | null, all: All): Point {
   if (!id) return { x: 0, y: 0 };
   const el = all.get(id);
@@ -200,17 +207,24 @@ function snappedAnchor(rect: Rect, p: Point) {
   return { ax: near(a.ax), ay: near(a.ay) };
 }
 
+// A free end snaps to the grid when `step` is set.
 function endAt(
   store: CanvasStore,
   p: Point,
   exclude: ReadonlySet<string>,
+  step: number | null = null,
 ): { end: ConnectorEnd; target: string | null } {
   const target = bindTarget(store.hitContext(), p, exclude);
   const g = target ? store.docState.layout.geom.get(target) : undefined;
   if (target && g) {
     return { end: { kind: "bound", elementId: target, ...snappedAnchor(g.rect, p) }, target };
   }
-  return { end: { kind: "point", x: Math.round(p.x), y: Math.round(p.y) }, target: null };
+  let at = p;
+  if (step) {
+    const s = snapPoint(p, [], threshold(store), { grid: step });
+    at = { x: p.x + s.dx, y: p.y + s.dy };
+  }
+  return { end: { kind: "point", x: Math.round(at.x), y: Math.round(at.y) }, target: null };
 }
 
 // shift: lines at 45° steps.
@@ -314,7 +328,7 @@ export function beginGesture(ctx: GestureContext, e: PointerEvent, p: Point): Ge
     }
     case "line":
     case "arrow": {
-      const { end, target } = endAt(store, w, new Set());
+      const { end, target } = endAt(store, w, new Set(), mod ? null : grid(store));
       return {
         kind: "connector",
         tool,
@@ -331,7 +345,7 @@ export function beginGesture(ctx: GestureContext, e: PointerEvent, p: Point): Ge
 }
 
 function snapStart(store: CanvasStore, w: Point): Point {
-  const s = snapPoint(w, snapTargets(store, new Set()), threshold(store));
+  const s = snapPoint(w, snapTargets(store, new Set()), threshold(store), { grid: grid(store) });
   return { x: w.x + s.dx, y: w.y + s.dy };
 }
 
@@ -434,7 +448,9 @@ export function moveGesture(ctx: GestureContext, g: Gesture, e: PointerEvent, p:
       let guides: Guide[] = [];
       if (g.startBounds && !noSnap) {
         const moved = { ...g.startBounds, x: g.startBounds.x + dx, y: g.startBounds.y + dy };
-        const s = snapRect(moved, snapTargets(store, g.exclude), threshold(store));
+        const s = snapRect(moved, snapTargets(store, g.exclude), threshold(store), {
+          grid: grid(store),
+        });
         dx += s.dx;
         dy += s.dy;
         guides = s.guides;
@@ -463,7 +479,9 @@ export function moveGesture(ctx: GestureContext, g: Gesture, e: PointerEvent, p:
           x: (g.handle === "nw" || g.handle === "sw" ? g.bounds.x : g.bounds.x + g.bounds.w) + dx,
           y: (g.handle === "nw" || g.handle === "ne" ? g.bounds.y : g.bounds.y + g.bounds.h) + dy,
         };
-        const s = snapPoint(corner, snapTargets(store, g.exclude), threshold(store));
+        const s = snapPoint(corner, snapTargets(store, g.exclude), threshold(store), {
+          grid: grid(store),
+        });
         dx += s.dx;
         dy += s.dy;
         guides = s.guides;
@@ -489,7 +507,12 @@ export function moveGesture(ctx: GestureContext, g: Gesture, e: PointerEvent, p:
       g.moved = true;
       const el = store.docState.elements.get(g.id);
       if (!el) return;
-      const { end, target } = endAt(store, w, withDescendants([g.id], store.docState.elements));
+      const { end, target } = endAt(
+        store,
+        w,
+        withDescendants([g.id], store.docState.elements),
+        noSnap ? null : grid(store),
+      );
       const o = parentOrigin(el, store.docState.elements) ?? { x: 0, y: 0 };
       const stored: ConnectorEnd =
         end.kind === "point"
@@ -510,7 +533,9 @@ export function moveGesture(ctx: GestureContext, g: Gesture, e: PointerEvent, p:
       let end = w;
       let guides: Guide[] = [];
       if (!noSnap) {
-        const s = snapPoint(w, snapTargets(store, new Set()), threshold(store));
+        const s = snapPoint(w, snapTargets(store, new Set()), threshold(store), {
+          grid: grid(store),
+        });
         end = { x: w.x + s.dx, y: w.y + s.dy };
         guides = s.guides;
       }
@@ -524,7 +549,8 @@ export function moveGesture(ctx: GestureContext, g: Gesture, e: PointerEvent, p:
     case "connector": {
       const to = e.shiftKey ? constrain(g.startWorld, w) : w;
       const exclude = new Set<string>();
-      const { end, target } = endAt(store, to, exclude);
+      // Shift's 45° steps win over the grid.
+      const { end, target } = endAt(store, to, exclude, noSnap || e.shiftKey ? null : grid(store));
       g.end = end;
       const el = connectorPreview(store, g);
       store.setInteraction({
@@ -612,7 +638,7 @@ export function endGesture(ctx: GestureContext, g: Gesture, e: PointerEvent, p: 
       const rect =
         g.rect && (g.rect.w >= MIN_DRAG || g.rect.h >= MIN_DRAG)
           ? g.rect
-          : clickRect(g.tool, g.startWorld);
+          : clickBox(store, g.tool, g.startWorld, e.metaKey || e.ctrlKey);
       const all = readElements(store.doc);
       const id = createElement(
         store.doc,
@@ -696,6 +722,21 @@ export function endGesture(ctx: GestureContext, g: Gesture, e: PointerEvent, p: 
       return;
     }
   }
+}
+
+// A click places a default-sized element centred on the point, its edges
+// snapped to the grid like a moved box's.
+function clickBox(
+  store: CanvasStore,
+  tool: Extract<Gesture, { kind: "create" }>["tool"],
+  at: Point,
+  noSnap: boolean,
+): Rect {
+  const rect = clickRect(tool, at);
+  const step = noSnap ? null : grid(store);
+  if (!step) return rect;
+  const s = snapRect(rect, [], threshold(store), { grid: step });
+  return { ...rect, x: rect.x + s.dx, y: rect.y + s.dy };
 }
 
 function previewInput(store: CanvasStore, g: Extract<Gesture, { kind: "create" }>, rect: Rect) {

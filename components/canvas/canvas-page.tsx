@@ -181,9 +181,11 @@ export default function CanvasPage({
   }, [history.open]);
   const [openColumnId, setOpenColumnId] = useState<number | null>(null);
 
+  // Disconnect rather than destroy on cleanup: the same store reconnects if
+  // React runs this effect again, and its undo history has to survive that.
   useEffect(() => {
     store.connect();
-    return () => store.destroy();
+    return () => store.disconnect();
   }, [store]);
 
   // Focus goes to the board, so shortcuts work at once.

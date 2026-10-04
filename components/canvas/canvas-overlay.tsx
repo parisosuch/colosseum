@@ -227,7 +227,9 @@ function LineHandles({ points }: { points: { x: number; y: number }[] }) {
 }
 
 // Snap guides in the guide colour: lines through matched edges with an x at
-// each end of every box on them, and equal gaps with their size in px.
+// each end of every box on them, and equal gaps with their size in px. Grid
+// lines an edge was caught on are dashed, so they can't be mistaken for an
+// element's, with the box's top-left in world px beside them.
 function Guides({ guides, camera }: { guides: readonly Guide[]; camera: Camera }) {
   const sx = (x: number) => x * camera.z + camera.x;
   const sy = (y: number) => y * camera.z + camera.y;
@@ -242,19 +244,22 @@ function Guides({ guides, camera }: { guides: readonly Guide[]; camera: Camera }
     <svg className="absolute inset-0 h-full w-full overflow-visible" fill="none">
       <g stroke={color} strokeWidth={1}>
         {guides.map((g, i) => {
-          if (g.kind === "line") {
+          if (g.kind === "position") return null;
+          if (g.kind === "line" || g.kind === "grid") {
             const vertical = g.axis === "x";
             const a = vertical ? sx(g.at) : sy(g.at);
             return (
-              <g key={i}>
+              <g key={i} strokeDasharray={g.kind === "grid" ? "4 3" : undefined}>
                 {vertical ? (
                   <line x1={a} x2={a} y1={sy(g.from)} y2={sy(g.to)} />
                 ) : (
                   <line y1={a} y2={a} x1={sx(g.from)} x2={sx(g.to)} />
                 )}
-                {g.marks.map((m, j) =>
-                  vertical ? mark(a, sy(m), `${i}-${j}`) : mark(sx(m), a, `${i}-${j}`),
-                )}
+                <g strokeDasharray="none">
+                  {g.marks.map((m, j) =>
+                    vertical ? mark(a, sy(m), `${i}-${j}`) : mark(sx(m), a, `${i}-${j}`),
+                  )}
+                </g>
               </g>
             );
           }
@@ -278,6 +283,27 @@ function Guides({ guides, camera }: { guides: readonly Guide[]; camera: Camera }
         })}
       </g>
       {guides.map((g, i) => {
+        if (g.kind === "position") {
+          return (
+            <foreignObject
+              key={`p${i}`}
+              x={sx(g.x) + 6}
+              y={sy(g.y) - 26}
+              width={120}
+              height={18}
+              className="overflow-visible"
+            >
+              <div className="flex h-full justify-start">
+                <span
+                  className="rounded px-1 font-mono text-xs leading-4 tabular-nums text-background"
+                  style={{ backgroundColor: color }}
+                >
+                  {Math.round(g.x)}, {Math.round(g.y)}
+                </span>
+              </div>
+            </foreignObject>
+          );
+        }
         if (g.kind !== "gap") return null;
         const along = g.axis === "x";
         const mid = (g.from + g.to) / 2;

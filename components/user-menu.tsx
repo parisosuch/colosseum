@@ -116,15 +116,23 @@ export function UserMenu({
   avatarUrl,
   handle,
   isAdmin,
+  avatarClassName = "size-10",
+  triggerClassName = "",
 }: {
   avatarUrl?: string;
   handle: string;
   isAdmin?: boolean;
+  // The canvas islands draw a 24px avatar in a 36px target.
+  avatarClassName?: string;
+  triggerClassName?: string;
 }) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <Avatar className="size-10">
+      <DropdownMenuTrigger
+        aria-label="Account menu"
+        className={`rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring ${triggerClassName}`}
+      >
+        <Avatar className={avatarClassName}>
           <AvatarImage src={avatarUrl} />
           <AvatarFallback>{handle.charAt(0).toUpperCase()}</AvatarFallback>
         </Avatar>

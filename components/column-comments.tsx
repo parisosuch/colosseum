@@ -6,24 +6,17 @@ import { ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 
 import type { Comment } from "@/lib/colosseum/comment";
-import { activeMention, parseMentions } from "@/lib/colosseum/mentions";
-import type { ProfileSearchResult } from "@/lib/colosseum/user";
 import {
   createCommentAction,
   deleteCommentAction,
   getColumnCommentsAction,
-  searchProfilesAction,
 } from "@/lib/colosseum/actions";
 import { fetchComments, peekComments, writeComments } from "@/lib/comment-cache";
+import { useShare } from "@/components/share-context";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { CommentComposer, CommentText } from "@/components/comment-composer";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { UserProfilePicture } from "@/components/user-profile-picture";
-
-// Mirrors MAX_COMMENT_LENGTH in lib/colosseum/comment.ts; kept as a literal so
-// this client file never imports the server-only module. The action re-validates.
-const MAX_COMMENT_LENGTH = 2000;
 
 const formatCommentTime = (createdAt: string) => {
   const created = new Date(createdAt);
@@ -55,18 +48,11 @@ export default function ColumnComments({ columnId, viewerId, isOwner }: ColumnCo
   // straight away instead of flashing "Loading…" every time. Always null on the
   // server (the cache is browser-only), so the permalink page's HTML and its
   // hydration agree.
+  const share = useShare();
   const [comments, setComments] = useState<Comment[] | null>(() => peekComments(columnId));
   const [body, setBody] = useState("");
   const [posting, setPosting] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // @-mention autocomplete: the fragment being typed, matching profiles, and the
-  // highlighted row. `mention` is null unless the caret sits inside an `@…`.
-  const [mention, setMention] = useState<{ query: string; start: number } | null>(null);
-  const [mentionResults, setMentionResults] = useState<ProfileSearchResult[]>([]);
-  const [mentionIndex, setMentionIndex] = useState(0);
-  const mentionOpen = mention !== null && mentionResults.length > 0;
   // Mobile accordion: collapsed until tapped. Ignored on desktop (always shown).
   const [open, setOpen] = useState(false);
 
@@ -79,13 +65,13 @@ export default function ColumnComments({ columnId, viewerId, isOwner }: ColumnCo
   useEffect(() => {
     let active = true;
     setComments(peekComments(columnId));
-    fetchComments(columnId, getColumnCommentsAction)
+    fetchComments(columnId, (id) => getColumnCommentsAction(id, share?.token))
       .then((c) => active && setComments(c))
       .catch(() => active && setComments((prev) => prev ?? []));
     return () => {
       active = false;
     };
-  }, [columnId]);
+  }, [columnId, share?.token]);
 
   // Keep the thread pinned to the newest (bottom) — on load, after a post, and
   // when the mobile accordion expands (the list is display:none until then). A
@@ -129,53 +115,6 @@ export default function ColumnComments({ columnId, viewerId, isOwner }: ColumnCo
       writeComments(columnId, previous);
       toast.error("Couldn't delete that comment. Please try again.");
     }
-  };
-
-  // Profile lookup for the active mention fragment, fired on every keystroke for
-  // instant feedback (skips the empty "just typed @" case so we don't dump every
-  // user). The `active` guard drops a stale response so out-of-order results
-  // can't clobber a newer query.
-  const query = mention?.query ?? "";
-  useEffect(() => {
-    if (query.length < 1) {
-      setMentionResults([]);
-      return;
-    }
-    let active = true;
-    searchProfilesAction(query)
-      .then((r) => active && setMentionResults(r.slice(0, 6)))
-      .catch(() => active && setMentionResults([]));
-    return () => {
-      active = false;
-    };
-  }, [query]);
-
-  useEffect(() => setMentionIndex(0), [mentionResults]);
-
-  // Recompute the active mention from the textarea's current value + caret.
-  const syncMention = (el: HTMLTextAreaElement) => {
-    setMention(activeMention(el.value, el.selectionStart ?? el.value.length));
-  };
-
-  // Replace the `@fragment` at the caret with the chosen handle + a trailing
-  // space, then restore focus and caret after it.
-  const acceptMention = (handle: string) => {
-    if (!mention) return;
-    const el = textareaRef.current;
-    const caret = el?.selectionStart ?? body.length;
-    const before = body.slice(0, mention.start);
-    const insert = `@${handle} `;
-    setBody(before + insert + body.slice(caret));
-    setMention(null);
-    setMentionResults([]);
-    const pos = before.length + insert.length;
-    requestAnimationFrame(() => {
-      const t = textareaRef.current;
-      if (t) {
-        t.focus();
-        t.setSelectionRange(pos, pos);
-      }
-    });
   };
 
   return (
@@ -244,21 +183,7 @@ export default function ColumnComments({ columnId, viewerId, isOwner }: ColumnCo
                       </button>
                     ) : null}
                   </div>
-                  <p className="whitespace-pre-wrap break-words text-sm">
-                    {parseMentions(c.body).map((seg) =>
-                      seg.type === "mention" ? (
-                        <Link
-                          key={seg.start}
-                          href={`/${seg.handle}`}
-                          className="font-semibold hover:underline"
-                        >
-                          {seg.raw}
-                        </Link>
-                      ) : (
-                        <span key={seg.start}>{seg.value}</span>
-                      ),
-                    )}
-                  </p>
+                  <CommentText body={c.body} />
                 </div>
               </div>
             ))
@@ -266,95 +191,13 @@ export default function ColumnComments({ columnId, viewerId, isOwner }: ColumnCo
         </div>
 
         {viewerId ? (
-          <div className="mt-3 shrink-0 space-y-2">
-            <div className="relative">
-              <Textarea
-                ref={textareaRef}
-                value={body}
-                maxLength={MAX_COMMENT_LENGTH}
-                placeholder="Add a comment…"
-                rows={2}
-                // Enter posts; Shift+Enter adds a newline. While the @-mention
-                // list is open, arrows/Tab/Enter/Escape drive it instead.
-                className="resize-none text-sm [field-sizing:content]"
-                onChange={(e) => {
-                  setBody(e.target.value);
-                  syncMention(e.target);
-                }}
-                onClick={(e) => syncMention(e.currentTarget)}
-                onKeyUp={(e) => {
-                  if (
-                    mentionOpen &&
-                    ["ArrowUp", "ArrowDown", "Enter", "Tab", "Escape"].includes(e.key)
-                  ) {
-                    return;
-                  }
-                  syncMention(e.currentTarget);
-                }}
-                // Delay so a mousedown on a suggestion still registers before close.
-                onBlur={() => setTimeout(() => setMention(null), 120)}
-                onKeyDown={(e) => {
-                  if (mentionOpen) {
-                    if (e.key === "ArrowDown") {
-                      e.preventDefault();
-                      setMentionIndex((i) => (i + 1) % mentionResults.length);
-                      return;
-                    }
-                    if (e.key === "ArrowUp") {
-                      e.preventDefault();
-                      setMentionIndex(
-                        (i) => (i - 1 + mentionResults.length) % mentionResults.length,
-                      );
-                      return;
-                    }
-                    if (e.key === "Enter" || e.key === "Tab") {
-                      e.preventDefault();
-                      acceptMention(mentionResults[mentionIndex].handle);
-                      return;
-                    }
-                    if (e.key === "Escape") {
-                      e.preventDefault();
-                      setMention(null);
-                      return;
-                    }
-                  }
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    post();
-                  }
-                }}
-              />
-              {mentionOpen ? (
-                // Opens upward — the composer is pinned to the bottom of the panel.
-                <ul className="absolute bottom-full left-0 right-0 z-50 mb-1 max-h-48 overflow-y-auto rounded-md border bg-popover p-1 shadow-md">
-                  {mentionResults.map((p, i) => (
-                    <li key={p.handle}>
-                      <button
-                        type="button"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          acceptMention(p.handle);
-                        }}
-                        onMouseEnter={() => setMentionIndex(i)}
-                        className={cn(
-                          "flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm",
-                          i === mentionIndex ? "bg-accent" : "",
-                        )}
-                      >
-                        <UserProfilePicture avatarUrl={p.avatar_url} handle={p.handle} size="xs" />
-                        <span className="truncate">@{p.handle}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-            <div className="flex justify-end">
-              <Button size="sm" disabled={!body.trim() || posting} onClick={post}>
-                Comment
-              </Button>
-            </div>
-          </div>
+          <CommentComposer
+            className="mt-3 shrink-0"
+            value={body}
+            onChange={setBody}
+            onSubmit={post}
+            busy={posting}
+          />
         ) : null}
       </div>
     </div>

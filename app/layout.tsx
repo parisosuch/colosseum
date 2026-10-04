@@ -3,7 +3,7 @@ import { Fraunces, Geist } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
 import NavBar from "@/components/nav-bar";
-import { NavBarGate } from "@/components/nav-bar-gate";
+import { MobileBarGate, NavBarGate } from "@/components/nav-bar-gate";
 import { HeroFrame } from "@/components/hero-frame";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -139,7 +139,12 @@ export default async function RootLayout({
                 a sticky element needs its scroll container as an ancestor.
                 Bottom padding on mobile clears the fixed bottom bar so the last
                 content isn't hidden behind it. */}
-              <div className="flex-1 min-h-0 flex flex-col overflow-y-auto pb-[calc(3.5rem+env(safe-area-inset-bottom))] sm:pb-0">
+              {/* data-scroll-root: the channel page saves this element's
+                  scroll on the way into its canvas and restores it on Back. */}
+              <div
+                data-scroll-root
+                className="flex-1 min-h-0 flex flex-col overflow-y-auto pb-[calc(3.5rem+env(safe-area-inset-bottom))] sm:pb-0"
+              >
                 <NavBarGate>
                   <NavBar />
                 </NavBarGate>
@@ -152,9 +157,9 @@ export default async function RootLayout({
                   <SiteFooter />
                 </NavBarGate>
               </div>
-              <NavBarGate>
+              <MobileBarGate>
                 <MobileBottomNav />
-              </NavBarGate>
+              </MobileBarGate>
             </div>
             <Toaster />
             <ServiceWorkerRegister />

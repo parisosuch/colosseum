@@ -1,7 +1,7 @@
 import "server-only";
 
 import { cache } from "react";
-import { and, desc, eq, gt, isNull, lt, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull, isNull, lt, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { db } from "@/lib/db";
@@ -23,9 +23,10 @@ import { getUserProfile, updateUserProfile } from "./user";
 
 export const NOTIFICATION_PAGE = 30;
 
-// One email per (recipient, type, channel, block) inside this window. A burst of
-// comments on one block announces itself once; the in-app rows and the unread
-// badge still fire per event, and the per-type toggles still apply.
+// One email per (recipient, type, channel, block or canvas thread) inside this
+// window. A burst of comments on one block announces itself once; the in-app
+// rows and the unread badge still fire per event, and the per-type toggles
+// still apply.
 export const EMAIL_QUIET_PERIOD_MINUTES = 15;
 
 // How much of a comment body rides along in the row and the email.
@@ -156,6 +157,12 @@ function subjectBlock(r: JoinedNotification): string | null {
   });
 }
 
+// A comment or mention in a canvas thread, which records the thread instead of
+// a block.
+function isCanvasComment(r: { n: NotificationRow }): boolean {
+  return r.n.thread_id !== null;
+}
+
 // A `connect` notification is in the old shape when it has no column: those rows
 // recorded the recipient's own channel in `channel_id` rather than the host, so
 // they keep rendering the message and link they always did.
@@ -176,6 +183,10 @@ function hasPrivateHost(r: JoinedNotification): boolean {
 function messageFor(r: JoinedNotification): string {
   const inChannel = r.channel_title ? ` in ${quoted(r.channel_title)}` : "";
   const block = subjectBlock(r);
+  if (isCanvasComment(r)) {
+    const on = r.channel_title ? `the canvas of ${quoted(r.channel_title)}` : "a canvas";
+    return r.n.type === "mention" ? `mentioned you on ${on}` : `commented on ${on}`;
+  }
   switch (r.n.type) {
     case "comment":
       return block ? `commented on ${quoted(block)}${inChannel}` : "commented on your block";
@@ -215,6 +226,8 @@ function hrefFor(r: JoinedNotification): string {
     return r.owner_handle ? `/${r.owner_handle}/${r.n.channel_id}` : "/";
   }
   if (!r.owner_handle) return "/";
+  // A canvas comment opens the canvas on its thread.
+  if (isCanvasComment(r)) return `/${r.owner_handle}/${r.n.channel_id}?thread=${r.n.thread_id}`;
   return r.n.column_id !== null
     ? `/${r.owner_handle}/${r.n.channel_id}/${r.n.column_id}`
     : `/${r.owner_handle}/${r.n.channel_id}`;
@@ -250,8 +263,29 @@ function toItem(r: JoinedNotification): NotificationItem {
 // of activity on one block doesn't send an email per event. Anchored on rows
 // that actually went out (`email_sent_at`), not on rows that merely exist —
 // otherwise sustained activity would suppress every email after the first.
-async function inEmailQuietPeriod(n: NotificationRow): Promise<boolean> {
+//
+// With `perActor`, for a canvas thread notification, the subject is the actor
+// rather than the thread: any canvas thread email from the same actor in the
+// same channel counts. A new thread is always a new subject, so without this
+// someone starting threads in a busy channel would email its whole roster once
+// per thread.
+async function inEmailQuietPeriod(n: NotificationRow, perActor = false): Promise<boolean> {
   const since = new Date(n.created_at.getTime() - EMAIL_QUIET_PERIOD_MINUTES * 60_000);
+  const subject =
+    perActor && n.channel_id !== null && n.thread_id !== null
+      ? [
+          eq(notification.channel_id, n.channel_id),
+          eq(notification.actor_id, n.actor_id),
+          isNotNull(notification.thread_id),
+        ]
+      : [
+          // Nulls have to match nulls here: only one of channel/group is ever set,
+          // and a null column_id (channel-level notifications) matches another null.
+          sql`${notification.channel_id} IS NOT DISTINCT FROM ${n.channel_id}`,
+          sql`${notification.group_id} IS NOT DISTINCT FROM ${n.group_id}`,
+          sql`${notification.column_id} IS NOT DISTINCT FROM ${n.column_id}`,
+          sql`${notification.thread_id} IS NOT DISTINCT FROM ${n.thread_id}`,
+        ];
   const [row] = await db
     .select({ id: notification.id })
     .from(notification)
@@ -259,11 +293,7 @@ async function inEmailQuietPeriod(n: NotificationRow): Promise<boolean> {
       and(
         eq(notification.recipient_id, n.recipient_id),
         eq(notification.type, n.type),
-        // Nulls have to match nulls here: only one of channel/group is ever set,
-        // and a null column_id (channel-level notifications) matches another null.
-        sql`${notification.channel_id} IS NOT DISTINCT FROM ${n.channel_id}`,
-        sql`${notification.group_id} IS NOT DISTINCT FROM ${n.group_id}`,
-        sql`${notification.column_id} IS NOT DISTINCT FROM ${n.column_id}`,
+        ...subject,
         lt(notification.id, n.id),
         gt(notification.email_sent_at, since),
       ),
@@ -276,10 +306,10 @@ async function inEmailQuietPeriod(n: NotificationRow): Promise<boolean> {
 // recipient has this notification type's email toggle on (default), the subject
 // is outside the quiet period, and a provider is configured (sendEmail no-ops
 // otherwise). Returns whether it went out. Never throws.
-async function emailNotification(n: NotificationRow): Promise<boolean> {
+async function emailNotification(n: NotificationRow, quietPerActor: boolean): Promise<boolean> {
   const [row] = await joinNotifications(eq(notification.id, n.id), 1);
   if (!row || !row.recipient_email || !row.recipient_prefs?.[n.type]) return false;
-  if (await inEmailQuietPeriod(n)) return false;
+  if (await inEmailQuietPeriod(n, quietPerActor)) return false;
 
   const message = `@${row.actor_handle} ${messageFor(row)}`;
   const excerpt = excerptFor(row);
@@ -288,12 +318,15 @@ async function emailNotification(n: NotificationRow): Promise<boolean> {
     heading: "New on Colosseum",
     // The excerpt is user-written; renderEmail escapes what it interpolates.
     body: excerpt ? `${message}\n\n“${excerpt}”` : message,
-    // Mirrors hrefFor: only a non-connect row with a block lands on one.
+    // Mirrors hrefFor: only a non-connect row with a block lands on one, and a
+    // canvas comment lands on its thread.
     buttonLabel: n.group_id
       ? "View group"
       : n.type !== "connect" && n.column_id !== null
         ? "View block"
-        : "View channel",
+        : isCanvasComment(row)
+          ? "View thread"
+          : "View channel",
     buttonUrl: base + hrefFor(row),
     footnote: "Turn these off anytime in your Colosseum settings.",
   });
@@ -304,7 +337,9 @@ async function emailNotification(n: NotificationRow): Promise<boolean> {
 
 // Record a notification and (best-effort) email it. Self-notifications are
 // skipped. Notifications are never allowed to break the action that triggered
-// them, so all failures are swallowed and logged.
+// them, so all failures are swallowed and logged. `emailQuietPerActor` keys a
+// canvas thread notification's email quiet period on its actor instead of its
+// thread (see inEmailQuietPeriod).
 export async function createNotification(
   input: {
     recipient_id: string;
@@ -312,6 +347,8 @@ export async function createNotification(
     type: NotificationType;
     column_id?: number;
     comment_id?: number;
+    thread_id?: number;
+    emailQuietPerActor?: boolean;
   } & ({ channel_id: number } | { group_id: string }),
 ): Promise<void> {
   if (input.recipient_id === input.actor_id) return;
@@ -326,9 +363,10 @@ export async function createNotification(
         group_id: "group_id" in input ? input.group_id : null,
         column_id: input.column_id ?? null,
         comment_id: input.comment_id ?? null,
+        thread_id: input.thread_id ?? null,
       })
       .returning();
-    if (await emailNotification(row)) {
+    if (await emailNotification(row, input.emailQuietPerActor === true)) {
       await db
         .update(notification)
         .set({ email_sent_at: new Date() })

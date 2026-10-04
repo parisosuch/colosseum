@@ -23,6 +23,7 @@ import {
   authorizeAdmin,
   copyBlock,
   createFileBlock,
+  createShareLinkFor,
   createGroupFor,
   createInviteCodeFor,
   deleteGroupFor,
@@ -33,6 +34,7 @@ import {
   listApiTokensFor,
   listGroupMembersFor,
   listMembersFor,
+  listShareLinksFor,
   moveBlock,
   nestChannel,
   parseAccess,
@@ -42,6 +44,7 @@ import {
   resolveApiToken,
   revokeApiTokenFor,
   revokeInviteCodeFor,
+  revokeShareLinkFor,
   setGroupRoleFor,
   transferChannelFor,
   transferGroupOwnershipFor,
@@ -546,6 +549,86 @@ const handler = createMcpHandler(
         const denial = await removeMemberFor(channelId, handle, userId);
         if (denial) throw await denialToError(denial);
         return { removed: handle };
+      }),
+    );
+
+    server.registerTool(
+      "create_share_link",
+      {
+        description:
+          "Make an 'anyone with the link' URL for a private channel, or for one " +
+          "block in it (blockId). Whoever opens it can read the channel and " +
+          "every block in it (or just that block), with comments and members, " +
+          "without an account and without being able to change anything. " +
+          "Channel managers only. Expires in 30 days unless expiresInDays says " +
+          "otherwise; null makes a link that never expires, which works for " +
+          "anyone it's forwarded to until someone revokes it, so only do that " +
+          "when asked. The returned url holds the token and can't be fetched " +
+          "again, so hand it to the user.",
+        inputSchema: {
+          channelId: z.number().int(),
+          blockId: z.number().int().optional(),
+          label: z.string().max(100).optional(),
+          expiresInDays: z.number().int().min(1).max(3650).nullable().optional(),
+        },
+      },
+      asTool(
+        async (
+          {
+            channelId,
+            blockId,
+            label,
+            expiresInDays,
+          }: {
+            channelId: number;
+            blockId?: number;
+            label?: string;
+            expiresInDays?: number | null;
+          },
+          { userId },
+        ) => {
+          const result = await createShareLinkFor(
+            channelId,
+            { blockId, label, expiresInDays },
+            userId,
+          );
+          if (result instanceof NextResponse) throw await denialToError(result);
+          return result;
+        },
+      ),
+    );
+
+    server.registerTool(
+      "list_share_links",
+      {
+        description:
+          "List a channel's share links that haven't been revoked, block links " +
+          "included, newest first: id, label, block_id (null for a " +
+          "whole-channel link), block_label, expires_at (null for never) and " +
+          "status (active, expired, or block_moved for a block link whose " +
+          "block left the channel). The URLs themselves can't be listed. " +
+          "Channel managers only.",
+        inputSchema: { channelId: z.number().int() },
+      },
+      asTool(async ({ channelId }: { channelId: number }, { userId }) => {
+        const result = await listShareLinksFor(channelId, userId);
+        if (result instanceof NextResponse) throw await denialToError(result);
+        return { share_links: result };
+      }),
+    );
+
+    server.registerTool(
+      "revoke_share_link",
+      {
+        description:
+          "Revoke a share link by its id (from list_share_links). It stops " +
+          "working on the next request. Channel managers only.",
+        inputSchema: { id: z.string() },
+      },
+      asTool(async ({ id }: { id: string }, { userId }) => {
+        const denial = await revokeShareLinkFor(id, userId);
+        if (denial) throw await denialToError(denial);
+        return { revoked: id };
       }),
     );
 

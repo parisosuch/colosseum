@@ -9,7 +9,9 @@ import { SITE_CARD } from "./share-card";
 
 // Only public channels get a rich preview. A private (or missing) channel
 // returns the generic site metadata, so its name, description, and owner never
-// leak to whoever unfurls the link — you can't share a private channel anyway.
+// leak to whoever unfurls the link. The exception is a share link (`shareUrl`):
+// whoever holds one may open the channel, so its preview shows what they'll see,
+// and it asks not to be indexed.
 // `imageUrl` is a picture from inside the channel, used as the card's image so
 // a shared channel shows what's in it. Omitted for a channel with nothing
 // suitable, which falls back to a text card.
@@ -17,15 +19,16 @@ export function channelPreviewMeta(
   channel: Channel | null,
   handle: string,
   imageUrl?: string | null,
+  shareUrl?: string,
 ): Metadata {
-  if (!channel || channel.private) {
+  if (!channel || (channel.private && !shareUrl)) {
     return { title: "Colosseum" };
   }
 
   const title = `${channel.title} · Colosseum`;
   const byline = `channel by @${handle} on Colosseum`;
   const description = channel.description ? `${channel.description} — a ${byline}` : `A ${byline}`;
-  const url = `/${handle}/${channel.id}`;
+  const url = shareUrl ?? `/${handle}/${channel.id}`;
   // Falls back to the site card, not to nothing — see SITE_CARD.
   const image = imageUrl ? { url: imageUrl } : SITE_CARD;
 
@@ -41,5 +44,6 @@ export function channelPreviewMeta(
       images: [{ ...image, alt: channel.title }],
     },
     twitter: { card: "summary_large_image", title, description, images: [image.url] },
+    ...(shareUrl ? { robots: { index: false, follow: false } } : {}),
   };
 }

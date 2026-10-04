@@ -106,6 +106,107 @@ function DropIndicator({ axis }: { axis: "grid" | "list" }) {
   );
 }
 
+// What a block shows inside its card frame: the image, the screenshot, the
+// embed or the text, per type. The grid card, the list row's thumbnail, the
+// canvas card and the canvas sidebar all draw this, so a block looks the same
+// wherever it sits.
+export function BlockMedia({
+  column,
+  screenshot,
+  priority = false,
+  compact = false,
+}: {
+  column: Column;
+  screenshot?: ColumnScreenshot;
+  priority?: boolean;
+  // A small tile; see ScreenShotPreview.
+  compact?: boolean;
+}) {
+  const imageURL = screenshot?.image_url ?? null;
+  // cache-busting token for the shared storage object (bumped on refresh)
+  const screenshotVersion = screenshot?.captured_at ?? null;
+  // A URL column is still loading until the parent resolves its screenshot.
+  const loading = column.type === "url" && screenshot === undefined;
+
+  return column.type === "channel" ? (
+    <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center">
+      <span className="line-clamp-2 max-w-full break-words text-heading">
+        {column.linked_channel?.title ?? "Channel"}
+      </span>
+      {column.linked_channel?.description ? (
+        <p className="line-clamp-4 break-words text-sm text-muted-foreground">
+          {column.linked_channel.description}
+        </p>
+      ) : null}
+    </div>
+  ) : column.type === "text" ? (
+    <div className={CARD_TEXT_CLASS}>
+      <RenderedMarkdown html={column.html ?? ""} className={CARD_TEXT_SIZE} />
+    </div>
+  ) : column.type === "image" ? (
+    <img
+      src={thumbSrc(column.image) ?? undefined}
+      alt={column.title ?? "Image column"}
+      loading={priority ? "eager" : "lazy"}
+      decoding="async"
+      className={`w-full h-full object-cover ${CARD_MEDIA_RADIUS}`}
+    />
+  ) : column.type === "pdf" ? (
+    <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center text-muted-foreground">
+      <FileText className="size-10" />
+      <span className={`line-clamp-2 max-w-full break-words ${CARD_TEXT_SIZE}`}>
+        {column.title || "PDF"}
+      </span>
+    </div>
+  ) : column.type === "video" ? (
+    <VideoPoster image={column.image} alt={column.title ?? "Video column"} priority={priority} />
+  ) : column.type === "tweet" ? (
+    <TweetBlock id={tweetIdFromUrl(column.url ?? "") ?? ""} compact />
+  ) : column.type === "youtube" ? (
+    <YouTubeBlock id={youtubeIdFromUrl(column.url ?? "") ?? ""} compact />
+  ) : column.type === "youtube_channel" ? (
+    <YouTubeChannelBlock
+      url={column.url ?? ""}
+      title={column.title ?? "YouTube channel"}
+      image={column.image}
+      compact
+    />
+  ) : column.type === "github" ? (
+    <GitHubBlock
+      url={column.url ?? ""}
+      title={column.title ?? "GitHub"}
+      image={column.image}
+      compact
+    />
+  ) : column.type === "instagram" ? (
+    <InstagramBlock
+      url={column.url ?? ""}
+      title={column.title ?? "Instagram"}
+      image={column.image}
+      compact
+    />
+  ) : column.type === "spotify" ? (
+    (() => {
+      const ref = spotifyEmbedRef(column.url ?? "");
+      return (
+        <SpotifyBlock type={ref?.type ?? ""} id={ref?.id ?? ""} image={column.image} compact />
+      );
+    })()
+  ) : loading ? (
+    <div className="w-full h-full flex items-center justify-center">
+      <GradientSpin />
+    </div>
+  ) : (
+    <ScreenShotPreview
+      image_url={imageURL}
+      version={screenshotVersion}
+      url={column.url}
+      priority={priority}
+      compact={compact}
+    />
+  );
+}
+
 // The clickable block card in the channel grid. The modal itself is a single
 // shared instance owned by the channel board (see block-modal.tsx), so the card
 // only reports that it was opened.
@@ -140,90 +241,8 @@ const ColumnComponent = memo(function ColumnComponent({
   // preconnected sets, the comment cache, and react-tweet's SWR cache are all
   // module-level, so nothing fetched for a card is thrown away with its media.
   const { ref: cardRef, near } = useNearViewport();
-  const imageURL = screenshot?.image_url ?? null;
   const urlTitle = screenshot?.title ?? "";
-  // cache-busting token for the shared storage object (bumped on refresh)
-  const screenshotVersion = screenshot?.captured_at ?? null;
-  // A URL column is still loading until the parent resolves its screenshot.
-  const loading = column.type === "url" && screenshot === undefined;
-
-  const thumbnail =
-    column.type === "channel" ? (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center">
-        <span className="line-clamp-2 max-w-full break-words text-heading">
-          {column.linked_channel?.title ?? "Channel"}
-        </span>
-        {column.linked_channel?.description ? (
-          <p className="line-clamp-4 break-words text-sm text-muted-foreground">
-            {column.linked_channel.description}
-          </p>
-        ) : null}
-      </div>
-    ) : column.type === "text" ? (
-      <div className={CARD_TEXT_CLASS}>
-        <RenderedMarkdown html={column.html ?? ""} className={CARD_TEXT_SIZE} />
-      </div>
-    ) : column.type === "image" ? (
-      <img
-        src={thumbSrc(column.image) ?? undefined}
-        alt={column.title ?? "Image column"}
-        loading={priority ? "eager" : "lazy"}
-        decoding="async"
-        className={`w-full h-full object-cover ${CARD_MEDIA_RADIUS}`}
-      />
-    ) : column.type === "pdf" ? (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center text-muted-foreground">
-        <FileText className="size-10" />
-        <span className={`line-clamp-2 max-w-full break-words ${CARD_TEXT_SIZE}`}>
-          {column.title || "PDF"}
-        </span>
-      </div>
-    ) : column.type === "video" ? (
-      <VideoPoster image={column.image} alt={column.title ?? "Video column"} priority={priority} />
-    ) : column.type === "tweet" ? (
-      <TweetBlock id={tweetIdFromUrl(column.url ?? "") ?? ""} compact />
-    ) : column.type === "youtube" ? (
-      <YouTubeBlock id={youtubeIdFromUrl(column.url ?? "") ?? ""} compact />
-    ) : column.type === "youtube_channel" ? (
-      <YouTubeChannelBlock
-        url={column.url ?? ""}
-        title={column.title ?? "YouTube channel"}
-        image={column.image}
-        compact
-      />
-    ) : column.type === "github" ? (
-      <GitHubBlock
-        url={column.url ?? ""}
-        title={column.title ?? "GitHub"}
-        image={column.image}
-        compact
-      />
-    ) : column.type === "instagram" ? (
-      <InstagramBlock
-        url={column.url ?? ""}
-        title={column.title ?? "Instagram"}
-        image={column.image}
-        compact
-      />
-    ) : column.type === "spotify" ? (
-      (() => {
-        const ref = spotifyEmbedRef(column.url ?? "");
-        return (
-          <SpotifyBlock type={ref?.type ?? ""} id={ref?.id ?? ""} image={column.image} compact />
-        );
-      })()
-    ) : loading ? (
-      <div className="w-full h-full flex items-center justify-center">
-        <GradientSpin />
-      </div>
-    ) : (
-      <ScreenShotPreview
-        image_url={imageURL}
-        version={screenshotVersion}
-        url={column.url}
-        priority={priority}
-      />
-    );
+  const thumbnail = <BlockMedia column={column} screenshot={screenshot} priority={priority} />;
 
   // What the card actually renders in its frame. Parking costs no layout: the
   // frame is sized in CSS either way (a square card in the grid, a 40px thumb in

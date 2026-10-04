@@ -9,7 +9,32 @@ const nextConfig: NextConfig = {
   // Keep the puppeteer-extra chain out of the webpack bundle. Next externalizes
   // `puppeteer` by default but not these; bundling them fails on clone-deep's
   // dynamic require(). They run server-side only, so leave them as node requires.
-  serverExternalPackages: ["puppeteer-extra", "puppeteer-extra-plugin-stealth"],
+  //
+  // Yjs and its protocol packages stay external too. server.ts imports yjs from
+  // node_modules for the canvas rooms, and Next preloads its server chunks at
+  // start, so a bundled copy would be a second Yjs in the same process: it logs
+  // "Yjs was already imported", and a Y type passed between the two copies
+  // fails their instanceof checks.
+  serverExternalPackages: [
+    "puppeteer-extra",
+    "puppeteer-extra-plugin-stealth",
+    "yjs",
+    "y-protocols",
+    "lib0",
+  ],
+  // Share links carry their credential in the URL. Keep them out of search
+  // indexes, and out of the Referer header a link holder's browser would send
+  // to every site a link block points at.
+  async headers() {
+    const shareHeaders = [
+      { key: "X-Robots-Tag", value: "noindex, nofollow" },
+      { key: "Referrer-Policy", value: "no-referrer" },
+    ];
+    return [
+      { source: "/s/:path*", headers: shareHeaders },
+      { source: "/api/media/:id/s/:token", headers: shareHeaders },
+    ];
+  },
   experimental: {
     // React Compiler auto-memoizes components, so the board and grid stop
     // re-rendering on state they don't read. It replaces reaching for memo() by

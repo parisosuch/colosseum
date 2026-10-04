@@ -20,6 +20,7 @@ import { db } from "@/lib/db";
 import { channel, channelMember, column, owner, screenshot } from "@/lib/db/schema";
 import { positionBetween, positionsAfter } from "@/lib/fractional-index";
 import { renderMarkdown } from "@/lib/markdown";
+import { publishRealtime } from "@/lib/realtime/events";
 import { sanitizeSearch, SEARCH_LIMIT } from "@/lib/utils";
 import { createMedia, deleteMediaByUrl, getMedia, mediaIdFromUrl } from "./blob";
 import { deleteTweetIfUnreferenced } from "./tweet";
@@ -224,7 +225,7 @@ export const COLUMN_FILTER_TYPES: Record<Exclude<ColumnFilter, "all">, Column["t
 // the type filter, and the search term. Shared by the list, the count and the
 // neighbour lookup so a filtered board, its result count and its arrows can
 // never disagree about which blocks are in play.
-function columnFilters(channel_id: number, query: ColumnQuery): SQL[] {
+export function columnFilters(channel_id: number, query: ColumnQuery): SQL[] {
   const { search, type = "all" } = query;
   const filters: SQL[] = [eq(column.channel_id, channel_id)];
 
@@ -516,6 +517,9 @@ async function insertColumn(values: typeof column.$inferInsert): Promise<ColumnR
     .insert(column)
     .values({ ...values, position: await headPosition(values.channel_id) })
     .returning();
+  // Every way a block enters a channel but a move comes through here, so an
+  // open canvas lists it in its unplaced-blocks sidebar.
+  publishRealtime({ type: "block.added", channelId: row.channel_id, columnId: row.id });
   return row;
 }
 
@@ -875,12 +879,25 @@ export async function updateColumnTags(column_id: number, tags: string[]): Promi
 // at an arbitrary point in the destination. It arrives at the head instead,
 // like anything else newly added there.
 export async function moveColumn(column_id: number, channel_id: number): Promise<Column | null> {
+  const [from] = await db
+    .select({ channel_id: column.channel_id })
+    .from(column)
+    .where(eq(column.id, column_id))
+    .limit(1);
   const [row] = await db
     .update(column)
     .set({ channel_id, position: await headPosition(channel_id) })
     .where(eq(column.id, column_id))
     .returning();
-  return row ? toColumn(row) : null;
+  if (!row) return null;
+  // A canvas in the old channel loses the block's element; the new one lists it
+  // as unplaced. A canvas position doesn't travel, for the same reason the
+  // manual position doesn't.
+  if (from && from.channel_id !== row.channel_id) {
+    publishRealtime({ type: "block.removed", channelId: from.channel_id, columnId: row.id });
+    publishRealtime({ type: "block.added", channelId: row.channel_id, columnId: row.id });
+  }
+  return toColumn(row);
 }
 
 // Duplicate a block into another channel, leaving the source untouched. The new
@@ -976,11 +993,14 @@ export async function updateColumn(
 }
 
 export async function deleteColumn(column_id: number): Promise<void> {
-  const [row] = await db
-    .delete(column)
-    .where(eq(column.id, column_id))
-    .returning({ type: column.type, image: column.image, url: column.url });
+  const [row] = await db.delete(column).where(eq(column.id, column_id)).returning({
+    type: column.type,
+    image: column.image,
+    url: column.url,
+    channel_id: column.channel_id,
+  });
   if (!row) return;
+  publishRealtime({ type: "block.removed", channelId: row.channel_id, columnId: column_id });
   // Drop the deleted block's media reference (no-op for external image URLs);
   // the blob is GC'd if this was its last reference.
   if (row.image) {

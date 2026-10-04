@@ -13,6 +13,16 @@ import ChannelMembersBar from "@/components/channel-members-bar";
 import ExportChannelButton from "@/components/export-channel-button";
 import AdminDeleteButton from "@/components/admin-delete-button";
 import { ViewToggle } from "@/components/view-toggle";
+import CanvasButton from "@/components/canvas-button";
+import { channelHref, DEFAULT_CHANNEL_QUERY, type ChannelQuery } from "@/lib/canvas/channel-query";
+import {
+  clearChannelSnapshot,
+  isReturningFromCanvas,
+  peekChannelSnapshot,
+  setLandingRect,
+  transitionReady,
+  visibleRect,
+} from "@/lib/canvas/transition";
 import { PAGE_SIZE, SKELETON_COUNT } from "@/lib/pagination";
 import { SCREENSHOT_MAX_ATTEMPTS, nextScreenshotPoll, whenVisible } from "@/lib/screenshot-poll";
 import ColumnInput, { ColumnUploadProgress, useColumnUpload } from "@/components/column-input";
@@ -37,6 +47,7 @@ import {
 } from "@/lib/colosseum/actions";
 import { Plus, SearchX, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useShare } from "@/components/share-context";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -159,6 +170,14 @@ type ChannelBoardProps = {
   // block can be older than `initialColumns`, which stops at one page.
   initialBlock: Column | null;
   initialBlockScreenshot: ColumnScreenshot | null;
+  // The controls the page was rendered with, from the URL's query
+  // (lib/canvas/channel-query.ts). `initialColumns` is that query's first page,
+  // and `initialFilteredCount` its match count when it filters anything.
+  initialQuery?: ChannelQuery;
+  initialFilteredCount?: number | null;
+  // Show the canvas button: on the channel page (not a share link), to anyone
+  // who can contribute, and to everyone else once the canvas exists.
+  showCanvasButton?: boolean;
 };
 
 export default function ChannelBoard({
@@ -179,8 +198,15 @@ export default function ChannelBoard({
   initialScreenshots,
   initialBlock,
   initialBlockScreenshot,
+  initialQuery = DEFAULT_CHANNEL_QUERY,
+  initialFilteredCount = null,
+  showCanvasButton = false,
 }: ChannelBoardProps) {
   const router = useRouter();
+  // Set on a share-link page: reads go through the link's token, and the URLs
+  // the board writes stay under /s/<token>.
+  const share = useShare();
+  const token = share?.token;
   const [members, setMembers] = useState<ChannelMember[]>(initialMembers);
   const [channel, setChannel] = useState<Channel>(initialChannel);
   const [columns, setColumns] = useState<Column[]>(initialColumns);
@@ -201,12 +227,15 @@ export default function ChannelBoard({
 
   // Search / filter / sort controls. `debouncedSearch` is what actually drives
   // the query, so typing doesn't fire a request per keystroke.
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState<ColumnFilter>("all");
-  // Matches the sort the page server-rendered `initialColumns` with, or the
-  // mount effect would immediately refetch the page already on screen.
-  const [sort, setSort] = useState<ColumnSort>("manual");
+  //
+  // All four controls start from the URL's query, which the page rendered
+  // `initialColumns` with, so the mount doesn't refetch the page on screen;
+  // and they're written back to it, so Back from the canvas, a reload and a
+  // shared link come back to the same board.
+  const [search, setSearch] = useState(initialQuery.q);
+  const [debouncedSearch, setDebouncedSearch] = useState(initialQuery.q);
+  const [typeFilter, setTypeFilter] = useState<ColumnFilter>(initialQuery.type);
+  const [sort, setSort] = useState<ColumnSort>(initialQuery.sort);
 
   // Paging state for the current control selection. Seeded from the
   // server-rendered first page, so nothing loads on mount.
@@ -216,10 +245,10 @@ export default function ChannelBoard({
   // How many blocks the current search/filter matches, channel-wide. Null while
   // nothing is filtered (the answer is then the channel's own length) and while
   // the count for a new selection is still in flight.
-  const [filteredCount, setFilteredCount] = useState<number | null>(null);
+  const [filteredCount, setFilteredCount] = useState<number | null>(initialFilteredCount);
 
   // Grid (square cards) vs list (Are.na-style table) layout for the block area.
-  const [view, setView] = useState<"grid" | "list">("grid");
+  const [view, setView] = useState<"grid" | "list">(initialQuery.view);
   // In table view the block input is collapsed behind an "Add block" button.
   const [adding, setAdding] = useState(false);
 
@@ -320,15 +349,17 @@ export default function ChannelBoard({
         // The count is what the controls report; it's a separate query because
         // the page is capped at PAGE_SIZE and can't answer "how many matched".
         const [first, matched] = await Promise.all([
-          getChannelColumnsAction(channel.id, {
-            search: debouncedSearch,
-            type: typeFilter,
-            sort,
-            limit: PAGE_SIZE,
-            offset: 0,
-          }),
+          getChannelColumnsAction(
+            channel.id,
+            { search: debouncedSearch, type: typeFilter, sort, limit: PAGE_SIZE, offset: 0 },
+            token,
+          ),
           isFiltered
-            ? getChannelColumnCountAction(channel.id, { search: debouncedSearch, type: typeFilter })
+            ? getChannelColumnCountAction(
+                channel.id,
+                { search: debouncedSearch, type: typeFilter },
+                token,
+              )
             : Promise.resolve(null),
         ]);
         if (cancelled) return;
@@ -346,7 +377,7 @@ export default function ChannelBoard({
     return () => {
       cancelled = true;
     };
-  }, [channel.id, debouncedSearch, typeFilter, sort, isFiltered]);
+  }, [channel.id, debouncedSearch, typeFilter, sort, isFiltered, token]);
 
   // Append the next page. Offset is the count already loaded.
   const loadMore = useCallback(async () => {
@@ -354,13 +385,17 @@ export default function ChannelBoard({
 
     setLoadingMore(true);
     try {
-      const next = await getChannelColumnsAction(channel.id, {
-        search: debouncedSearch,
-        type: typeFilter,
-        sort,
-        limit: PAGE_SIZE,
-        offset: columns.length,
-      });
+      const next = await getChannelColumnsAction(
+        channel.id,
+        {
+          search: debouncedSearch,
+          type: typeFilter,
+          sort,
+          limit: PAGE_SIZE,
+          offset: columns.length,
+        },
+        token,
+      );
       setColumns((prev) => [...prev, ...next]);
       setHasMore(next.length === PAGE_SIZE);
     } catch (e) {
@@ -377,6 +412,7 @@ export default function ChannelBoard({
     typeFilter,
     sort,
     columns.length,
+    token,
   ]);
 
   // Observe a sentinel below the grid; load the next page as it nears the
@@ -645,11 +681,12 @@ export default function ChannelBoard({
     setDetachedSiblings({ prev: null, next: null });
     (async () => {
       try {
-        const siblings = await getColumnNeighboursAction(channel.id, id, {
-          search: debouncedSearch,
-          type: typeFilter,
-          sort,
-        });
+        const siblings = await getColumnNeighboursAction(
+          channel.id,
+          id,
+          { search: debouncedSearch, type: typeFilter, sort },
+          token,
+        );
         if (!cancelled) setDetachedSiblings(siblings);
       } catch (e) {
         console.error(e);
@@ -659,7 +696,7 @@ export default function ChannelBoard({
     return () => {
       cancelled = true;
     };
-  }, [detachedColumn?.id, channel.id, debouncedSearch, typeFilter, sort]);
+  }, [detachedColumn?.id, channel.id, debouncedSearch, typeFilter, sort, token]);
 
   // Whether blocks can be dragged into a new order right now. Three conditions,
   // each answering a question the feature can't dodge:
@@ -730,14 +767,14 @@ export default function ChannelBoard({
       lastOpenId.current = openId;
       return;
     }
-    const base = `/${handle}/${channel.id}`;
-    const url = openId == null ? base : `${base}?block=${openId}`;
+    const base = share?.base ?? `/${handle}/${channel.id}`;
+    const url = channelHref(base, currentQuery.current, { block: openId });
     // Stepping between blocks: replace. Opening or closing: push.
     const stepping = openId != null && lastOpenId.current != null;
     lastOpenId.current = openId;
     if (stepping) window.history.replaceState(null, "", url);
     else window.history.pushState(null, "", url);
-  }, [openId, handle, channel.id]);
+  }, [openId, handle, channel.id, share?.base]);
 
   // Back/forward: read the modal state back out of the URL. Same-route history
   // moves don't re-render the server component, so nothing else would notice.
@@ -750,6 +787,87 @@ export default function ChannelBoard({
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  // The controls as the URL should say them. A ref as well, so the modal's URL
+  // sync above keeps the query without re-running on every keystroke.
+  const query: ChannelQuery = useMemo(
+    () => ({ sort, type: typeFilter, q: debouncedSearch, view }),
+    [sort, typeFilter, debouncedSearch, view],
+  );
+  const currentQuery = useRef(query);
+  currentQuery.current = query;
+
+  // Write the controls into the URL. replaceState rather than a router
+  // navigation, which would re-run the server component for a URL the board
+  // already shows; and replace, not push, so Back leaves the channel instead of
+  // stepping through every filter that was tried.
+  const skipQuerySync = useRef(true);
+  useEffect(() => {
+    if (skipQuerySync.current) {
+      skipQuerySync.current = false;
+      return;
+    }
+    const base = share?.base ?? `/${handle}/${channel.id}`;
+    const block = new URLSearchParams(window.location.search).get("block");
+    window.history.replaceState(null, "", channelHref(base, query, { block }));
+  }, [query, handle, channel.id, share?.base]);
+
+  const channelPath = `/${handle}/${channel.id}`;
+
+  // Back from the canvas: put the scroll where it was, after loading as many
+  // blocks as were loaded then, and tell the close transition where the board
+  // lands. A fresh visit has no snapshot and starts at the top.
+  useEffect(() => {
+    if (share) return;
+    const href = channelHref(channelPath, currentQuery.current);
+    const returning = isReturningFromCanvas(channelPath);
+    const snap = peekChannelSnapshot(channelPath, href);
+    let cancelled = false;
+    // Timers rather than animation frames: during the close transition the
+    // browser holds rendering until this page says it's ready, so a frame
+    // callback wouldn't run until the transition gave up waiting.
+    const land = () => {
+      if (cancelled) return;
+      if (snap) {
+        const root = document.querySelector<HTMLElement>("[data-scroll-root]");
+        if (root) root.scrollTop = snap.scrollTop;
+      }
+      if (returning) {
+        clearChannelSnapshot(href);
+        // Focus goes back to what opened the canvas.
+        document
+          .querySelector<HTMLElement>('a[aria-label="Open canvas"]')
+          ?.focus({ preventScroll: true });
+      }
+      setLandingRect(visibleRect(blockAreaRef.current));
+      transitionReady("channel");
+    };
+    const missing = snap ? Math.min(snap.loaded, 1000) - initialColumns.length : 0;
+    if (missing > 0 && hasMore) {
+      void getChannelColumnsAction(channel.id, {
+        search: currentQuery.current.q,
+        type: currentQuery.current.type,
+        sort: currentQuery.current.sort,
+        limit: missing,
+        offset: initialColumns.length,
+      })
+        .then((more) => {
+          if (cancelled) return;
+          setColumns((prev) => [...prev, ...more]);
+          setHasMore(more.length === missing);
+          // Let React commit the new cards before scrolling to them.
+          setTimeout(land, 50);
+        })
+        .catch(() => land());
+    } else {
+      setTimeout(land, 0);
+    }
+    return () => {
+      cancelled = true;
+    };
+    // Runs once, on arrival.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -767,7 +885,9 @@ export default function ChannelBoard({
         </div>
       ) : null}
       <ColumnUploadProgress uploader={uploader} />
-      <PageHeader crumbs={[{ label: handle, href: `/${handle}` }, { label: channel.title }]} />
+      <div data-vt="header">
+        <PageHeader crumbs={[{ label: handle, href: `/${handle}` }, { label: channel.title }]} />
+      </div>
       <div className="flex items-center gap-2">
         {isOwner ? (
           <ManageChannelButton
@@ -805,6 +925,14 @@ export default function ChannelBoard({
           />
         ) : null}
         <ViewToggle view={view} onChange={setView} />
+        {showCanvasButton && !share ? (
+          <CanvasButton
+            channelPath={channelPath}
+            channelHref={channelHref(channelPath, query)}
+            loaded={columns.length}
+            boardRef={blockAreaRef}
+          />
+        ) : null}
       </div>
       <div className="flex flex-col space-y-4">
         {channel.description ? (
@@ -1014,6 +1142,7 @@ export default function ChannelBoard({
         isOwner={isOwner}
         canEdit={isOwner || (!!user && openColumn?.created_by === user.id)}
         isAdmin={isAdmin && !channel.private}
+        canShare={isOwner && channel.private}
         handle={handle}
         viewerId={user?.id ?? null}
         setColumns={setColumns}

@@ -5,18 +5,16 @@ import { useRouter } from "next/navigation";
 import { ChevronLeftIcon, ImageIcon, PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 
-import {
-  getColumnQuotaAction,
-  getMyProfileAction,
-  uploadImageColumnAction,
-  uploadPdfColumnAction,
-  uploadTextColumnAction,
-  uploadURLColumnAction,
-  uploadVideoColumnAction,
-} from "@/lib/colosseum/actions";
-import { columnLimitMessage } from "@/lib/quota";
+import { getMyProfileAction, uploadTextColumnAction } from "@/lib/colosseum/actions";
 import { isURL } from "@/lib/utils";
 import type { Channel } from "@/lib/colosseum/channel";
+import type { Column } from "@/lib/colosseum/column";
+import {
+  addFailureMessage,
+  createFileBlock,
+  createUrlBlock,
+  fileProblem,
+} from "@/components/block-ingest";
 import CreateChannelForm from "@/components/create-channel-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,28 +22,19 @@ import { Textarea } from "@/components/ui/textarea";
 
 export type PickableChannel = { id: number; title: string; private: boolean };
 
-// Per-type upload caps, kept in sync with the server limits in
-// lib/colosseum/blob.ts (and the next.config server-action body limit, which
-// must sit above the largest of these). Validated client-side so an oversized
-// file gets a clear toast instead of an opaque server-action body error.
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-const MAX_PDF_BYTES = 25 * 1024 * 1024;
-const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
-
-function fileTooLargeMessage(file: File): string | null {
-  const isVideo = file.type.startsWith("video/");
-  const isPdf = file.type === "application/pdf";
-  const cap = isVideo ? MAX_VIDEO_BYTES : isPdf ? MAX_PDF_BYTES : MAX_IMAGE_BYTES;
-  if (file.size <= cap) return null;
-  return `That file is too large (max ${isVideo ? "100MB" : isPdf ? "25MB" : "10MB"}).`;
-}
-
 // Shared state machine for the quick-add flow: paste/type block content,
 // Continue, then pick which channel to drop it in. A URL becomes a link block
 // (and kicks off a screenshot), an image/video/PDF becomes a media block, anything
 // else a text block. Both the mobile drawer and the desktop modal drive this
 // exact hook + body, so the behaviour can never drift — only the shell differs.
-export function useAddBlockFlow(channels: PickableChannel[]) {
+//
+// With `channelId` the flow skips the channel step and adds straight to that
+// channel (the canvas's Add, which already knows where the block goes), and
+// `onAdded` hears about the new block.
+export function useAddBlockFlow(
+  channels: PickableChannel[],
+  options: { channelId?: number; onAdded?: (column: Column) => void } = {},
+) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"content" | "channel" | "new-channel">("content");
   const [text, setText] = useState("");
@@ -73,17 +62,9 @@ export function useAddBlockFlow(channels: PickableChannel[]) {
 
   const pickFile = (selected: File | undefined) => {
     if (!selected) return;
-    if (
-      !selected.type.startsWith("image/") &&
-      !selected.type.startsWith("video/") &&
-      selected.type !== "application/pdf"
-    ) {
-      toast.error("That's not an image, video, or PDF.");
-      return;
-    }
-    const tooLarge = fileTooLargeMessage(selected);
-    if (tooLarge) {
-      toast.error(tooLarge);
+    const problem = fileProblem(selected);
+    if (problem) {
+      toast.error(problem);
       return;
     }
     setFile(selected);
@@ -94,41 +75,23 @@ export function useAddBlockFlow(channels: PickableChannel[]) {
     if (submitting) return false;
     setSubmitting(true);
     try {
+      let added: Column;
       if (file) {
-        const formData = new FormData();
-        formData.set("channelId", String(channelId));
-        formData.set("file", file);
-        if (file.type === "application/pdf") {
-          await uploadPdfColumnAction(formData);
-        } else if (file.type.startsWith("video/")) {
-          await uploadVideoColumnAction(formData);
-        } else {
-          await uploadImageColumnAction(formData);
-        }
+        added = await createFileBlock(channelId, file);
       } else if (isURL(text)) {
-        const url = text.startsWith("http") ? text : `https://${text}`;
-        const column = await uploadURLColumnAction({ channelId, text: url });
-        // Best-effort: warm the screenshot in the background so the preview is
-        // ready by the time the channel is opened. An image URL comes back as an
-        // image block, which carries its own bytes and has nothing to capture.
-        if (column.type === "url") {
-          void fetch("/api/screenshot", { method: "POST", body: JSON.stringify({ url }) }).catch(
-            () => {},
-          );
-        }
+        // Warms a plain link's screenshot in the background, so the preview is
+        // ready by the time the channel is opened.
+        added = await createUrlBlock(channelId, text);
       } else {
-        await uploadTextColumnAction({ channelId, text });
+        added = await uploadTextColumnAction({ channelId, text });
       }
+      options.onAdded?.(added);
       toast.success("Block added.");
       onOpenChange(false);
       return true;
     } catch (e) {
       console.error(e);
-      const quota = await getColumnQuotaAction().catch(() => null);
-      toast.error(
-        (quota && columnLimitMessage(quota, quota.admins)) ||
-          "Couldn't add that block. Please try again.",
-      );
+      toast.error(await addFailureMessage(e, "Couldn't add that block. Please try again."));
       setSubmitting(false);
       return false;
     }
@@ -173,6 +136,7 @@ export function useAddBlockFlow(channels: PickableChannel[]) {
     addToChannel,
     addToNewChannel,
     title,
+    fixedChannelId: options.channelId ?? null,
   };
 }
 
@@ -210,7 +174,14 @@ export function AddBlockBody({
     channels,
     addToChannel,
     addToNewChannel,
+    fixedChannelId,
   } = flow;
+  // Continue goes to the channel picker, or straight in when the channel is
+  // already decided.
+  const advance = () => {
+    if (fixedChannelId != null) void addToChannel(fixedChannelId);
+    else setStep("channel");
+  };
 
   if (step === "content") {
     return (
@@ -232,7 +203,7 @@ export function AddBlockBody({
             // Enter advances to the channel step; Shift+Enter inserts a newline.
             if (advanceOnEnter && e.key === "Enter" && !e.shiftKey && hasContent) {
               e.preventDefault();
-              setStep("channel");
+              advance();
             }
           }}
           placeholder="Paste a link or an image, or type text…"
@@ -275,10 +246,10 @@ export function AddBlockBody({
         {/* Pinned to the bottom of the sheet, where the thumb is. */}
         <Button
           className={`w-full ${tall ? "mt-auto" : ""}`}
-          disabled={!hasContent}
-          onClick={() => setStep("channel")}
+          disabled={!hasContent || submitting}
+          onClick={advance}
         >
-          Continue
+          {fixedChannelId != null ? "Add" : "Continue"}
         </Button>
       </div>
     );

@@ -13,11 +13,14 @@ import {
   bigint,
   boolean,
   check,
+  customType,
+  doublePrecision,
   index,
   integer,
   jsonb,
   pgTable,
   primaryKey,
+  real,
   text,
   timestamp,
   unique,
@@ -303,6 +306,59 @@ export const channelMember = pgTable(
   (t) => [primaryKey({ columns: [t.channel_id, t.user_id] })],
 );
 
+// Postgres bytea as a Uint8Array. Drizzle's pg-core has no built-in for it.
+const bytea = customType<{ data: Uint8Array; driverData: Buffer }>({
+  dataType: () => "bytea",
+  toDriver: (value) => Buffer.from(value),
+  fromDriver: (value) => new Uint8Array(value),
+});
+
+// A channel's canvas: the merged Yjs document (Y.encodeStateAsUpdate), written
+// by the realtime server (lib/realtime/) a second or so after edits settle. One
+// row per channel that has ever had a canvas; a channel without one opens to an
+// empty canvas. The doc refers to blocks by column id and never copies their
+// content, so it cascades with the channel but not with any block — the server
+// prunes elements for blocks that are gone.
+export const channelCanvas = pgTable("channel_canvas", {
+  channel_id: bigint("channel_id", { mode: "number" })
+    .primaryKey()
+    .references(() => channel.id, { onDelete: "cascade" }),
+  doc: bytea("doc").notNull(),
+  // Whether the saved doc holds any element, written with every save. The
+  // channel page reads it to decide whether a non-editor gets the canvas
+  // button, without loading the doc. An emptied canvas keeps its row (and its
+  // Yjs delete set, so a stale offline client can't bring elements back) and
+  // has this false.
+  has_elements: boolean("has_elements").notNull().default(false),
+  updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Version history for a channel's canvas: full Yjs docs, written by the
+// realtime server (lib/realtime/canvas-history.ts) when an editing session goes
+// quiet and right before a restore, plus named restore points a channel
+// manager saves. `editors` holds who edited since the channel's previous
+// version, which is how a manager finds who wiped the canvas. It has no FK, so
+// a deleted user's id stays and simply stops resolving to a handle. Automatic
+// versions thin out over time (lib/realtime/canvas-retention.ts); named ones
+// never expire.
+export const channelCanvasVersion = pgTable(
+  "channel_canvas_version",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+    channel_id: bigint("channel_id", { mode: "number" })
+      .notNull()
+      .references(() => channel.id, { onDelete: "cascade" }),
+    doc: bytea("doc").notNull(),
+    // Set for a named restore point, null for an automatic version.
+    name: text("name"),
+    // Who saved a named restore point; null for automatic versions.
+    created_by: uuid("created_by").references(() => user.id, { onDelete: "set null" }),
+    editors: uuid("editors").array().notNull(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("channel_canvas_version_channel_id_idx").on(t.channel_id, t.id)],
+);
+
 // "column" is a reserved SQL keyword; Drizzle quotes the table name for us.
 export const column = pgTable(
   "column",
@@ -392,24 +448,67 @@ export const column = pgTable(
   ],
 );
 
-// Comments on a block ("column"). Anyone who can read the block can post; the
-// author or the block's channel owner can delete. Cascades on both FKs so a
-// comment vanishes with its block or its author.
+// A comment thread pinned to a channel's canvas. It sits on an element of the
+// canvas doc (`element_id`, plus an offset from the element's x/y) or on a bare
+// point in world space. When its element is deleted, the realtime server writes
+// the element's last world position into `x`/`y`, moves `element_id` to
+// `last_element_id` and nulls it, so the thread stays where it was as a free
+// pin. If an element with that id comes back (an undo, a restore), the server
+// pins the thread to it again with its old offset. `x`/`y` are only
+// authoritative while `element_id` is null; for a pinned thread they're the
+// position last seen. The thread's comments are `comment` rows with `thread_id`
+// set.
+export const canvasThread = pgTable(
+  "canvas_thread",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+    channel_id: bigint("channel_id", { mode: "number" })
+      .notNull()
+      .references(() => channel.id, { onDelete: "cascade" }),
+    // Yjs element id (a key of the doc's `elements` map). Null for a free pin.
+    element_id: text("element_id"),
+    // The element a free pin was on before that element was deleted. Null for a
+    // thread started on a bare point, and for a pinned one.
+    last_element_id: text("last_element_id"),
+    offset_x: real("offset_x"),
+    offset_y: real("offset_y"),
+    x: doublePrecision("x").notNull(),
+    y: doublePrecision("y").notNull(),
+    created_by: uuid("created_by").references(() => user.id, { onDelete: "set null" }),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  // The comments panel lists a channel's threads; the realtime server loads the
+  // anchored ones when a canvas opens.
+  (t) => [index("canvas_thread_channel_id_created_at_idx").on(t.channel_id, t.created_at)],
+);
+
+// Comments on a block ("column") or in a canvas thread. Exactly one of
+// `column_id` and `thread_id` is set. Anyone who can read the channel can post;
+// the author or the channel's managers can delete. Cascades on every FK so a
+// comment vanishes with its block, its thread or its author.
 export const comment = pgTable(
   "comment",
   {
     id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    column_id: bigint("column_id", { mode: "number" })
-      .notNull()
-      .references(() => column.id, { onDelete: "cascade" }),
+    column_id: bigint("column_id", { mode: "number" }).references(() => column.id, {
+      onDelete: "cascade",
+    }),
+    thread_id: bigint("thread_id", { mode: "number" }).references(() => canvasThread.id, {
+      onDelete: "cascade",
+    }),
     author_id: uuid("author_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     body: text("body").notNull(),
   },
-  // A block's comment thread is fetched by column_id, oldest first.
-  (t) => [index("comment_column_id_created_at_idx").on(t.column_id, t.created_at)],
+  (t) => [
+    // A block's comments are fetched by column_id, oldest first, and a canvas
+    // thread's by thread_id the same way.
+    index("comment_column_id_created_at_idx").on(t.column_id, t.created_at),
+    index("comment_thread_id_created_at_idx").on(t.thread_id, t.created_at),
+    check("comment_one_parent", sql`(${t.column_id} is not null) <> (${t.thread_id} is not null)`),
+  ],
 );
 
 // In-app notifications: someone (actor) did something to the recipient's
@@ -439,8 +538,10 @@ export const notification = pgTable(
     // Set instead of `channel_id` when someone is added to a group. A group's
     // owner row is its id, so this points there and cascades with it.
     group_id: uuid("group_id").references(() => owner.id, { onDelete: "cascade" }),
-    // Set for comment/mention (the block) and for `connect` (the channel column
-    // created inside the host, whose linked_channel_id names the subject).
+    // Set for comment/mention on a block (the block) and for `connect` (the
+    // channel column created inside the host, whose linked_channel_id names the
+    // subject). Null for comment/mention in a canvas thread, whose thread is
+    // reached through `comment_id`.
     column_id: bigint("column_id", { mode: "number" }).references(() => column.id, {
       onDelete: "cascade",
     }),
@@ -453,6 +554,12 @@ export const notification = pgTable(
     comment_id: bigint("comment_id", { mode: "number" }).references(() => comment.id, {
       onDelete: "set null",
     }),
+    // Set for comment/mention in a canvas thread, which is where the link
+    // lands. Unlike `comment_id` it survives the comment's deletion; it
+    // cascades with the thread, like `column_id` does with a block.
+    thread_id: bigint("thread_id", { mode: "number" }).references(() => canvasThread.id, {
+      onDelete: "cascade",
+    }),
     // When this notification was emailed, or null if it never was (toggle off,
     // or suppressed as part of a burst). Read back to decide whether a later
     // notification about the same subject is still inside the quiet period, so
@@ -463,6 +570,9 @@ export const notification = pgTable(
   (t) => [
     // The bell feed and unread count both scan one recipient's rows, newest first.
     index("notification_recipient_id_created_at_idx").on(t.recipient_id, t.created_at.desc()),
+    // Deleting a canvas thread cascades here; without it each delete scans the
+    // table.
+    index("notification_thread_id_idx").on(t.thread_id),
     // A notification points at exactly one subject; the render path picks its
     // message and its link off whichever one is set.
     check(
@@ -543,6 +653,35 @@ export const apiToken = pgTable("api_token", {
   token_hash: text("token_hash").notNull().unique(),
   last_used_at: timestamp("last_used_at", { withTimezone: true }),
 });
+
+// "Anyone with the link" access to a private channel, or to one block in it.
+// The URL carries a random token; only its sha256 is stored, so the link can be
+// shown once at creation and never read back out of the database. A channel
+// can hold any number of links, each revoked on its own. `block_id` set means
+// the link opens that block alone. `expires_at` null means it never expires.
+export const shareLink = pgTable(
+  "share_link",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    channel_id: bigint("channel_id", { mode: "number" })
+      .notNull()
+      .references(() => channel.id, { onDelete: "cascade" }),
+    block_id: bigint("block_id", { mode: "number" }).references(() => column.id, {
+      onDelete: "cascade",
+    }),
+    token_hash: text("token_hash").notNull().unique(),
+    label: text("label"),
+    created_by: uuid("created_by").references(() => user.id, { onDelete: "set null" }),
+    expires_at: timestamp("expires_at", { withTimezone: true }),
+    revoked_at: timestamp("revoked_at", { withTimezone: true }),
+  },
+  // block_id is indexed for the cascade: every block delete looks here.
+  (t) => [
+    index("share_link_channel_id_idx").on(t.channel_id),
+    index("share_link_block_id_idx").on(t.block_id),
+  ],
+);
 
 export const inviteCode = pgTable("invite_code", {
   code: text("code").primaryKey(),

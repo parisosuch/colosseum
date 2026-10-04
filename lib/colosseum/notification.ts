@@ -1,7 +1,7 @@
 import "server-only";
 
 import { cache } from "react";
-import { and, desc, eq, gt, isNull, lt, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull, isNull, lt, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { db } from "@/lib/db";
@@ -263,8 +263,29 @@ function toItem(r: JoinedNotification): NotificationItem {
 // of activity on one block doesn't send an email per event. Anchored on rows
 // that actually went out (`email_sent_at`), not on rows that merely exist —
 // otherwise sustained activity would suppress every email after the first.
-async function inEmailQuietPeriod(n: NotificationRow): Promise<boolean> {
+//
+// With `perActor`, for a canvas thread notification, the subject is the actor
+// rather than the thread: any canvas thread email from the same actor in the
+// same channel counts. A new thread is always a new subject, so without this
+// someone starting threads in a busy channel would email its whole roster once
+// per thread.
+async function inEmailQuietPeriod(n: NotificationRow, perActor = false): Promise<boolean> {
   const since = new Date(n.created_at.getTime() - EMAIL_QUIET_PERIOD_MINUTES * 60_000);
+  const subject =
+    perActor && n.channel_id !== null && n.thread_id !== null
+      ? [
+          eq(notification.channel_id, n.channel_id),
+          eq(notification.actor_id, n.actor_id),
+          isNotNull(notification.thread_id),
+        ]
+      : [
+          // Nulls have to match nulls here: only one of channel/group is ever set,
+          // and a null column_id (channel-level notifications) matches another null.
+          sql`${notification.channel_id} IS NOT DISTINCT FROM ${n.channel_id}`,
+          sql`${notification.group_id} IS NOT DISTINCT FROM ${n.group_id}`,
+          sql`${notification.column_id} IS NOT DISTINCT FROM ${n.column_id}`,
+          sql`${notification.thread_id} IS NOT DISTINCT FROM ${n.thread_id}`,
+        ];
   const [row] = await db
     .select({ id: notification.id })
     .from(notification)
@@ -272,12 +293,7 @@ async function inEmailQuietPeriod(n: NotificationRow): Promise<boolean> {
       and(
         eq(notification.recipient_id, n.recipient_id),
         eq(notification.type, n.type),
-        // Nulls have to match nulls here: only one of channel/group is ever set,
-        // and a null column_id (channel-level notifications) matches another null.
-        sql`${notification.channel_id} IS NOT DISTINCT FROM ${n.channel_id}`,
-        sql`${notification.group_id} IS NOT DISTINCT FROM ${n.group_id}`,
-        sql`${notification.column_id} IS NOT DISTINCT FROM ${n.column_id}`,
-        sql`${notification.thread_id} IS NOT DISTINCT FROM ${n.thread_id}`,
+        ...subject,
         lt(notification.id, n.id),
         gt(notification.email_sent_at, since),
       ),
@@ -290,10 +306,10 @@ async function inEmailQuietPeriod(n: NotificationRow): Promise<boolean> {
 // recipient has this notification type's email toggle on (default), the subject
 // is outside the quiet period, and a provider is configured (sendEmail no-ops
 // otherwise). Returns whether it went out. Never throws.
-async function emailNotification(n: NotificationRow): Promise<boolean> {
+async function emailNotification(n: NotificationRow, quietPerActor: boolean): Promise<boolean> {
   const [row] = await joinNotifications(eq(notification.id, n.id), 1);
   if (!row || !row.recipient_email || !row.recipient_prefs?.[n.type]) return false;
-  if (await inEmailQuietPeriod(n)) return false;
+  if (await inEmailQuietPeriod(n, quietPerActor)) return false;
 
   const message = `@${row.actor_handle} ${messageFor(row)}`;
   const excerpt = excerptFor(row);
@@ -321,7 +337,9 @@ async function emailNotification(n: NotificationRow): Promise<boolean> {
 
 // Record a notification and (best-effort) email it. Self-notifications are
 // skipped. Notifications are never allowed to break the action that triggered
-// them, so all failures are swallowed and logged.
+// them, so all failures are swallowed and logged. `emailQuietPerActor` keys a
+// canvas thread notification's email quiet period on its actor instead of its
+// thread (see inEmailQuietPeriod).
 export async function createNotification(
   input: {
     recipient_id: string;
@@ -330,6 +348,7 @@ export async function createNotification(
     column_id?: number;
     comment_id?: number;
     thread_id?: number;
+    emailQuietPerActor?: boolean;
   } & ({ channel_id: number } | { group_id: string }),
 ): Promise<void> {
   if (input.recipient_id === input.actor_id) return;
@@ -347,7 +366,7 @@ export async function createNotification(
         thread_id: input.thread_id ?? null,
       })
       .returning();
-    if (await emailNotification(row)) {
+    if (await emailNotification(row, input.emailQuietPerActor === true)) {
       await db
         .update(notification)
         .set({ email_sent_at: new Date() })

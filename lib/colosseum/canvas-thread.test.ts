@@ -1,19 +1,23 @@
-import { afterEach, beforeAll, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import { NextResponse } from "next/server";
 
 import { and, eq } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { canvasThread, channel, comment, notification } from "@/lib/db/schema";
+import { canvasThread, channel, comment, notification, user } from "@/lib/db/schema";
 import { subscribeRealtime, type RealtimeEvent } from "@/lib/realtime/events";
 import { BLOCKS, CHANNELS, COMMENTS, GROUP_CHANNELS, GROUPS, seed, USERS } from "@/scripts/seed";
 import { deleteCommentFor, listCommentsFor } from "./api-auth";
 import {
+  checkThreadStartRate,
   deleteCanvasThreadComment,
   getCanvasThread,
   listChannelThreads,
+  MISSING_AUTHOR_HANDLE,
   replyToCanvasThread,
   startCanvasThread,
+  THREAD_PAGE,
+  THREAD_START_LIMIT,
 } from "./canvas-thread";
 import { createChannel, deleteChannel, getChannel, viewerScope } from "./channel";
 import { getColumn, searchColumns } from "./column";
@@ -22,6 +26,7 @@ import {
   getColumnComments,
   getCommentAuthorization,
   MAX_COMMENT_LENGTH,
+  NO_PROFILE_COMMENT_ERROR,
 } from "./comment";
 import { listNotifications } from "./notification";
 
@@ -49,6 +54,25 @@ beforeAll(async () => {
 
 afterEach(async () => {
   await db.delete(canvasThread);
+});
+
+// Signed in but never onboarded: a `user` row with no `owner` row, so no
+// handle. Not a seed fixture because the seed only makes finished accounts.
+const NO_PROFILE = {
+  id: "10000000-0000-4000-8000-0000000000aa",
+  name: "No Profile",
+  email: "no-profile@example.test",
+};
+
+async function ensureNoProfileUser() {
+  await db
+    .insert(user)
+    .values({ ...NO_PROFILE, emailVerified: true })
+    .onConflictDoNothing();
+}
+
+afterAll(async () => {
+  await db.delete(user).where(eq(user.id, NO_PROFILE.id));
 });
 
 const point = { x: 100, y: -40 };
@@ -229,6 +253,121 @@ test("bodies are trimmed and capped, and anchors validated", async () => {
   expect(await rejection(start({ x: 0, y: 1e12 }))).toBe("Invalid thread position.");
   expect(await rejection(start({ ...onElement, elementId: "" }))).toBe("Invalid thread position.");
   expect(await rejection(start({ ...onElement, offsetX: "5" }))).toBe("Invalid thread position.");
+  expect(await listChannelThreads(aliceDesign, USERS.alice.id)).toEqual([]);
+});
+
+test("threads page by id, oldest first", async () => {
+  const ids: number[] = [];
+  for (const body of ["one", "two", "three"]) {
+    const t = await startCanvasThread({
+      channelId: aliceDesign,
+      userId: USERS.alice.id,
+      anchor: point,
+      body,
+    });
+    ids.push(t.id);
+  }
+  const page = (p?: object) =>
+    listChannelThreads(aliceDesign, USERS.alice.id, p).then((ts) => ts.map((t) => t.id));
+
+  // No page asked for is the whole list, which is what the canvas loads.
+  expect(await page()).toEqual(ids);
+  expect(await page({ limit: 2 })).toEqual(ids.slice(0, 2));
+  expect(await page({ after: ids[1], limit: 2 })).toEqual([ids[2]]);
+  expect(await page({ after: ids[2] })).toEqual([]);
+  expect(await page({ limit: THREAD_PAGE * 10 })).toEqual(ids);
+  expect(await page({ after: null })).toEqual(ids);
+
+  expect(await rejection(page({ after: Number.NaN }))).toBe("Invalid page.");
+  expect(await rejection(page({ after: "1" }))).toBe("Invalid page.");
+  expect(await rejection(page({ limit: Number.NaN }))).toBe("Invalid page.");
+});
+
+test("starting threads is rate limited per person, and the window resets", () => {
+  const { limit, windowMs } = THREAD_START_LIMIT;
+  // Keys of their own, so this never shares a window with a real user's.
+  const who = `rate-test-${Date.now()}`;
+  const now = 1_000_000;
+  for (let i = 0; i < limit; i++) checkThreadStartRate(who, now);
+  expect(() => checkThreadStartRate(who, now)).toThrow(/too quickly/);
+  // Someone else isn't held up by it.
+  expect(() => checkThreadStartRate(`${who}-other`, now)).not.toThrow();
+  expect(() => checkThreadStartRate(who, now + windowMs)).not.toThrow();
+});
+
+// ---------------------------------------------------------------------------
+// Authors without a profile
+// ---------------------------------------------------------------------------
+
+test("someone without a profile can't start a thread, reply or comment, and nothing is written", async () => {
+  await ensureNoProfileUser();
+  const thread = await startCanvasThread({
+    channelId: aliceDesign,
+    userId: USERS.alice.id,
+    anchor: point,
+    body: "Open to all.",
+  });
+  const before = await db.select({ id: comment.id }).from(comment);
+
+  expect(
+    await rejection(
+      startCanvasThread({
+        channelId: aliceDesign,
+        userId: NO_PROFILE.id,
+        anchor: point,
+        body: "Hello?",
+      }),
+    ),
+  ).toBe(NO_PROFILE_COMMENT_ERROR);
+  expect(
+    await rejection(
+      replyToCanvasThread({ threadId: thread.id, userId: NO_PROFILE.id, body: "Hi" }),
+    ),
+  ).toBe(NO_PROFILE_COMMENT_ERROR);
+
+  const column = (await getColumn(blockId))!;
+  const ch = (await getChannel(aliceDesign))!;
+  expect(
+    await rejection(
+      createCommentWithNotices({ column, channel: ch, authorId: NO_PROFILE.id, body: "Hi" }),
+    ),
+  ).toBe(NO_PROFILE_COMMENT_ERROR);
+
+  expect((await listChannelThreads(aliceDesign, USERS.alice.id)).map((t) => t.id)).toEqual([
+    thread.id,
+  ]);
+  expect(await db.select({ id: comment.id }).from(comment)).toHaveLength(before.length);
+});
+
+// Rows written before the check above: a thread whose comments have no owner
+// row behind them. They list under a placeholder handle so the channel's
+// manager can find the pin and delete it.
+test("a thread by an author without a profile still lists, and can be deleted", async () => {
+  await ensureNoProfileUser();
+  const [orphan] = await db
+    .insert(canvasThread)
+    .values({ channel_id: aliceDesign, created_by: NO_PROFILE.id, x: 1, y: 2 })
+    .returning();
+  const [first] = await db
+    .insert(comment)
+    .values({ thread_id: orphan.id, author_id: NO_PROFILE.id, body: "Lost pin" })
+    .returning();
+  await replyToCanvasThread({ threadId: orphan.id, userId: USERS.bob.id, body: "Whose?" });
+
+  const [listed] = await listChannelThreads(aliceDesign, USERS.alice.id);
+  expect(listed.id).toBe(orphan.id);
+  expect(listed.reply_count).toBe(1);
+  expect(listed.starter).toMatchObject({ body: "Lost pin", author_handle: MISSING_AUTHOR_HANDLE });
+
+  const full = await getCanvasThread(orphan.id, null);
+  expect(full.comments.map((c) => c.author_handle)).toEqual([
+    MISSING_AUTHOR_HANDLE,
+    USERS.bob.handle,
+  ]);
+
+  expect(await deleteCanvasThreadComment({ commentId: first.id, userId: USERS.alice.id })).toEqual({
+    threadDeleted: true,
+  });
   expect(await listChannelThreads(aliceDesign, USERS.alice.id)).toEqual([]);
 });
 
@@ -535,4 +674,35 @@ test("block comment notifications keep their block link and wording", async () =
     `commented on "${BLOCKS.alicePublic}" in "${CHANNELS.aliceDesign.title}"`,
   );
   await db.delete(comment).where(eq(comment.id, created.id));
+});
+
+// Every new thread is a fresh subject for the email quiet period, which is per
+// thread, so a burst of new threads would email the whole roster once each.
+// For new-thread notices the quiet period is per thread starter instead.
+test("a burst of new threads emails each recipient once per starter; replies keep per-thread quiet", async () => {
+  async function emailed(commentId: number, recipientId: string): Promise<boolean> {
+    const [row] = await db
+      .select({ at: notification.email_sent_at })
+      .from(notification)
+      .where(
+        and(eq(notification.comment_id, commentId), eq(notification.recipient_id, recipientId)),
+      );
+    if (!row) throw new Error("no notification");
+    return row.at !== null;
+  }
+  const start = (body: string) =>
+    startCanvasThread({ channelId: aliceDesign, userId: USERS.bob.id, anchor: point, body });
+
+  const one = await start("First of many.");
+  const two = await start("Second of many.");
+  expect(await emailed(one.starter!.id, USERS.alice.id)).toBe(true);
+  expect(await emailed(two.starter!.id, USERS.alice.id)).toBe(false);
+
+  // A reply in the second thread is a reply's notice, quiet per thread: that
+  // thread hasn't emailed alice yet, so this one does.
+  const reply = await replyToCanvasThread({ threadId: two.id, userId: USERS.bob.id, body: "And." });
+  expect(await emailed(reply.id, USERS.alice.id)).toBe(true);
+  // Another in the first thread doesn't: that thread emailed her already.
+  const again = await replyToCanvasThread({ threadId: one.id, userId: USERS.bob.id, body: "So." });
+  expect(await emailed(again.id, USERS.alice.id)).toBe(false);
 });

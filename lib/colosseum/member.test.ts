@@ -1,5 +1,6 @@
 import { beforeAll, expect, test } from "bun:test";
 
+import { subscribeRealtime, type RealtimeEvent } from "@/lib/realtime/events";
 import { seed, USERS } from "@/scripts/seed";
 import { createChannel, getMemberChannels, viewerScope } from "./channel";
 import {
@@ -89,4 +90,27 @@ test("adding an unknown handle throws", async () => {
   expect(addChannelMemberByHandle(ch.id, "nobody-here")).rejects.toThrow(
     "No user with that handle.",
   );
+});
+
+// Removal already re-authorizes the removed person's open canvas. Adding has to
+// as well, or a viewer who was just made a member stays read-only until they
+// reload.
+test("adding a member re-authorizes their open canvas, once", async () => {
+  const ch = await createChannel({
+    title: "Group access event",
+    access: "public",
+    owned_by: USERS.bob.ownerId,
+  });
+  const events: RealtimeEvent[] = [];
+  const stop = subscribeRealtime((e) => events.push(e));
+  try {
+    await addChannelMemberByHandle(ch.id, USERS.alice.handle);
+    // Already a member: nothing changed, so nothing to re-authorize.
+    await addChannelMemberByHandle(ch.id, USERS.alice.handle);
+  } finally {
+    stop();
+  }
+  expect(events).toEqual([
+    { type: "user.access-changed", userId: USERS.alice.id, channelId: ch.id },
+  ]);
 });

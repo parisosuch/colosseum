@@ -43,6 +43,7 @@ import { zoomLabel } from "@/lib/canvas/camera";
 import { cn } from "@/lib/utils";
 import { redo, undo } from "./actions";
 import { zoomStep, zoomToActual } from "./camera-actions";
+import { GridMenu } from "./canvas-grid";
 import { presenceColorCss } from "./canvas-overlay";
 import type { CanvasStore, Peer } from "./canvas-store";
 import { PEN_GROUP, SHAPE_GROUP, TOOL_KEYS, TOOL_LABELS, type Tool } from "./tools";
@@ -420,13 +421,15 @@ export function Toolbar({
   );
 }
 
-// Bottom right: undo and redo (editors only), then zoom out, the level, zoom
-// in. The level resets to 100%.
+// Bottom right: the grid button, undo and redo (editors only), then zoom out,
+// the level, zoom in. The level resets to 100%.
 export function ZoomIsland({ store, showHistory }: { store: CanvasStore; showHistory: boolean }) {
   const z = useCanvas(store, "camera", (s) => s.camera.z);
   const history = useCanvas(store, "history", (s) => s.history);
   return (
     <Island data-vt="zoom" className="gap-1">
+      <GridMenu />
+      <span aria-hidden className="h-5 w-px shrink-0 bg-border" />
       {showHistory ? (
         <>
           <div className="flex">

@@ -18,6 +18,7 @@ import {
   countUnplacedColumns,
   getChannelColumnsByIds,
   getUnplacedColumns,
+  MAX_IDS,
   showsCanvasButton,
 } from "./canvas-blocks";
 import { canContributeChannel, createChannel, getChannel, resolveChannelViewer } from "./channel";
@@ -153,4 +154,25 @@ test("the page size is capped", async () => {
   const { ch } = await channelWith(3);
   expect((await getUnplacedColumns(ch.id, { placed: [], limit: 0 })).length).toBe(1);
   expect((await getUnplacedColumns(ch.id, { placed: [], limit: 10_000 })).length).toBe(3);
+});
+
+// The placed list is the canvas's whole set, and a canvas can hold more blocks
+// than MAX_IDS. Every placed id has to count, however many there are.
+test("every placed id counts, past MAX_IDS", async () => {
+  const { ch, cols } = await channelWith(3);
+  const [kept, ...placedCols] = [...cols].reverse();
+  // Filler ids first, so the real ones sit past where a cap would cut.
+  const filler = Array.from({ length: MAX_IDS + 500 }, (_, i) => 1_000_000_000 + i);
+  const placed = [...filler, ...placedCols.map((c) => c.id)];
+
+  const got = await getUnplacedColumns(ch.id, { placed });
+  expect(got.map((c) => c.id)).toEqual([kept.id]);
+  expect(await countUnplacedColumns(ch.id, { placed })).toBe(1);
+});
+
+test("a placed list that isn't one is ignored rather than failing the query", async () => {
+  const { ch } = await channelWith(2);
+  const placed = ["1", 1.5, -3, null] as unknown as number[];
+  expect(await countUnplacedColumns(ch.id, { placed })).toBe(2);
+  expect(await countUnplacedColumns(ch.id, { placed: "nope" as unknown as number[] })).toBe(2);
 });

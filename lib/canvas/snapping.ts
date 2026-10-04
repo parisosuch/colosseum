@@ -4,15 +4,23 @@
 // candidate is closest within the threshold. The result carries the guides to
 // draw: lines through the matched edges with a mark at each end of every box
 // on them, and the equal gaps with their size.
+//
+// With the grid showing and snapping to it on, a box's edges also snap to the
+// nearest grid line within the threshold, unless an element candidate is at
+// least as close. The grid lines caught are drawn dashed, with the box's
+// top-left in world units beside them.
 
 import type { Point, Rect } from "./camera";
+import { gridDelta } from "./grid";
 
 // In screen pixels; callers divide by the zoom.
 export const SNAP_THRESHOLD = 6;
 
 export type Guide =
   | { kind: "line"; axis: "x" | "y"; at: number; from: number; to: number; marks: number[] }
-  | { kind: "gap"; axis: "x" | "y"; from: number; to: number; at: number; size: number };
+  | { kind: "gap"; axis: "x" | "y"; from: number; to: number; at: number; size: number }
+  | { kind: "grid"; axis: "x" | "y"; at: number; from: number; to: number; marks: number[] }
+  | { kind: "position"; x: number; y: number };
 
 export type SnapResult = { dx: number; dy: number; guides: Guide[] };
 
@@ -160,36 +168,91 @@ function guidesFor(m: Rect, others: readonly Rect[], axis: Axis, spacing: boolea
   }
   const seen = new Set<string>();
   for (const g of shown) {
+    if (g.kind !== "gap") continue;
     const key = `${g.from}:${g.to}:${g.at}`;
-    if (seen.has(key) || g.kind !== "gap" || g.size <= 0) continue;
+    if (seen.has(key) || g.size <= 0) continue;
     seen.add(key);
     out.push(g);
   }
   return out;
 }
 
+// The nearer of the box's two edges to a grid line, within the threshold.
+function gridCandidate(
+  m: Rect,
+  axis: Axis,
+  step: number,
+  threshold: number,
+): { delta: number; at: number } | null {
+  let best: { delta: number; at: number } | null = null;
+  for (const v of [lo(m, axis), hi(m, axis)]) {
+    const delta = gridDelta(v, step);
+    if (Math.abs(delta) > threshold) continue;
+    if (!best || Math.abs(delta) < Math.abs(best.delta)) best = { delta, at: v + delta };
+  }
+  return best;
+}
+
+// The grid line an edge was caught on, drawn two steps past the box, with a
+// mark where each of its corners lands.
+function gridGuide(m: Rect, axis: Axis, at: number, step: number): Guide {
+  const o = other(axis);
+  return {
+    kind: "grid",
+    axis,
+    at,
+    from: lo(m, o) - 2 * step,
+    to: hi(m, o) + 2 * step,
+    marks: [...new Set([lo(m, o), hi(m, o)])],
+  };
+}
+
+export type SnapOptions = {
+  spacing?: boolean;
+  // The grid step in world units, when the grid shows and snaps.
+  grid?: number | null;
+};
+
 // Snap a moving box against `others`. `threshold` is in world units.
 export function snapRect(
   moving: Rect,
   others: readonly Rect[],
   threshold: number,
-  { spacing = true }: { spacing?: boolean } = {},
+  { spacing = true, grid = null }: SnapOptions = {},
 ): SnapResult {
-  const dx = bestDelta(moving, others, "x", threshold, spacing) ?? 0;
-  const dy = bestDelta(moving, others, "y", threshold, spacing) ?? 0;
-  const snapped = { ...moving, x: moving.x + dx, y: moving.y + dy };
-  return {
-    dx,
-    dy,
-    guides: [
-      ...guidesFor(snapped, others, "x", spacing),
-      ...guidesFor(snapped, others, "y", spacing),
-    ],
+  // Per axis: the element candidate when it's at least as close as the grid
+  // line, else the grid line.
+  const axisDelta = (axis: Axis) => {
+    const element = bestDelta(moving, others, axis, threshold, spacing);
+    const g = grid ? gridCandidate(moving, axis, grid, threshold) : null;
+    if (g && (element === null || Math.abs(g.delta) < Math.abs(element))) {
+      return { delta: g.delta, gridAt: g.at };
+    }
+    return { delta: element ?? 0, gridAt: null };
   };
+  const x = axisDelta("x");
+  const y = axisDelta("y");
+  const snapped = { ...moving, x: moving.x + x.delta, y: moving.y + y.delta };
+  const guides = [
+    ...guidesFor(snapped, others, "x", spacing),
+    ...guidesFor(snapped, others, "y", spacing),
+  ];
+  if (grid && (x.gridAt !== null || y.gridAt !== null)) {
+    if (x.gridAt !== null) guides.push(gridGuide(snapped, "x", x.gridAt, grid));
+    if (y.gridAt !== null) guides.push(gridGuide(snapped, "y", y.gridAt, grid));
+    guides.push({ kind: "position", x: snapped.x, y: snapped.y });
+  }
+  return { dx: x.delta, dy: y.delta, guides };
 }
 
 // Snap a single point (a resize handle, a shape's corner while drawing it, a
-// line end) to other boxes' edges and centres.
-export function snapPoint(p: Point, others: readonly Rect[], threshold: number): SnapResult {
-  return snapRect({ x: p.x, y: p.y, w: 0, h: 0 }, others, threshold, { spacing: false });
+// line end) to other boxes' edges and centres, and to the grid when `grid` is
+// set.
+export function snapPoint(
+  p: Point,
+  others: readonly Rect[],
+  threshold: number,
+  { grid = null }: { grid?: number | null } = {},
+): SnapResult {
+  return snapRect({ x: p.x, y: p.y, w: 0, h: 0 }, others, threshold, { spacing: false, grid });
 }

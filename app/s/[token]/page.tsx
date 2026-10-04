@@ -4,10 +4,9 @@ import BlockDetail from "@/components/block-detail";
 import ChannelBoard from "@/components/channel-board";
 import { ShareProvider } from "@/components/share-context";
 import ShareUnavailable from "@/components/share-unavailable";
-import { PAGE_SIZE } from "@/lib/pagination";
 import { blockLabel, blockPreviewMeta } from "@/lib/colosseum/block-meta";
 import { channelPreviewMeta } from "@/lib/colosseum/channel-meta";
-import { getChannelColumnCount, getChannelColumns, getColumn } from "@/lib/colosseum/column";
+import { getColumn } from "@/lib/colosseum/column";
 import { listChannelMembers } from "@/lib/colosseum/member";
 import { getOwnerByHandle } from "@/lib/colosseum/owner";
 import {
@@ -16,17 +15,22 @@ import {
   getScreenshotsForUrls,
 } from "@/lib/colosseum/screenshot-data";
 import { type ResolvedShare, shareColumn, shareCoversBlock } from "@/lib/colosseum/share-link";
-import { loadShare, shareChannelCardImage, shareOwnerHandle } from "@/lib/colosseum/share-page";
-import { SIGNED_OUT } from "@/lib/colosseum/viewer";
+import {
+  loadShare,
+  shareBoardFirstPage,
+  shareChannelCardImage,
+  shareOwnerHandle,
+} from "@/lib/colosseum/share-page";
 
 // A share link: /s/<token>. A channel link opens the channel's board read-only,
-// every block in it included (`?block=` opens one in the modal, as on the
-// channel page). A block link opens that block alone. The link holder needs no
-// account; whoever they are signed in as plays no part.
+// every block in it included (`?block=` opens one in the modal, and
+// `?sort=&type=&q=&view=` set the controls, as on the channel page). A block
+// link opens that block alone. The link holder needs no account; whoever they
+// are signed in as plays no part.
 
 type SharePageParams = {
   params: Promise<{ token: string }>;
-  searchParams: Promise<{ block?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
 const NOT_FOUND_META: Metadata = {
@@ -35,7 +39,8 @@ const NOT_FOUND_META: Metadata = {
 };
 
 // The `?block=` block, if the share covers it, as the link holder receives it.
-async function deepLinkedBlock(share: ResolvedShare, raw: string | undefined) {
+async function deepLinkedBlock(share: ResolvedShare, param: string | string[] | undefined) {
+  const raw = Array.isArray(param) ? param[0] : param;
   const id = raw ? parseInt(raw, 10) : NaN;
   if (Number.isNaN(id)) return null;
   const block = await getColumn(id);
@@ -99,15 +104,16 @@ export default async function SharePage({ params, searchParams }: SharePageParam
     );
   }
 
-  // The channel page's first paint, read as a signed-out visitor would see it
-  // (a nested private channel stays a stub) and with media through the share.
-  const [totalCount, firstPage, members, ownerProfile] = await Promise.all([
-    getChannelColumnCount(channel.id),
-    getChannelColumns(channel.id, { sort: "manual", limit: PAGE_SIZE }, SIGNED_OUT),
+  // The channel page's first paint under the URL's controls, read as a
+  // signed-out visitor would see it (a nested private channel stays a stub)
+  // and with media through the share.
+  const sp = await searchParams;
+  const [board, members, ownerProfile] = await Promise.all([
+    shareBoardFirstPage(share, sp),
     channel.access !== "open" ? listChannelMembers(channel.id) : Promise.resolve([]),
     getOwnerByHandle(handle),
   ]);
-  const initialColumns = firstPage.map((c) => shareColumn(c, token));
+  const { initialColumns } = board;
   const initialScreenshots = [
     ...(
       await getScreenshotsForUrls(
@@ -116,7 +122,7 @@ export default async function SharePage({ params, searchParams }: SharePageParam
     ).entries(),
   ];
 
-  const initialBlock = await deepLinkedBlock(share, (await searchParams).block);
+  const initialBlock = await deepLinkedBlock(share, sp.block);
   const shot =
     initialBlock?.type === "url" && initialBlock.url ? await getScreenshot(initialBlock.url) : null;
   const initialBlockScreenshot: ColumnScreenshot | null =
@@ -145,7 +151,7 @@ export default async function SharePage({ params, searchParams }: SharePageParam
         isAdmin={false}
         canContribute={false}
         user={null}
-        initialCount={totalCount}
+        initialCount={board.totalCount}
         newestAt={initialColumns[0]?.created_at ?? null}
         createdOnLabel={createdOnLabel}
         channels={[]}
@@ -155,6 +161,8 @@ export default async function SharePage({ params, searchParams }: SharePageParam
         initialScreenshots={initialScreenshots}
         initialBlock={initialBlock}
         initialBlockScreenshot={initialBlockScreenshot}
+        initialQuery={board.query}
+        initialFilteredCount={board.filteredCount}
       />
     </ShareProvider>
   );

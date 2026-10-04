@@ -41,6 +41,9 @@ export type BaseElement = {
   y: number;
   w: number;
   h: number;
+  // Degrees clockwise about the centre of the (x, y, w, h) box, which is the
+  // box before rotation. Nothing draws or edits it yet; canvas threads already
+  // turn with it (threadPosition in canvas-threads.ts).
   rotation: number;
   // The frame or group this element sits in; null at the top level. Parent
   // links are what make the layer tree.

@@ -4,9 +4,10 @@
 // deleted, and pins it again if the element comes back.
 //
 // A thread on an element stores the element id and an offset from the
-// element's world position. Clients render it at `threadPosition`, so it
-// follows the element (and the frames and groups it sits in) through moves and
-// resizes without the server doing anything. The server's job starts when the
+// element's world position, in the element's unrotated box. Clients render it
+// at `threadPosition`, so it follows the element (and the frames and groups it
+// sits in) through moves, resizes and rotation without the server doing
+// anything. The server's job starts when the
 // element goes: the thread row has to learn where the element last was,
 // because nothing in the doc remembers a deleted element's position. A room
 // keeps each pinned thread's world position in memory, updated on every
@@ -41,8 +42,9 @@ export type CanvasThread = {
   // For a free pin whose element was deleted: that element's id. If it comes
   // back, the thread is pinned to it again.
   last_element_id: string | null;
-  // Offset from the element's world position. Null for a thread started on a
-  // bare point; kept while a thread is a free pin, for when it's pinned again.
+  // Offset from the element's world position, in its unrotated box (see
+  // threadPosition). Null for a thread started on a bare point; kept while a
+  // thread is a free pin, for when it's pinned again.
   offset_x: number | null;
   offset_y: number | null;
   // World position. Authoritative for a free pin; for a pinned thread, the
@@ -120,9 +122,39 @@ export function elementWorldPosition(
   return { x, y };
 }
 
+// An element's rotation, in degrees clockwise about the centre of its box, as
+// CSS `rotate()` turns a box with its default transform origin. 0 when unset.
+function rotationOf(el: Y.Map<unknown>): number {
+  const r = el.get("rotation");
+  return typeof r === "number" && Number.isFinite(r) ? r : 0;
+}
+
+function sizeOf(el: Y.Map<unknown>): { w: number; h: number } {
+  const w = el.get("w");
+  const h = el.get("h");
+  return {
+    w: typeof w === "number" && Number.isFinite(w) ? w : 0,
+    h: typeof h === "number" && Number.isFinite(h) ? h : 0,
+  };
+}
+
+function rotate(x: number, y: number, degrees: number): { x: number; y: number } {
+  const rad = (degrees * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return { x: x * cos - y * sin, y: x * sin + y * cos };
+}
+
 // Where a thread pinned to `elementId` sits in world space, or null when the
 // element has no usable position. Clients and the server both go through this,
 // so the free pin lands exactly where the pinned one was drawn.
+//
+// The offset is in the element's own unrotated box: (0, 0) is its top-left
+// corner before rotation. A rotated element turns the offset with it about the
+// box's centre, so a pin on a corner stays on that corner. Only the element's
+// own rotation counts. A parent's x/y moves its children (elementWorldPosition),
+// but nothing in the doc turns children with a rotated parent, so neither does
+// this.
 export function threadPosition(
   elements: Y.Map<Y.Map<unknown>>,
   elementId: string,
@@ -130,7 +162,32 @@ export function threadPosition(
 ): { x: number; y: number } | null {
   const at = elementWorldPosition(elements, elementId);
   if (!at) return null;
-  return { x: at.x + (offset.offset_x ?? 0), y: at.y + (offset.offset_y ?? 0) };
+  const ox = offset.offset_x ?? 0;
+  const oy = offset.offset_y ?? 0;
+  const el = elements.get(elementId)!;
+  const degrees = rotationOf(el);
+  if (degrees % 360 === 0) return { x: at.x + ox, y: at.y + oy };
+  const { w, h } = sizeOf(el);
+  const turned = rotate(ox - w / 2, oy - h / 2, degrees);
+  return { x: at.x + w / 2 + turned.x, y: at.y + h / 2 + turned.y };
+}
+
+// The offset that pins a thread on `elementId` at the world point `at`: the
+// inverse of threadPosition, so threadPosition(elements, id, threadOffset(…, at))
+// is `at` again. Null when the element has no usable position.
+export function threadOffset(
+  elements: Y.Map<Y.Map<unknown>>,
+  elementId: string,
+  at: { x: number; y: number },
+): { offset_x: number; offset_y: number } | null {
+  const origin = elementWorldPosition(elements, elementId);
+  if (!origin) return null;
+  const el = elements.get(elementId)!;
+  const degrees = rotationOf(el);
+  if (degrees % 360 === 0) return { offset_x: at.x - origin.x, offset_y: at.y - origin.y };
+  const { w, h } = sizeOf(el);
+  const local = rotate(at.x - origin.x - w / 2, at.y - origin.y - h / 2, -degrees);
+  return { offset_x: local.x + w / 2, offset_y: local.y + h / 2 };
 }
 
 // A thread the store says is pinned to an element, or is a free pin that was

@@ -110,7 +110,9 @@ export function CanvasViewport({
   onOpenBlock,
   onPlaceBlock,
   onComment,
+  onBoardPress,
   ready,
+  children,
 }: {
   store: CanvasStore;
   columns: ReadonlyMap<number, Column | null>;
@@ -126,10 +128,15 @@ export function CanvasViewport({
   onPlaceBlock: (columnId: number, at: Point) => void;
   // The comment tool's click, in world space.
   onComment: (at: Point) => void;
+  // Any press on the board itself, not on a pin or a popover over it.
+  onBoardPress?: () => void;
   // Whether the board has its blocks and opening camera. The world stays
   // hidden until then and fades in, rather than its cards appearing one batch
   // at a time under the loader.
   ready: boolean;
+  // Screen-space UI drawn over the board that takes its own input: comment
+  // pins (marked data-canvas-pin) and the thread popover (data-canvas-ui).
+  children?: React.ReactNode;
 }) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const worldRef = useRef<HTMLDivElement | null>(null);
@@ -147,6 +154,7 @@ export function CanvasViewport({
     onOpenBlock,
     onPlaceBlock,
     onComment,
+    onBoardPress,
   });
   useLayoutEffect(() => {
     props.current = {
@@ -157,6 +165,7 @@ export function CanvasViewport({
       onOpenBlock,
       onPlaceBlock,
       onComment,
+      onBoardPress,
     };
   });
 
@@ -290,10 +299,17 @@ export function CanvasViewport({
 
     const inEditor = (e: Event) =>
       !!(e.target as HTMLElement | null)?.closest?.("[data-canvas-editor]");
+    // Comment pins and the thread popover handle their own presses, and the
+    // popover scrolls with the wheel instead of panning the board.
+    const onPin = (e: Event) =>
+      !!(e.target as HTMLElement | null)?.closest?.("[data-canvas-pin], [data-canvas-ui]");
+    const inPopover = (e: Event) =>
+      !!(e.target as HTMLElement | null)?.closest?.("[data-canvas-ui]");
 
     // ----- mouse and pen -----
     const onPointerDown = (e: PointerEvent) => {
-      if (inEditor(e)) return;
+      if (inEditor(e) || onPin(e)) return;
+      props.current.onBoardPress?.();
       if (e.pointerType === "touch" || props.current.touchOnly) return onTouchDown(e);
       // No text selection or native drag from a press on the board.
       e.preventDefault();
@@ -382,7 +398,7 @@ export function CanvasViewport({
     };
 
     const onDoubleClick = (e: MouseEvent) => {
-      if (props.current.touchOnly || inEditor(e)) return;
+      if (props.current.touchOnly || inEditor(e) || onPin(e)) return;
       if (!props.current.editing) {
         const columnId = blockAt(local(e));
         if (columnId != null) props.current.onOpenBlock(columnId);
@@ -450,6 +466,7 @@ export function CanvasViewport({
 
     // ----- wheel and Safari's gesture events -----
     const onWheel = (e: WheelEvent) => {
+      if (inPopover(e) && !(e.ctrlKey || e.metaKey)) return;
       e.preventDefault();
       const p = local(e);
       if (e.ctrlKey || e.metaKey) {
@@ -489,11 +506,17 @@ export function CanvasViewport({
         t.tagName === "SELECT"
       );
     };
+    // A dialog or menu that takes the keyboard. A comment thread's popover
+    // doesn't: tool keys still work with one open, and it handles Escape.
     const dialogOpen = () =>
-      document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"]') !== null;
+      [...document.querySelectorAll('[role="dialog"], [role="alertdialog"], [role="menu"]')].some(
+        (d) => !d.closest("[data-canvas-ui]"),
+      );
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented || isTyping(e.target) || dialogOpen()) return;
+      // Escape closes an open thread first (ThreadLayer).
+      if (e.key === "Escape" && document.querySelector("[data-canvas-ui]")) return;
       const onControl = (e.target as HTMLElement | null)?.closest?.(
         "button, a, [role=button], [role=menuitem], [role=tab], [role=treeitem]",
       );
@@ -787,6 +810,7 @@ export function CanvasViewport({
         <TextEditor store={store} />
       </div>
       <CanvasOverlay store={store} showHandles={editing} />
+      {children}
       {dropping ? (
         <div
           className="pointer-events-none absolute inset-0"

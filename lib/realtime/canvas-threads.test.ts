@@ -270,6 +270,34 @@ test("a thread on an element inside a frame follows the frame", async () => {
   expect(await threadRow(thread.id)).toMatchObject({ x: 311, y: 121 });
 });
 
+test("a pinned thread turns with its element, and frees where the turned pin was", async () => {
+  const editor = connect("write");
+  const viewer = connect("read");
+  await Promise.all([synced(editor.provider), synced(viewer.provider)]);
+  addElement(editor.doc, "card", { type: "rect", x: 100, y: 100, w: 100, h: 50, rotation: 0 });
+  await waitFor(() => elementsOf(viewer.doc).has("card"), "the card on the viewer");
+
+  // On the card's top-left corner.
+  const thread = await startCanvasThread({
+    channelId,
+    userId: USERS.bob.id,
+    anchor: { elementId: "card", offsetX: 0, offsetY: 0, x: 100, y: 100 },
+    body: "Top left.",
+  });
+  await waitFor(() => viewer.events.some((e) => e.type === "thread.created"), "thread.created");
+
+  // A quarter turn clockwise about the centre (150, 125) takes the top-left
+  // corner to (175, 75). The rotation alone is the change the room sees.
+  elementsOf(editor.doc).get("card")!.set("rotation", 90);
+  elementsOf(editor.doc).delete("card");
+  await waitFor(async () => (await threadRow(thread.id)).element_id === null, "the thread freed");
+  const row = await threadRow(thread.id);
+  expect(row.x).toBeCloseTo(175, 6);
+  expect(row.y).toBeCloseTo(75, 6);
+  // The stored offset stays in the card's unrotated box, for a re-pin.
+  expect(row).toMatchObject({ offset_x: 0, offset_y: 0, last_element_id: "card" });
+});
+
 test("elementWorldPosition sums the parent chain and survives a loop", () => {
   const doc = new Y.Doc();
   addElement(doc, "outer", { x: 1, y: 2, parentId: null });

@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { fillCss, inkCss } from "@/lib/canvas/style";
 
@@ -18,14 +19,15 @@ export function Swatch({
   onSelect: () => void;
 }) {
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
+      size="icon"
       aria-label={label}
       aria-pressed={selected}
       title={label}
       onClick={onSelect}
       className={cn(
-        "focus-ring flex size-6 shrink-0 items-center justify-center rounded-full border-[1.5px] transition-colors duration-micro",
+        "size-6 shrink-0 rounded-full border-[1.5px] hover:bg-transparent",
         selected ? "border-foreground" : "border-transparent hover:border-border",
       )}
     >
@@ -38,7 +40,7 @@ export function Swatch({
           <span className="absolute left-1/2 top-[-2px] h-5 w-px -translate-x-1/2 rotate-45 bg-destructive-text" />
         )}
       </span>
-    </button>
+    </Button>
   );
 }
 
@@ -111,27 +113,36 @@ export function FillSwatches({
 
 // The design's three-way segmented control (stroke width), on the library
 // Segmented recipe: rounded-lg border, p-0.5, the active segment bg-secondary.
+// `tabs` makes it a tab list (the side panel's Blocks and Layers), with the
+// same look.
 export function Segmented<T extends string | number>({
   options,
   value,
   onChange,
   label,
   mono = false,
+  tabs = false,
 }: {
   options: readonly { value: T; label: React.ReactNode; title?: string }[];
   value: T | null;
   onChange: (v: T) => void;
   label: string;
   mono?: boolean;
+  tabs?: boolean;
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className="flex w-fit rounded-lg border p-0.5">
+    <div
+      role={tabs ? "tablist" : "radiogroup"}
+      aria-label={label}
+      className="flex w-fit rounded-lg border p-0.5"
+    >
       {options.map((o) => (
         <button
           key={String(o.value)}
           type="button"
-          role="radio"
-          aria-checked={value === o.value}
+          role={tabs ? "tab" : "radio"}
+          aria-checked={tabs ? undefined : value === o.value}
+          aria-selected={tabs ? value === o.value : undefined}
           title={o.title}
           onClick={() => onChange(o.value)}
           className={cn(

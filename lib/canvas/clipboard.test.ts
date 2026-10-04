@@ -6,9 +6,15 @@ import {
   copySelection,
   duplicateSelection,
   parseClipboard,
+  pasteBatches,
   pasteClipboard,
+  PASTE_BATCH_BYTES,
   PASTE_OFFSET,
 } from "./clipboard";
+import * as Y from "yjs";
+
+import { elementsOf } from "@/lib/realtime/canvas-doc";
+import { createElement } from "./elements";
 import { docWith, ORIGIN, state } from "./test-doc";
 
 const scene = () =>
@@ -156,5 +162,89 @@ describe("canvas clipboard", () => {
       parentId: null,
       fields: { type: "rect", x: 0, y: 0, w: 1, h: 1 },
     });
+  });
+
+  test("rotation doesn't paste: nothing draws it yet, and pins would turn with it", () => {
+    const rotated = {
+      kind: "colosseum-canvas",
+      version: 1,
+      channelId: 1,
+      elements: [
+        {
+          id: "a",
+          parentId: null,
+          fields: { type: "rect", x: 0, y: 0, w: 10, h: 10, rotation: 45 },
+        },
+      ],
+    };
+    const clip = parseClipboard(JSON.stringify(rotated))!;
+    expect(clip.elements[0].fields.rotation).toBeUndefined();
+    const doc = scene();
+    const [id] = pasteClipboard(
+      doc,
+      clip,
+      { channelId: 1, createdBy: "u", placed: new Set() },
+      ORIGIN,
+    );
+    expect(elementsOf(doc).get(id)!.get("rotation")).toBe(0);
+    // Nor through createElement, whatever its input carries.
+    const made = createElement(
+      doc,
+      { type: "rect", x: 0, y: 0, w: 1, h: 1, createdBy: "u", rotation: 90 },
+      ORIGIN,
+    );
+    expect(elementsOf(doc).get(made)!.get("rotation")).toBe(0);
+  });
+
+  test("a big paste goes in batches each under the server's 2 MiB per message", () => {
+    const doc = new Y.Doc();
+    const pts: number[] = [];
+    for (let k = 0; k < 400; k++) pts.push(k + 0.3, ((k * 7) % 100) + 0.7, 0.55);
+    const clip = {
+      kind: "colosseum-canvas" as const,
+      version: 1 as const,
+      channelId: 1,
+      elements: Array.from({ length: 800 }, (_, i) => ({
+        id: `s${i}`,
+        parentId: null,
+        fields: {
+          type: "stroke",
+          x: i,
+          y: 0,
+          w: 400,
+          h: 100,
+          points: pts,
+          stroke: "foreground",
+          width: 2,
+          kind: "pen",
+          z: "i00000",
+        },
+      })),
+    };
+    const sizes: number[] = [];
+    doc.on("update", (u: Uint8Array) => sizes.push(u.length));
+    const undo = new Y.UndoManager(elementsOf(doc), { trackedOrigins: new Set([ORIGIN]) });
+    const ids = pasteClipboard(
+      doc,
+      clip,
+      { channelId: 1, createdBy: "u", placed: new Set() },
+      ORIGIN,
+    );
+    expect(ids).toHaveLength(800);
+    expect(elementsOf(doc).size).toBe(800);
+    expect(sizes.length).toBeGreaterThan(1);
+    for (const size of sizes) expect(size).toBeLessThan(2 * 1024 * 1024);
+    // Still one undo step.
+    undo.undo();
+    expect(elementsOf(doc).size).toBe(0);
+  });
+
+  test("batches keep parents ahead of what's inside them", () => {
+    const big = { type: "rect", x: 0, y: 0, w: 1, h: 1, name: "x".repeat(PASTE_BATCH_BYTES / 2) };
+    const batches = pasteBatches([
+      { id: "child", parentId: "frame", fields: big },
+      { id: "frame", parentId: null, fields: { ...big, type: "frame" } },
+    ]);
+    expect(batches.map((b) => b.map((e) => e.id))).toEqual([["frame"], ["child"]]);
   });
 });

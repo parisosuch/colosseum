@@ -185,8 +185,7 @@ function FrameLabels({
   const view = visibleWorldRect(camera, viewport);
   return (
     <>
-      {doc.ordered.map((el) => {
-        if (el.type !== "frame") return null;
+      {doc.frames.map((el) => {
         const g = doc.layout.geom.get(el.id);
         if (!g || !intersects(g.rect, view)) return null;
         if (g.clip && !intersects(g.clip, g.rect)) return null;
@@ -380,7 +379,9 @@ function PeerCursor({ peer, at }: { peer: Peer; at: { x: number; y: number } }) 
   const color = presenceVar(peer.user.color);
   return (
     <div
-      className="absolute left-0 top-0 transition-transform duration-micro ease-out"
+      // The glide between awareness updates is motion the viewer didn't cause;
+      // with reduced motion the cursor jumps instead.
+      className="absolute left-0 top-0 transition-transform duration-micro ease-out motion-reduce:transition-none"
       style={{ transform: `translate(${at.x - 3.3}px, ${at.y - 3.3}px)` }}
     >
       <svg width="20" height="20" viewBox="0 0 20 20" className="block overflow-visible">

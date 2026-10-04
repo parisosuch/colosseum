@@ -23,12 +23,15 @@ export type Geom = {
 };
 
 export type Layout = {
-  geom: Map<string, Geom>;
+  geom: ReadonlyMap<string, Geom>;
   // Where each connector end is drawn, in the connector's parent space, keyed
   // `${id}:start` and `${id}:end`. Removing an element turns the ends bound to
   // it into free points here.
-  ends: Map<string, Point>;
+  ends: ReadonlyMap<string, Point>;
 };
+
+// Layout as computeLayout builds it, before it's handed out read-only.
+type MutableLayout = { geom: Map<string, Geom>; ends: Map<string, Point> };
 
 export function outlineShape(type: string): OutlineShape {
   return type === "ellipse" ? "ellipse" : type === "diamond" ? "diamond" : "rect";
@@ -39,7 +42,7 @@ export function bindable(el: ElementSnapshot): boolean {
   return !CONNECTOR_TYPES.has(el.type) && el.type !== "group";
 }
 
-export function computeLayout(all: ReadonlyMap<string, ElementSnapshot>): Layout {
+export function computeLayout(all: ReadonlyMap<string, ElementSnapshot>): MutableLayout {
   const geom = new Map<string, Geom>();
   const ends = new Map<string, Point>();
   const origins = new Map<string, Point | null>();
@@ -129,7 +132,7 @@ export function connectorRoute(
   el: ElementSnapshot,
   o: Point,
   all: ReadonlyMap<string, ElementSnapshot>,
-  geom: ReadonlyMap<string, Geom>,
+  geom: { get(id: string): Geom | undefined },
 ): Point[] {
   const input = (side: "start" | "end"): EndInput => {
     const end = el[side];
@@ -159,7 +162,7 @@ export function connectorRoute(
   return route(input("start"), input("end"), el.routing ?? "straight");
 }
 
-function sameRect(a: Rect | null, b: Rect | null): boolean {
+export function sameRect(a: Rect | null | undefined, b: Rect | null | undefined): boolean {
   if (a === b) return true;
   if (!a || !b) return false;
   return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
@@ -171,21 +174,22 @@ function samePoints(a: readonly Point[] | undefined, b: readonly Point[] | undef
   return a.every((p, i) => p.x === b[i].x && p.y === b[i].y);
 }
 
+export function sameGeom(a: Geom, b: Geom): boolean {
+  return (
+    sameRect(a.rect, b.rect) &&
+    sameRect(a.clip, b.clip) &&
+    a.origin.x === b.origin.x &&
+    a.origin.y === b.origin.y &&
+    samePoints(a.route, b.route)
+  );
+}
+
 // Keep the previous Geom object for every element whose geometry didn't
 // change, so memoized renderers skip it.
-export function stabilizeLayout(next: Layout, prev: Layout): Layout {
+export function stabilizeLayout(next: MutableLayout, prev: Layout): MutableLayout {
   for (const [id, g] of next.geom) {
     const old = prev.geom.get(id);
-    if (
-      old &&
-      sameRect(old.rect, g.rect) &&
-      sameRect(old.clip, g.clip) &&
-      old.origin.x === g.origin.x &&
-      old.origin.y === g.origin.y &&
-      samePoints(old.route, g.route)
-    ) {
-      next.geom.set(id, old);
-    }
+    if (old && sameGeom(old, g)) next.geom.set(id, old);
   }
   return next;
 }

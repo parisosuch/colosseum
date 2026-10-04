@@ -350,16 +350,16 @@ export function Toolbar({
       >
         <Tooltip delayDuration={400}>
           <TooltipTrigger asChild>
-            <button
-              type="button"
+            <Button
+              variant="ghost"
               aria-label={TOOL_LABELS[shown]}
               aria-pressed={tool === shown}
               disabled={disabled}
               onClick={() => pick(shown)}
-              className="focus-ring flex h-9 w-8 items-center justify-end rounded-l-md disabled:opacity-50 [&_svg]:size-4"
+              className="h-9 w-8 justify-end rounded-r-none px-0 hover:bg-transparent"
             >
               <Icon />
-            </button>
+            </Button>
           </TooltipTrigger>
           <TooltipContent className="flex items-center gap-3">
             <span>{TOOL_LABELS[shown]}</span>
@@ -368,14 +368,14 @@ export function Toolbar({
         </Tooltip>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button
-              type="button"
+            <Button
+              variant="ghost"
               aria-label={label}
               disabled={disabled}
-              className="focus-ring flex h-9 w-4 items-center justify-start rounded-r-md text-muted-foreground disabled:opacity-50"
+              className="h-9 w-4 justify-start rounded-l-none px-0 text-muted-foreground hover:bg-transparent [&_svg]:size-3"
             >
-              <ChevronDown className="size-3" />
-            </button>
+              <ChevronDown />
+            </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent side="top" align="center" sideOffset={12} className="w-52">
             {members.map((m) => {
@@ -456,14 +456,14 @@ export function ZoomIsland({ store, showHistory }: { store: CanvasStore; showHis
         </IconButton>
         <Tooltip delayDuration={400}>
           <TooltipTrigger asChild>
-            <button
-              type="button"
+            <Button
+              variant="ghost"
               onClick={() => zoomToActual(store)}
               aria-label={`Zoom ${zoomLabel(z)}, reset to 100%`}
-              className="focus-ring h-9 w-12 rounded-md text-center font-mono text-sm tabular-nums hover:bg-accent"
+              className="w-12 px-0 font-mono font-normal tabular-nums"
             >
               {zoomLabel(z)}
-            </button>
+            </Button>
           </TooltipTrigger>
           <TooltipContent className="flex items-center gap-3">
             <span>Zoom to 100%</span>

@@ -55,15 +55,18 @@ export function translated(
 }
 
 // The writes for moving `ids` by (dx, dy) from their `start` snapshots.
+// `moving` is everything that moves (withDescendants of the roots), which a
+// drag works out once instead of on every frame.
 export function moveUpdates(
   start: All,
   ids: Iterable<string>,
   dx: number,
   dy: number,
   layout: Layout,
+  moving?: ReadonlySet<string>,
 ): PropsUpdate[] {
   const roots = topmostOnly(ids, start);
-  const moving = withDescendants(roots, start);
+  moving ??= withDescendants(roots, start);
   return roots
     .filter((id) => !start.get(id)!.locked)
     .map((id) => ({ id, props: translated(start.get(id)!, dx, dy, moving, layout) }));
@@ -127,17 +130,27 @@ function ownOrigin(el: ElementSnapshot, all: All): Point | null {
 }
 
 // Resize the selection `ids` from bounds `from` to bounds `to` (world). `start`
-// is the doc at the start of the gesture.
+// is the doc at the start of the gesture, and `childIds` its child lists if the
+// caller keeps them (DocState.children).
 export function resizeUpdates(
   start: All,
   ids: Iterable<string>,
   layout: Layout,
   from: Rect,
   to: Rect,
+  childIds?: ReadonlyMap<string | null, readonly string[]>,
 ): PropsUpdate[] {
   const roots = topmostOnly(ids, start).filter((id) => !start.get(id)!.locked);
   const { map, sx, sy } = mapper(from, to);
-  const children = childrenByParent(start);
+  // Only groups and frames need their children, so the whole doc is sorted
+  // into lists only when one is being resized and no lists came in.
+  let sorted: Map<string | null, ElementSnapshot[]> | null = null;
+  const children = {
+    get: (id: string): readonly ElementSnapshot[] | undefined =>
+      childIds
+        ? childIds.get(id)?.map((c) => start.get(c)!)
+        : (sorted ??= childrenByParent(start)).get(id),
+  };
 
   // Groups scale what's in them; frames don't.
   const set = new Set<string>();

@@ -17,15 +17,9 @@ import {
   type Rect,
 } from "@/lib/canvas/camera";
 import { DEFAULT_TOOL_STYLE, type ToolStyle } from "@/lib/canvas/create";
-import {
-  paintOrder,
-  placedColumns,
-  readElements,
-  type ElementSnapshot,
-} from "@/lib/canvas/elements";
-import type { Box } from "@/lib/canvas/geometry";
+import { DocIndex, EMPTY_DOC, type DocState } from "@/lib/canvas/doc-state";
+import type { ElementSnapshot } from "@/lib/canvas/elements";
 import type { HitContext } from "@/lib/canvas/hit";
-import { computeLayout, stabilizeLayout, type Layout } from "@/lib/canvas/layout";
 import type { InputPoint } from "@/lib/canvas/pen";
 import type { Guide } from "@/lib/canvas/snapping";
 import { createUndoManager } from "@/lib/canvas/undo";
@@ -39,17 +33,7 @@ import {
   type PresenceUser,
 } from "@/lib/realtime/protocol";
 
-export type DocState = {
-  elements: ReadonlyMap<string, ElementSnapshot>;
-  // Visible elements in paint order, bottom first, groups included (they draw
-  // nothing), and the world boxes of the ones that draw something.
-  ordered: readonly ElementSnapshot[];
-  boxes: readonly Box[];
-  // Every visible element's world box, groups included.
-  boxById: ReadonlyMap<string, Box>;
-  placed: ReadonlySet<number>;
-  layout: Layout;
-};
+export type { DocState } from "@/lib/canvas/doc-state";
 
 // Something being drawn that isn't in the doc yet: it's written when the
 // pointer comes up, so the doc gets one write per stroke or shape.
@@ -66,12 +50,25 @@ export type ConnectionState = {
   // and the tools are disabled.
   synced: boolean;
   status: "connecting" | "connected" | "disconnected";
-  // Set once the server has closed the canvas for good.
-  closed: null | "access-revoked" | "channel-gone";
+  // Set once the server has closed the canvas for good. "edit-refused": it
+  // refused one of this tab's edits, so the tab holds a change the server never
+  // will and can't carry on without a reload; `refused` says why.
+  closed: null | "access-revoked" | "channel-gone" | "edit-refused";
+  refused: EditRefusedReason | null;
   // What the server says this socket may do. Null until the session event.
   access: "read" | "write" | null;
   self: PresenceUser | null;
 };
+
+// The server's refusal of an edit (lib/realtime/protocol.ts, EditRefusedEvent):
+// one message over its size limit, a canvas at its size ceiling, or a write
+// outside the doc's shape.
+export type EditRefusedReason = "too-large" | "doc-full" | "invalid";
+const REFUSED_REASONS: ReadonlySet<string> = new Set(["too-large", "doc-full", "invalid"]);
+
+// The close code that comes with it. y-websocket doesn't retry 4400-4499, and
+// reconnecting would only send the same edit again.
+export const CLOSE_EDIT_REFUSED = 4413;
 
 export type Peer = {
   clientId: number;
@@ -91,15 +88,6 @@ type Slice =
   | "editing"
   | "style";
 
-const EMPTY_DOC: DocState = {
-  elements: new Map(),
-  ordered: [],
-  boxes: [],
-  boxById: new Map(),
-  placed: new Set(),
-  layout: { geom: new Map(), ends: new Map() },
-};
-
 export class CanvasStore {
   readonly doc = new Y.Doc();
   // Every local write uses this origin, so an undo manager can scope itself to
@@ -108,6 +96,7 @@ export class CanvasStore {
   // Undo and redo for this client's edits only.
   readonly undo = createUndoManager(this.doc, this.origin);
   private provider: WebsocketProvider | null = null;
+  private index = new DocIndex();
   private listeners = new Map<Slice, Set<() => void>>();
   private eventListeners = new Set<(event: ChannelEvent) => void>();
 
@@ -116,6 +105,7 @@ export class CanvasStore {
     synced: false,
     status: "connecting",
     closed: null,
+    refused: null,
     access: null,
     self: null,
   };
@@ -154,7 +144,7 @@ export class CanvasStore {
     readonly viewerId: string | null = null,
   ) {
     this.connection = { ...this.connection, access };
-    elementsOf(this.doc).observeDeep(() => this.refreshDoc());
+    elementsOf(this.doc).observeDeep((events) => this.refreshDoc(events));
     const onStack = () => {
       const next = { canUndo: this.undo.canUndo(), canRedo: this.undo.canRedo() };
       if (next.canUndo === this.history.canUndo && next.canRedo === this.history.canRedo) return;
@@ -200,6 +190,8 @@ export class CanvasStore {
     provider.on("closed", (event: { code: number }) => {
       if (event.code === CLOSE_ACCESS_REVOKED) this.setConnection({ closed: "access-revoked" });
       else if (event.code === CLOSE_CHANNEL_GONE) this.setConnection({ closed: "channel-gone" });
+      else if (event.code === CLOSE_EDIT_REFUSED)
+        this.refuse(this.connection.refused ?? "too-large");
     });
     provider.awareness.on("change", () => this.refreshPeers());
   }
@@ -243,32 +235,30 @@ export class CanvasStore {
 
   // --- doc ---
 
-  private refreshDoc(): void {
-    const elements = readElements(this.doc, this.docState.elements);
-    const ordered = paintOrder(elements);
-    const layout = stabilizeLayout(computeLayout(elements), this.docState.layout);
-    const boxes: Box[] = [];
-    const boxById = new Map<string, Box>();
-    for (const el of ordered) {
-      const g = layout.geom.get(el.id);
-      if (!g) continue;
-      const box = { id: el.id, rect: g.rect };
-      boxById.set(el.id, box);
-      if (el.type !== "group") boxes.push(box);
+  // Called at the end of every transaction that touched an element. Only the
+  // elements it touched are read again (DocIndex.update); a transaction that
+  // touched most of the board, like the first sync, rebuilds instead.
+  private refreshDoc(events: readonly Y.YEvent<Y.AbstractType<unknown>>[]): void {
+    const top = elementsOf(this.doc);
+    const touched = new Set<string>();
+    for (const e of events) {
+      if (e.target === top) {
+        for (const id of (e as Y.YMapEvent<unknown>).keysChanged) touched.add(id);
+      } else {
+        const id = e.path[0];
+        if (typeof id === "string") touched.add(id);
+      }
     }
-    this.docState = {
-      elements,
-      ordered,
-      boxes,
-      boxById,
-      placed: placedColumns(elements),
-      layout,
-    };
+    const prev = this.docState;
+    const rebuild = prev.elements.size === 0 || touched.size * 4 > prev.elements.size;
+    const next = rebuild ? this.index.rebuild(this.doc) : this.index.update(this.doc, touched);
+    if (next === prev) return;
+    this.docState = next;
     // Someone else may have deleted (or hidden) what this client had selected.
-    const kept = [...this.selection].filter((id) => elements.has(id) && boxById.has(id));
+    const kept = [...this.selection].filter((id) => next.elements.has(id) && next.boxById.has(id));
     if (kept.length !== this.selection.size) this.setSelection(kept);
     const editing = this.editing;
-    if (editing && "id" in editing && !elements.has(editing.id)) this.setEditing(null);
+    if (editing && "id" in editing && !next.elements.has(editing.id)) this.setEditing(null);
     this.emit("doc");
   }
 
@@ -290,9 +280,28 @@ export class CanvasStore {
   private setConnection(patch: Partial<ConnectionState>): void {
     this.connection = { ...this.connection, ...patch };
     this.emit("connection");
+    // Dropped to read-only, or closed: typing would write to this client's
+    // copy of the doc only, since the server refuses it.
+    if (!this.canEdit && this.editing) this.setEditing(null);
+  }
+
+  private refuse(reason: EditRefusedReason): void {
+    if (this.connection.closed === "edit-refused") return;
+    this.setConnection({ closed: "edit-refused", refused: reason });
   }
 
   private handleEvent(event: ChannelEvent): void {
+    // Not in ChannelEvent on this side yet; it arrives just before the socket
+    // closes with CLOSE_EDIT_REFUSED.
+    const raw = event as { type: string; reason?: unknown };
+    if (raw.type === "edit.refused") {
+      this.refuse(
+        typeof raw.reason === "string" && REFUSED_REASONS.has(raw.reason)
+          ? (raw.reason as EditRefusedReason)
+          : "too-large",
+      );
+      return;
+    }
     if (event.type === "session") {
       this.setConnection({ access: event.access, self: event.user });
       if (event.access === "read") {

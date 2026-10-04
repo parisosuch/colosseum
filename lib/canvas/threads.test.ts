@@ -9,6 +9,9 @@ import {
   applyThreadEvent,
   currentAnchor,
   EMPTY_THREADS,
+  forgetGone,
+  countsInDoubt,
+  isKnownThreadEvent,
   loadThread,
   loadThreads,
   pinPosition,
@@ -269,7 +272,6 @@ describe("applyThreadEvent", () => {
     for (const event of [
       { type: "thread.comment.added", comment: comment(1, 9) },
       { type: "thread.comment.deleted", threadId: 9, commentId: 1 },
-      { type: "thread.deleted", threadId: 9 },
       { type: "thread.detached", threadId: 9, x: 0, y: 0 },
       { type: "thread.attached", threadId: 9, elementId: "x" },
     ] as const) {
@@ -277,12 +279,106 @@ describe("applyThreadEvent", () => {
     }
   });
 
-  test("a reload keeps loaded comments only for threads still there", () => {
+  test("a deleted thread this client never had is still remembered as deleted", () => {
+    const s = applyThreadEvent(EMPTY_THREADS, { type: "thread.deleted", threadId: 9 });
+    expect(s.threads.size).toBe(0);
+    expect(s.deleted.has(9)).toBe(true);
+  });
+
+  test("a reply whose delete failed can be deleted again", () => {
+    const full = { ...thread(1, { reply_count: 1 }), comments: [comment(100, 1), comment(101, 1)] };
+    let s = loadThread(EMPTY_THREADS, full);
+    const del = { type: "thread.comment.deleted", threadId: 1, commentId: 101 } as const;
+    // Taken off at once, then the server says no: forgotten, and fetched again.
+    s = applyThreadEvent(s, del);
+    s = loadThread(forgetGone(s, 101), full);
+    expect(s.comments.get(1)!.map((c) => c.id)).toEqual([100, 101]);
+    // The next delete, from here or anyone, takes it off.
+    s = applyThreadEvent(s, del);
+    expect(s.comments.get(1)!.map((c) => c.id)).toEqual([100]);
+    expect(s.threads.get(1)!.reply_count).toBe(0);
+  });
+});
+
+describe("reloads and fetches racing live events", () => {
+  test("a reload drops loaded comments, which may be missing what was said while offline", () => {
     let s = loadThread(EMPTY_THREADS, { ...thread(1), comments: [comment(100, 1)] });
     s = loadThread(s, { ...thread(2), comments: [comment(200, 2)] });
     s = loadThreads(s, [thread(2), thread(3)]);
-    expect([...s.comments.keys()]).toEqual([2]);
+    expect(s.comments.size).toBe(0);
     expect(threadsNewestFirst(s).map((t) => t.id)).toEqual([3, 2]);
+  });
+
+  test("events that arrived while the list was on its way are kept", () => {
+    const state = loadThreads(
+      EMPTY_THREADS,
+      [thread(1, { element_id: "card" }), thread(2)],
+      [
+        { type: "thread.created", thread: thread(3) },
+        { type: "thread.deleted", threadId: 2 },
+        { type: "thread.detached", threadId: 1, x: 5, y: 6 },
+        // Already in the list: not added twice.
+        { type: "thread.created", thread: thread(1, { element_id: "card" }) },
+      ],
+    );
+    expect(threadsNewestFirst(state).map((t) => t.id)).toEqual([3, 1]);
+    expect(state.threads.get(1)).toMatchObject({ element_id: null, x: 5, y: 6 });
+  });
+
+  test("a thread deleted earlier isn't brought back by a list read before the delete", () => {
+    const s = applyThreadEvent(EMPTY_THREADS, { type: "thread.deleted", threadId: 2 });
+    expect([...loadThreads(s, [thread(1), thread(2)]).threads.keys()]).toEqual([1]);
+  });
+
+  test("comment events during a reload send those threads to be fetched whole", () => {
+    const during = [
+      { type: "thread.comment.added", comment: comment(500, 1) },
+      { type: "thread.comment.deleted", threadId: 2, commentId: 7 },
+      { type: "thread.detached", threadId: 2, x: 0, y: 0 },
+    ] as const;
+    const state = loadThreads(EMPTY_THREADS, [thread(1, { reply_count: 4 }), thread(2)], during);
+    // The list's count stands until the fetch settles it.
+    expect(state.threads.get(1)!.reply_count).toBe(4);
+    expect(countsInDoubt(during).sort()).toEqual([1, 2]);
+  });
+
+  test("a thread deleted while its fetch was on its way stays deleted", () => {
+    const full = { ...thread(1), comments: [comment(100, 1)] };
+    let s = loadThreads(EMPTY_THREADS, [thread(1)]);
+    // The delete arrives first, the response after.
+    s = applyThreadEvent(s, { type: "thread.deleted", threadId: 1 });
+    expect(loadThread(s, full).threads.has(1)).toBe(false);
+    // Or the delete arrived during the request.
+    const raced = loadThread(loadThreads(EMPTY_THREADS, [thread(1)]), full, [
+      { type: "thread.deleted", threadId: 1 },
+    ]);
+    expect(raced.threads.has(1)).toBe(false);
+  });
+
+  test("a fetch replays comment events from its window once each", () => {
+    // Each was applied live already, to the state this response replaces.
+    let live = loadThreads(EMPTY_THREADS, [thread(1, { reply_count: 0 })]);
+    for (const event of [
+      { type: "thread.comment.added", comment: comment(102, 1) },
+      { type: "thread.comment.added", comment: comment(103, 1) },
+      { type: "thread.comment.deleted", threadId: 1, commentId: 101 },
+    ] as const) {
+      live = applyThreadEvent(live, event);
+    }
+    const s = loadThread(
+      live,
+      { ...thread(1, { reply_count: 1 }), comments: [comment(100, 1), comment(102, 1)] },
+      [
+        // Read after this one landed: already in the response.
+        { type: "thread.comment.added", comment: comment(102, 1) },
+        // Read before this one: added now.
+        { type: "thread.comment.added", comment: comment(103, 1) },
+        // Read after this one went: not in the response, and not counted.
+        { type: "thread.comment.deleted", threadId: 1, commentId: 101 },
+      ],
+    );
+    expect(s.comments.get(1)!.map((c) => c.id)).toEqual([100, 102, 103]);
+    expect(s.threads.get(1)!.reply_count).toBe(2);
   });
 });
 
@@ -329,5 +425,15 @@ describe("popoverPlacement", () => {
     expect(popoverPlacement({ x: 100, y: 830 }, size, area).top).toBe(436);
     // Taller than the area: pinned to its top.
     expect(popoverPlacement({ x: 100, y: 300 }, { w: 350, h: 900 }, area).top).toBe(66);
+  });
+});
+
+describe("event types this client doesn't know", () => {
+  test("are left alone", () => {
+    expect(isKnownThreadEvent({ type: "edit.refused" })).toBe(false);
+    expect(isKnownThreadEvent({ type: "thread.reacted" })).toBe(false);
+    expect(isKnownThreadEvent({ type: "thread.created" })).toBe(true);
+    const odd = { type: "thread.reacted" } as unknown as Parameters<typeof applyThreadEvent>[1];
+    expect(applyThreadEvent(EMPTY_THREADS, odd)).toBe(EMPTY_THREADS);
   });
 });

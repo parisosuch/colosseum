@@ -312,11 +312,12 @@ function GroupLabel({ children }: { children: React.ReactNode }) {
   return <h3 className="text-xs font-medium text-muted-foreground">{children}</h3>;
 }
 
+// A version row: a ghost Button laid out as a two-line list entry.
 const ROW =
-  "focus-ring flex w-full flex-col items-start gap-1 rounded-md px-3 py-2 text-left transition-colors duration-micro";
+  "h-auto w-full flex-col items-start justify-start gap-1 whitespace-normal px-3 py-2 text-left font-normal";
 
 function rowState(selected: boolean) {
-  return selected ? "bg-secondary" : "hover:bg-accent";
+  return selected ? "bg-secondary hover:bg-secondary" : undefined;
 }
 
 // The live canvas, and who is editing it now.
@@ -340,15 +341,15 @@ function CurrentRow({
     return [...names.values()];
   }, [peers, self?.id]);
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
       aria-current={selected ? "true" : undefined}
       onClick={onSelect}
       className={cn(ROW, rowState(selected))}
     >
       <span className="text-sm font-medium">Current version</span>
       {here.length > 0 ? <Editors handles={here} suffix=" editing now" /> : null}
-    </button>
+    </Button>
   );
 }
 
@@ -365,8 +366,8 @@ function VersionRow({
 }) {
   const time = formatTime(new Date(version.created_at));
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
       aria-label={versionLabel(version, now)}
       aria-current={selected ? "true" : undefined}
       title={formatSize(version.size)}
@@ -389,7 +390,7 @@ function VersionRow({
       ) : version.name ? null : (
         <span className="text-xs text-muted-foreground">Automatic</span>
       )}
-    </button>
+    </Button>
   );
 }
 

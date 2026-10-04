@@ -5,7 +5,7 @@ import { BLOCK_DEFAULT_SIZE, createElement } from "@/lib/canvas/elements";
 import { PASTED_TEXT_MAX_WIDTH, mediaRect, rowSlots } from "@/lib/canvas/paste-content";
 import type { Column } from "@/lib/colosseum/column";
 import { CanvasStore } from "./canvas-store";
-import { handleDrop, handlePaste } from "./paste";
+import { carriesOutsideContent, handleDrop, handlePaste, LAYER_DRAG_TYPE } from "./paste";
 import { ingestContent, pendingUploads, registerIngest, type IngestDeps } from "./paste-ingest";
 
 let nextColumn = 100;
@@ -371,5 +371,18 @@ describe("clipboard and drop events", () => {
     const el = blockAt(h.store, h.added[0]!.id)!;
     expect(el.x + el.w / 2).toBe(-100);
     expect(el.y + el.h / 2).toBe(40);
+  });
+});
+
+describe("drags that started on the page", () => {
+  test("a Layers row isn't outside content, and neither is anything dragged from the page", () => {
+    expect(carriesOutsideContent([LAYER_DRAG_TYPE])).toBe(false);
+    // A row or a comment's selected text from an older browser that adds text.
+    expect(carriesOutsideContent([LAYER_DRAG_TYPE, "text/plain"])).toBe(false);
+    expect(carriesOutsideContent(["text/plain"], true)).toBe(false);
+    expect(carriesOutsideContent(["text/uri-list", "text/plain"], true)).toBe(false);
+    // The same types from another tab or the desktop are.
+    expect(carriesOutsideContent(["text/plain"])).toBe(true);
+    expect(carriesOutsideContent(["Files"])).toBe(true);
   });
 });

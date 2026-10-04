@@ -30,7 +30,7 @@ export function deleteSelection(store: CanvasStore): void {
   const ids = selected(store);
   if (ids.length === 0 || !store.canEdit) return;
   step(store);
-  removeElements(store.doc, ids, store.origin, store.docState.layout.ends);
+  removeElements(store.doc, ids, store.origin, store.docState.layout.ends, store.docState);
   store.setSelection([]);
 }
 
@@ -87,7 +87,12 @@ export function duplicate(store: CanvasStore): void {
     store.doc,
     ids,
     store.docState.layout,
-    { channelId: store.channelId, createdBy: store.userId, placed: store.docState.placed },
+    {
+      channelId: store.channelId,
+      createdBy: store.userId,
+      placed: store.docState.placed,
+      known: store.docState,
+    },
     store.origin,
   );
   if (fresh.length) store.setSelection(fresh);
@@ -96,7 +101,7 @@ export function duplicate(store: CanvasStore): void {
 export function copyPayload(store: CanvasStore) {
   const ids = selected(store);
   if (ids.length === 0) return null;
-  return copySelection(store.doc, ids, store.docState.layout, store.channelId);
+  return copySelection(store.doc, ids, store.docState.layout, store.channelId, store.docState);
 }
 
 export function undo(store: CanvasStore): void {

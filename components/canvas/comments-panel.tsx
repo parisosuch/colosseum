@@ -2,6 +2,7 @@
 
 import { MessageCircle } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { repliesLabel, threadPlace, timeAgo } from "@/lib/canvas/threads";
@@ -34,7 +35,8 @@ export function CommentsPanel({
 }: {
   threads: CanvasThreads;
   nameOf: (elementId: string) => string | null;
-  onPick: (threadId: number) => void;
+  // `row` is the row picked, which gets focus back when the thread closes.
+  onPick: (threadId: number, row: HTMLElement) => void;
 }) {
   const now = new Date();
   const count = threads.list.length;
@@ -64,7 +66,9 @@ export function CommentsPanel({
             description={
               threads.canComment
                 ? "Pick the comment tool (C) and click a block, a drawing or an empty spot."
-                : "Log in to start a thread on this canvas."
+                : threads.needsProfile
+                  ? "Set up your profile to start a thread on this canvas."
+                  : "Log in to start a thread on this canvas."
             }
             className="px-4 py-8"
           />
@@ -75,13 +79,13 @@ export function CommentsPanel({
               const selected = t.id === threads.openId;
               return (
                 <li key={t.id}>
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
                     aria-current={selected ? "true" : undefined}
-                    onClick={() => onPick(t.id)}
+                    onClick={(e) => onPick(t.id, e.currentTarget)}
                     className={cn(
-                      "focus-ring flex w-full flex-col items-start gap-1 rounded-md p-3 text-left transition-colors duration-micro",
-                      selected ? "bg-accent" : "hover:bg-accent",
+                      "h-auto w-full flex-col items-start justify-start gap-1 whitespace-normal p-3 text-left font-normal",
+                      selected && "bg-accent",
                     )}
                   >
                     <span className="flex w-full min-w-0 items-center gap-2">
@@ -102,7 +106,7 @@ export function CommentsPanel({
                     <span className="w-full truncate text-xs text-muted-foreground">
                       {threadPlace(t, nameOf)} · {repliesLabel(t.reply_count)}
                     </span>
-                  </button>
+                  </Button>
                 </li>
               );
             })}

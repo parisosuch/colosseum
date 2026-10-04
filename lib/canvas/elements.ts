@@ -35,6 +35,14 @@ export const BLOCK_MIN_SIZE = { w: 64, h: 64 + BLOCK_CAPTION_HEIGHT };
 export const CONNECTOR_TYPES: ReadonlySet<ElementType> = new Set<ElementType>(["line", "arrow"]);
 export const CONTAINER_TYPES: ReadonlySet<ElementType> = new Set<ElementType>(["frame", "group"]);
 
+// What a caller that keeps the doc's snapshot (the canvas store's DocState)
+// already knows, so a write doesn't read and sort every element again.
+export type KnownDoc = {
+  elements: ReadonlyMap<string, ElementSnapshot>;
+  // Each parent's children by id, bottom first (DocState.children).
+  children?: ReadonlyMap<string | null, readonly string[]>;
+};
+
 export type ElementSnapshot = {
   id: string;
   type: ElementType;
@@ -124,15 +132,24 @@ function connectorEnd(v: unknown): ConnectorEnd | null {
   return null;
 }
 
-function pointList(v: unknown): readonly number[] | null {
+// `prev` is the list the element's last snapshot holds. The doc hands back the
+// same array until the points are rewritten, so an element whose points didn't
+// change skips the check, which is the whole cost of snapshotting a long stroke.
+function pointList(v: unknown, prev?: readonly number[] | null): readonly number[] | null {
+  if (prev && v === prev) return prev;
   if (!Array.isArray(v)) return null;
   return v.length % 3 === 0 && v.every((n) => typeof n === "number" && Number.isFinite(n))
     ? v
     : null;
 }
 
-export function snapshotElement(id: string, el: Y.Map<unknown>): ElementSnapshot | null {
-  return snapshotFrom(id, (k) => el.get(k));
+// `prev` is the element's last snapshot, if there is one: see pointList.
+export function snapshotElement(
+  id: string,
+  el: Y.Map<unknown>,
+  prev?: ElementSnapshot,
+): ElementSnapshot | null {
+  return snapshotFrom(id, (k) => el.get(k), prev);
 }
 
 // A snapshot of an element that isn't in a doc yet (a shape being drawn), from
@@ -142,7 +159,11 @@ export function snapshotOf(id: string, input: NewElement): ElementSnapshot {
   return snapshotFrom(id, (k) => fields[k])!;
 }
 
-function snapshotFrom(id: string, get: (key: string) => unknown): ElementSnapshot | null {
+function snapshotFrom(
+  id: string,
+  get: (key: string) => unknown,
+  prev?: ElementSnapshot,
+): ElementSnapshot | null {
   const type = get("type");
   if (typeof type !== "string") return null;
   const columnId = get("columnId");
@@ -171,7 +192,7 @@ function snapshotFrom(id: string, get: (key: string) => unknown): ElementSnapsho
     weight: str(get("weight")),
     align: str(get("align")),
     autoSize: get("autoSize") === true,
-    points: type === "stroke" ? pointList(get("points")) : null,
+    points: type === "stroke" ? pointList(get("points"), prev?.points) : null,
     kind: type === "stroke" ? (get("kind") === "highlighter" ? "highlighter" : "pen") : null,
     start: connector ? connectorEnd(get("start")) : null,
     end: connector ? connectorEnd(get("end")) : null,
@@ -181,7 +202,7 @@ function snapshotFrom(id: string, get: (key: string) => unknown): ElementSnapsho
   };
 }
 
-function sameSnapshot(a: ElementSnapshot, b: ElementSnapshot): boolean {
+export function sameSnapshot(a: ElementSnapshot, b: ElementSnapshot): boolean {
   for (const k of SNAPSHOT_KEYS) if (a[k] !== b[k]) return false;
   return true;
 }
@@ -196,9 +217,9 @@ export function readElements(
 ): Map<string, ElementSnapshot> {
   const out = new Map<string, ElementSnapshot>();
   for (const [id, el] of elementsOf(doc).entries()) {
-    const snap = snapshotElement(id, el);
-    if (!snap) continue;
     const prev = previous?.get(id);
+    const snap = snapshotElement(id, el, prev);
+    if (!snap) continue;
     out.set(id, prev && sameSnapshot(prev, snap) ? prev : snap);
   }
   return out;
@@ -311,15 +332,22 @@ export function zBetween(a: string | null, b: string | null): string {
   }
 }
 
-// The z key that puts a new element on top of `parentId`'s children.
+// The z key that puts a new element on top of `parentId`'s children. With
+// `children`, the top one is the last in its parent's list.
 export function topZ(
   all: ReadonlyMap<string, ElementSnapshot>,
   parentId: string | null = null,
+  children?: ReadonlyMap<string | null, readonly string[]>,
 ): string {
   let max: string | null = null;
-  for (const el of all.values()) {
-    if (effectiveParent(el, all) !== parentId) continue;
-    if (max === null || el.z > max) max = el.z;
+  if (children) {
+    const list = children.get(parentId);
+    max = list?.length ? (all.get(list[list.length - 1])?.z ?? null) : null;
+  } else {
+    for (const el of all.values()) {
+      if (effectiveParent(el, all) !== parentId) continue;
+      if (max === null || el.z > max) max = el.z;
+    }
   }
   return max === null ? FIRST_POSITION : zBetween(max, null);
 }
@@ -353,10 +381,13 @@ export type NewElement = {
 };
 
 // Build an element's Y.Map. Positions are rounded to whole pixels, like every
-// geometry write.
+// geometry write. Rotation is always 0, whatever the input says: the board
+// doesn't draw, hit-test or lay out rotation yet, and comment pins already
+// follow it, so a rotated element would have its pins off to one side.
 export function elementMap(
   input: NewElement,
   all: ReadonlyMap<string, ElementSnapshot>,
+  children?: ReadonlyMap<string | null, readonly string[]>,
 ): Y.Map<unknown> {
   const parentId = input.parentId ?? null;
   const fields: Record<string, unknown> = { rotation: 0, name: null, locked: false, hidden: false };
@@ -366,8 +397,9 @@ export function elementMap(
     else if (k === "x" || k === "y" || k === "w" || k === "h") fields[k] = Math.round(v as number);
     else fields[k] = v;
   }
+  fields.rotation = 0;
   fields.parentId = parentId;
-  fields.z = input.z ?? topZ(all, parentId);
+  fields.z = input.z ?? topZ(all, parentId, children);
   // A prelim Y.Map can be written but not read, so it's filled in one go.
   const el = new Y.Map<unknown>();
   for (const [k, v] of Object.entries(fields)) el.set(k, v);
@@ -379,12 +411,12 @@ export function createElement(
   doc: Y.Doc,
   input: NewElement & { id?: string },
   origin: unknown,
+  known: KnownDoc = { elements: readElements(doc) },
 ): string {
   const { id: given, ...rest } = input;
   const id = given ?? newElementId();
-  const all = readElements(doc);
   doc.transact(() => {
-    elementsOf(doc).set(id, elementMap(rest, all));
+    elementsOf(doc).set(id, elementMap(rest, known.elements, known.children));
   }, origin);
   return id;
 }
@@ -395,6 +427,7 @@ export function placeBlock(
   doc: Y.Doc,
   input: { columnId: number; at: { x: number; y: number }; createdBy: string; id?: string },
   origin: unknown,
+  known?: KnownDoc,
 ): string {
   const { w, h } = BLOCK_DEFAULT_SIZE;
   return createElement(
@@ -410,6 +443,7 @@ export function placeBlock(
       columnId: input.columnId,
     },
     origin,
+    known,
   );
 }
 
@@ -474,19 +508,30 @@ export function setProps(
   doc.transact(() => writeProps(elements, updates), origin);
 }
 
-// Every id in `ids` plus everything inside them.
+// Every id in `ids` plus everything inside them. `children` is the caller's
+// child lists, if it keeps them; without them, ids that hold nothing (no
+// frame or group among them) skip sorting the whole doc into lists.
 export function withDescendants(
   ids: Iterable<string>,
   all: ReadonlyMap<string, ElementSnapshot>,
+  children?: ReadonlyMap<string | null, readonly string[]>,
 ): Set<string> {
-  const children = childrenByParent(all);
+  const list = [...ids].filter((id) => all.has(id));
+  const holds = (id: string) => {
+    const el = all.get(id)!;
+    return el.type === "frame" || el.type === "group";
+  };
+  if (!children && !list.some(holds)) return new Set(list);
+  const kids =
+    children ??
+    new Map([...childrenByParent(all)].map(([p, els]) => [p, els.map((e) => e.id)] as const));
   const out = new Set<string>();
   const add = (id: string) => {
     if (out.has(id)) return;
     out.add(id);
-    for (const c of children.get(id) ?? []) add(c.id);
+    for (const c of kids.get(id) ?? []) add(c);
   };
-  for (const id of ids) if (all.has(id)) add(id);
+  for (const id of list) add(id);
   return out;
 }
 
@@ -500,11 +545,12 @@ export function removeElements(
   ids: Iterable<string>,
   origin: unknown,
   resolved?: ReadonlyMap<string, { x: number; y: number }>,
+  known: KnownDoc = { elements: readElements(doc) },
 ): void {
   const elements = elementsOf(doc);
-  const all = readElements(doc);
+  const all = known.elements;
   const list = [...ids];
-  const doomed = withDescendants(list, all);
+  const doomed = withDescendants(list, all, known.children);
   // Ids not in the snapshot (malformed elements) still go.
   for (const id of list) doomed.add(id);
   doc.transact(() => {

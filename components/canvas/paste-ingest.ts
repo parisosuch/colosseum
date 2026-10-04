@@ -188,6 +188,7 @@ export function placeColumn(store: CanvasStore, columnId: number, slot: Rect): s
       store.doc,
       { columnId, at: rectCenter(slot), createdBy: store.userId },
       store.origin,
+      store.docState,
     );
   } catch (e) {
     console.error(e);
@@ -223,6 +224,7 @@ export function pasteText(store: CanvasStore, text: string, at: Point): string |
       autoSize: !wrap,
     },
     store.origin,
+    store.docState,
   );
   store.setSelection([id]);
   return id;

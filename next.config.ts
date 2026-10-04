@@ -9,7 +9,19 @@ const nextConfig: NextConfig = {
   // Keep the puppeteer-extra chain out of the webpack bundle. Next externalizes
   // `puppeteer` by default but not these; bundling them fails on clone-deep's
   // dynamic require(). They run server-side only, so leave them as node requires.
-  serverExternalPackages: ["puppeteer-extra", "puppeteer-extra-plugin-stealth"],
+  //
+  // Yjs and its protocol packages stay external too. server.ts imports yjs from
+  // node_modules for the canvas rooms, and Next preloads its server chunks at
+  // start, so a bundled copy would be a second Yjs in the same process: it logs
+  // "Yjs was already imported", and a Y type passed between the two copies
+  // fails their instanceof checks.
+  serverExternalPackages: [
+    "puppeteer-extra",
+    "puppeteer-extra-plugin-stealth",
+    "yjs",
+    "y-protocols",
+    "lib0",
+  ],
   // Share links carry their credential in the URL. Keep them out of search
   // indexes, and out of the Referer header a link holder's browser would send
   // to every site a link block points at.

@@ -10,6 +10,7 @@ export default function ScreenShotPreview({
   version,
   url,
   priority = false,
+  compact = false,
 }: {
   image_url: string | null;
   // Cache-busting token (the screenshot's captured_at) — see screenshotSrc.
@@ -21,6 +22,9 @@ export default function ScreenShotPreview({
   // because deferring the one the viewer is looking at is what LCP measures;
   // everything below it waits until it's scrolled near.
   priority?: boolean;
+  // A small tile (the canvas sidebar's 124px cards): the fallback shows the
+  // host on one line instead of the whole URL wrapping mid-word.
+  compact?: boolean;
 }) {
   const src = screenshotSrc(image_url, version);
 
@@ -41,6 +45,13 @@ export default function ScreenShotPreview({
           decoding="async"
           className="w-full h-full object-top object-cover rounded-lg"
         />
+      ) : url && compact ? (
+        <div className="flex w-full min-w-0 flex-col items-center gap-1.5 px-2 text-center">
+          <GlobeIcon className="size-5 text-muted-foreground" />
+          <p className="w-full truncate font-mono text-xs text-muted-foreground">
+            {url.replace(/^https?:\/\//, "").replace(/\/.*$/, "")}
+          </p>
+        </div>
       ) : url ? (
         // Same treatment as the modal's empty state, scaled down: the mark
         // above the address makes the cell read as a link rather than as a

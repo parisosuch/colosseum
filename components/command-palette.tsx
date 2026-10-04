@@ -42,6 +42,14 @@ function groupHeading(label: string, shown: number, total: number): string {
   return shown < total ? `${label} (${shown} of ${total})` : label;
 }
 
+const OPEN_EVENT = "colosseum:open-command-palette";
+
+// Opens the palette from a button, for surfaces that show a search control
+// instead of relying on the shortcut (the canvas's top-left island).
+export function openCommandPalette(): void {
+  window.dispatchEvent(new Event(OPEN_EVENT));
+}
+
 // Cmd/Ctrl+K palette for common navigation and flows: jump to a page, search
 // across everyone's public profiles/channels/blocks (plus your own), switch
 // theme, or log out. Mounted in the nav for onboarded users (needs `handle` for
@@ -65,8 +73,13 @@ export default function CommandPalette({ handle }: { handle: string }) {
         setOpen((v) => !v);
       }
     };
+    const onOpen = () => setOpen(true);
     document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    window.addEventListener(OPEN_EVENT, onOpen);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener(OPEN_EVENT, onOpen);
+    };
   }, []);
 
   // Reset the query whenever the palette closes so it reopens clean.

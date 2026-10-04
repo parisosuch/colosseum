@@ -5,6 +5,7 @@ import { and, desc, eq, ilike, inArray, ne, notInArray, or, sql } from "drizzle-
 import { db } from "@/lib/db";
 import { cached, cacheKeys, cacheTtl, invalidate } from "@/lib/cache";
 import { channel, channelMember, column, owner } from "@/lib/db/schema";
+import { publishRealtime } from "@/lib/realtime/events";
 import { sanitizeSearch, SEARCH_LIMIT } from "@/lib/utils";
 import { deleteMediaByUrl, mediaUrl, setMediaVisibilityByUrls } from "./blob";
 import { deleteScreenshotIfUnreferenced } from "./column";
@@ -362,6 +363,8 @@ export async function deleteChannel(channel_id: number): Promise<void> {
   const images = await channelImageUrls(channel_id);
   const linkUrls = await channelLinkUrls(channel_id);
   await db.delete(channel).where(eq(channel.id, channel_id));
+  // Close any open canvas; its row went with the cascade.
+  publishRealtime({ type: "channel.deleted", channelId: channel_id });
   await invalidate(cacheKeys.channel(channel_id));
   if (ownedBy) await invalidateOwnerChannelLists(ownedBy);
   // Drop image-block media references (blobs GC when the last reference goes).
@@ -415,6 +418,11 @@ export async function updateChannel(
   channel_id: number,
   updates: { title: string; description?: string; access: ChannelAccess; tags?: string[] },
 ): Promise<Channel> {
+  const [before] = await db
+    .select({ access: channel.access })
+    .from(channel)
+    .where(eq(channel.id, channel_id))
+    .limit(1);
   const [row] = await db
     .update(channel)
     .set({ ...updates, updated_at: new Date() })
@@ -432,6 +440,11 @@ export async function updateChannel(
     await channelImageUrls(channel_id),
     row.access === "private" ? "private" : "public",
   );
+  // Open canvases re-check every socket against the new mode. Published after
+  // the cache invalidation above, so the re-check reads the new row.
+  if (before && before.access !== row.access) {
+    publishRealtime({ type: "channel.access-changed", channelId: channel_id });
+  }
   return toChannel(row);
 }
 
@@ -456,6 +469,9 @@ export async function transferChannel(channel_id: number, to_owner_id: string): 
   await invalidate(cacheKeys.channel(channel_id));
   if (previous) await invalidateOwnerChannelLists(previous);
   await invalidateOwnerChannelLists(to_owner_id);
+  // The old owner (or old group's members) may have lost access, the new one
+  // gained it. Open canvases re-check every socket.
+  publishRealtime({ type: "channel.access-changed", channelId: channel_id });
   return toChannel(row);
 }
 

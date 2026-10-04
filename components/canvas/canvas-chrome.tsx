@@ -65,7 +65,7 @@ function Divider() {
 
 // An icon button with a tooltip. The first tooltip waits 400ms; its
 // neighbours open at once (Radix's skipDelayDuration).
-function IconButton({
+export function IconButton({
   label,
   shortcut,
   className,
@@ -213,13 +213,28 @@ function PresenceAvatars({ store }: { store: CanvasStore }) {
   );
 }
 
-// Top right: who's here, notifications and the account menu.
-export function EndIsland({ store, viewer }: { store: CanvasStore; viewer: ViewerProfile | null }) {
+// Top right: who's here, the canvas's own buttons (version history, for
+// managers), notifications and the account menu.
+export function EndIsland({
+  store,
+  viewer,
+  actions,
+}: {
+  store: CanvasStore;
+  viewer: ViewerProfile | null;
+  actions?: React.ReactNode;
+}) {
   return (
     // 50px like the left island, whose full-height dividers set its height;
     // without presence this one has no divider to do that.
     <Island data-vt="island-end" className="min-h-[3.125rem] gap-1 pl-2">
       <PresenceAvatars store={store} />
+      {actions ? (
+        <>
+          {actions}
+          <Divider />
+        </>
+      ) : null}
       {viewer ? (
         <>
           <Tooltip delayDuration={400}>

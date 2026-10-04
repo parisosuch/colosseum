@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Shapes } from "lucide-react";
@@ -36,6 +36,8 @@ import { zoomToFit } from "./camera-actions";
 import { EndIsland, StartIsland, Toolbar, ZoomIsland, type ViewerProfile } from "./canvas-chrome";
 import { CanvasStore } from "./canvas-store";
 import { CanvasViewport } from "./canvas-viewport";
+import { HistoryButton, HistoryLayer } from "./history-panel";
+import { useCanvasHistory } from "./history-state";
 import { LayersPanel } from "./layers-panel";
 import { PropertiesPanel } from "./properties-panel";
 import { ToolOptions } from "./tool-options";
@@ -106,7 +108,20 @@ export default function CanvasPage({
   const doc = useCanvas(store, "doc", (s) => s.docState);
   const viewOnlyDevice = useMediaQuery(VIEW_ONLY_QUERY);
   const canEdit = connection.access === "write" && connection.closed === null;
-  const editing = canEdit && !viewOnlyDevice && connection.synced;
+
+  // --- version history (channel managers) ---
+  // While a version is previewed, the board draws its read-only store instead
+  // of the live one, and everything that edits is hidden.
+  const history = useCanvasHistory(store, channel.id, isOwner && !!viewerId);
+  const previewing = history.preview !== null;
+  const viewStore = history.preview?.store ?? store;
+  const viewDoc = useCanvas(viewStore, "doc", (s) => s.docState);
+  const placed = useMemo(
+    () => (viewDoc === doc ? doc.placed : new Set([...doc.placed, ...viewDoc.placed])),
+    [doc, viewDoc],
+  );
+
+  const editing = canEdit && !viewOnlyDevice && connection.synced && !previewing;
 
   const [tool, setToolState] = useState<Tool>("select");
   const [signInToComment, setSignInToComment] = useState(false);
@@ -134,7 +149,7 @@ export default function CanvasPage({
   const [panelOpen, setPanelOpen] = useState(true);
   const [panelTab, setPanelTab] = useState<"blocks" | "layers">("blocks");
   const selection = useCanvas(store, "selection", (s) => s.selection);
-  const showPanel = canEdit && !viewOnlyDevice && panelOpen;
+  const showPanel = canEdit && !viewOnlyDevice && panelOpen && !previewing;
   const [openColumnId, setOpenColumnId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -185,7 +200,7 @@ export default function CanvasPage({
   }, []);
 
   useEffect(() => {
-    const missing = [...doc.placed].filter((id) => !columns.has(id) && !requested.current.has(id));
+    const missing = [...placed].filter((id) => !columns.has(id) && !requested.current.has(id));
     if (missing.length === 0) return;
     for (const id of missing) requested.current.add(id);
     void (async () => {
@@ -207,7 +222,7 @@ export default function CanvasPage({
         }
       }
     })();
-  }, [doc.placed, columns, channel.id]);
+  }, [placed, columns, channel.id]);
 
   // A block deleted elsewhere: the server has already taken its element off.
   useEffect(
@@ -230,8 +245,7 @@ export default function CanvasPage({
   // placed blocks are loaded. Until then the board area shows the loader and
   // the blocks are hidden, so they fade in already framed instead of jumping.
   const boardReady =
-    connection.closed !== null ||
-    (connection.synced && [...doc.placed].every((id) => columns.has(id)));
+    connection.closed !== null || (connection.synced && [...placed].every((id) => columns.has(id)));
 
   // The open transition starts at once: the chrome runs its storyboard while
   // the loader covers whatever the board still needs.
@@ -314,7 +328,7 @@ export default function CanvasPage({
   }, []);
 
   const toolbarLeft = showPanel ? `calc(50% + ${(EDGE + PANEL_WIDTH) / 2}px)` : "50%";
-  const empty = boardReady && connection.closed === null && doc.ordered.length === 0;
+  const empty = boardReady && connection.closed === null && !previewing && doc.ordered.length === 0;
   // Phones keep the app's bottom bar for notifications and the account menu
   // (signed in, onboarded viewers only, as everywhere else), so the board
   // stops above it.
@@ -394,7 +408,11 @@ export default function CanvasPage({
       {/* On a phone the bottom bar carries notifications and the account
           menu, so this island steps aside for signed-in viewers there. */}
       <div className={`absolute right-4 top-4 z-10 ${viewer ? "hidden sm:block" : ""}`}>
-        <EndIsland store={store} viewer={viewer} />
+        <EndIsland
+          store={store}
+          viewer={viewer}
+          actions={history.enabled ? <HistoryButton history={history} /> : null}
+        />
       </div>
 
       {showPanel ? (
@@ -437,7 +455,7 @@ export default function CanvasPage({
       {!viewOnlyDevice ? (
         <>
           <div
-            className="absolute bottom-4 z-10 flex -translate-x-1/2 flex-col items-center gap-3"
+            className={`absolute bottom-4 z-10 flex -translate-x-1/2 flex-col items-center gap-3 ${previewing ? "hidden" : ""}`}
             style={{ left: toolbarLeft }}
           >
             {editing ? <ToolOptions store={store} tool={tool} /> : null}
@@ -449,7 +467,7 @@ export default function CanvasPage({
             />
           </div>
           <div className="absolute bottom-4 right-4 z-10">
-            <ZoomIsland store={store} showHistory={canEdit} />
+            <ZoomIsland store={viewStore} showHistory={canEdit && !previewing} />
           </div>
           {editing && selection.size > 0 ? (
             <div className="pointer-events-none absolute bottom-20 right-4 top-20 z-10 flex flex-col [&>*]:pointer-events-auto">
@@ -459,10 +477,12 @@ export default function CanvasPage({
         </>
       ) : null}
 
+      <HistoryLayer history={history} />
+
       {/* After the chrome in the DOM, so Back is first in the tab order; the
           chrome's z-10 keeps it painted on top. */}
       <CanvasViewport
-        store={store}
+        store={viewStore}
         columns={columns}
         screenshots={screenshots}
         editing={editing}

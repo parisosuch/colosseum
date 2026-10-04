@@ -1,6 +1,8 @@
 import { cache } from "react";
 
-import { getChannelColumns } from "./column";
+import { type ChannelQuery, parseChannelQuery } from "@/lib/canvas/channel-query";
+import { PAGE_SIZE } from "@/lib/pagination";
+import { type Column, getChannelColumnCount, getChannelColumns } from "./column";
 import { ownerHandles } from "./channel";
 import { getScreenshotsForUrls } from "./screenshot-data";
 import { type ResolvedShare, resolveShareToken, shareColumn } from "./share-link";
@@ -31,4 +33,43 @@ export async function shareChannelCardImage(share: ResolvedShare): Promise<strin
   const urls = recent.filter((c) => c.type === "url" && c.url).map((c) => c.url!);
   const shots = await getScreenshotsForUrls(urls);
   return urls.map((u) => shots.get(u)?.image_url).find(Boolean) ?? null;
+}
+
+export type ShareBoardFirstPage = {
+  query: ChannelQuery;
+  totalCount: number;
+  // The first page under `query`, with media through the share.
+  initialColumns: Column[];
+  // How many blocks match when `query` filters anything, else null.
+  filteredCount: number | null;
+};
+
+// A shared channel board's first paint under the URL's `?sort=&type=&q=&view=`,
+// read the way the channel page reads it but as a signed-out visitor. The board
+// writes those params as its controls change, so a reload or a copied link
+// lands on the board as it was left.
+export async function shareBoardFirstPage(
+  share: ResolvedShare,
+  searchParams: Record<string, string | string[] | undefined>,
+): Promise<ShareBoardFirstPage> {
+  const id = share.channel.id;
+  const query = parseChannelQuery(searchParams);
+  const filtered = query.q.trim() !== "" || query.type !== "all";
+  const [totalCount, firstPage, filteredCount] = await Promise.all([
+    getChannelColumnCount(id),
+    getChannelColumns(
+      id,
+      { sort: query.sort, type: query.type, search: query.q, limit: PAGE_SIZE },
+      SIGNED_OUT,
+    ),
+    filtered
+      ? getChannelColumnCount(id, { type: query.type, search: query.q })
+      : Promise.resolve(null),
+  ]);
+  return {
+    query,
+    totalCount,
+    initialColumns: firstPage.map((c) => shareColumn(c, share.token)),
+    filteredCount,
+  };
 }

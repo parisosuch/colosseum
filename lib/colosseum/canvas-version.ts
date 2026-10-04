@@ -98,8 +98,14 @@ export async function listCanvasVersionsFor(
   page: { before?: number; limit?: number } = {},
 ): Promise<CanvasVersion[]> {
   await requireManager(userId, channelId);
-  const limit = Math.min(Math.max(1, page.limit ?? CANVAS_VERSION_PAGE), CANVAS_VERSION_PAGE);
-  return selectVersions(channelId, { before: page.before, limit });
+  // Both come from the client as-is; anything but an integer would reach the
+  // query and fail there with a raw SQL error.
+  const before = page?.before ?? undefined;
+  if (before !== undefined && !Number.isSafeInteger(before)) throw new Error("Invalid page.");
+  const want = page?.limit ?? CANVAS_VERSION_PAGE;
+  if (!Number.isSafeInteger(want)) throw new Error("Invalid page.");
+  const limit = Math.min(Math.max(1, want), CANVAS_VERSION_PAGE);
+  return selectVersions(channelId, { before, limit });
 }
 
 // One version's doc for a read-only preview: a Yjs update, base64-encoded,

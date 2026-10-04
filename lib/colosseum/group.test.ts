@@ -1,5 +1,6 @@
 import { beforeAll, expect, test } from "bun:test";
 
+import { subscribeRealtime, type RealtimeEvent } from "@/lib/realtime/events";
 import { GROUP_CHANNELS, GROUPS, SCRATCH_GROUP_HANDLES, seed, USERS } from "@/scripts/seed";
 import {
   canContributeChannel,
@@ -216,6 +217,22 @@ test("re-adding an existing member leaves their role alone", async () => {
   } finally {
     await setGroupRole(GROUPS.studio.id, USERS.bob.id, "member");
   }
+});
+
+// Joining a group can give someone write access to every channel it owns, so
+// their open canvases are re-authorized the way leaving already does.
+test("adding someone to a group re-authorizes their open canvases, once", async () => {
+  await removeGroupMember(GROUPS.studio.id, USERS.bob.id);
+  const events: RealtimeEvent[] = [];
+  const stop = subscribeRealtime((e) => events.push(e));
+  try {
+    await addGroupMemberByHandle(GROUPS.studio.id, USERS.bob.handle, "member");
+    await addGroupMemberByHandle(GROUPS.studio.id, USERS.bob.handle, "member");
+  } finally {
+    stop();
+  }
+  expect(events).toEqual([{ type: "user.access-changed", userId: USERS.bob.id }]);
+  expect(await groupRole(GROUPS.studio.id, USERS.bob.id)).toBe("member");
 });
 
 // ---------------------------------------------------------------------------

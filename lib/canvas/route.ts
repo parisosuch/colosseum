@@ -11,3 +11,18 @@ export function canvasPath(channelPath: string): string {
 export function isCanvasPath(pathname: string | null): boolean {
   return pathname !== null && CANVAS_PATH.test(pathname);
 }
+
+// The thread id in a `?thread=` value (the first, if repeated), or null when
+// it isn't a positive whole number.
+export function threadParam(value: string | string[] | null | undefined): number | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw || !/^\d{1,15}$/.test(raw)) return null;
+  const id = Number(raw);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+// The canvas page opened on a thread: where a notification's channel link is
+// sent on.
+export function canvasThreadHref(channelPath: string, threadId: number): string {
+  return `${canvasPath(channelPath)}?thread=${threadId}`;
+}

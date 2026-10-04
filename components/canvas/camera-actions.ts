@@ -1,6 +1,22 @@
 // Camera moves shared by the keyboard, the zoom island and the first load.
 
-import { centerOn, fitBounds, stepZoom, viewCenter, zoomAt, type Point } from "@/lib/canvas/camera";
+import {
+  centerOn,
+  fitBounds,
+  stepZoom,
+  viewCenter,
+  zoomAt,
+  type Camera,
+  type Point,
+} from "@/lib/canvas/camera";
+import {
+  cameraBetween,
+  cubicBezier,
+  DURATION_PANEL_MS,
+  EASE_OUT,
+  parseCubicBezier,
+  parseDuration,
+} from "@/lib/canvas/camera-motion";
 import { unionRects } from "@/lib/canvas/geometry";
 import type { CanvasStore } from "./canvas-store";
 
@@ -40,4 +56,54 @@ export function zoomToSelection(store: CanvasStore): void {
     .filter((r) => r !== undefined);
   const bounds = unionRects(rects);
   if (bounds) store.setCamera(fitBounds(bounds, store.viewport, store.insets));
+}
+
+// The camera move under way, so a new one (or the viewer grabbing the board)
+// stops it.
+const moving = new WeakMap<CanvasStore, number>();
+
+function reducedMotion(): boolean {
+  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+}
+
+// Glide to `to` on --ease-out over --duration-panel. Under reduced motion it
+// jumps. A pan or zoom by the viewer mid-move takes over from it.
+export function animateCamera(store: CanvasStore, to: Camera): void {
+  const frame = moving.get(store);
+  if (frame) cancelAnimationFrame(frame);
+  moving.delete(store);
+  if (reducedMotion()) {
+    store.setCamera(to);
+    return;
+  }
+  const css = getComputedStyle(document.documentElement);
+  const ease = cubicBezier(parseCubicBezier(css.getPropertyValue("--ease-out")) ?? EASE_OUT);
+  const duration = parseDuration(css.getPropertyValue("--duration-panel")) ?? DURATION_PANEL_MS;
+  const from = store.camera;
+  const viewport = store.viewport;
+  const start = performance.now();
+  let last = from;
+  const step = (now: number) => {
+    // Someone else moved the camera: theirs wins.
+    if (store.camera !== last) {
+      moving.delete(store);
+      return;
+    }
+    const t = Math.min(1, (now - start) / duration);
+    last = cameraBetween(from, to, viewport, ease(t));
+    store.setCamera(last);
+    // setCamera keeps the old object when nothing changed.
+    last = store.camera;
+    if (t < 1) moving.set(store, requestAnimationFrame(step));
+    else moving.delete(store);
+  };
+  moving.set(store, requestAnimationFrame(step));
+}
+
+// Centre the open part of the view on a world point at the current zoom, for
+// jumping to a comment thread.
+export function centreOn(store: CanvasStore, at: Point, { animate = true } = {}): void {
+  const to = centerOn(at, store.camera.z, store.viewport, store.insets);
+  if (animate) animateCamera(store, to);
+  else store.setCamera(to);
 }

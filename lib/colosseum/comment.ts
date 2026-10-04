@@ -60,6 +60,25 @@ export async function getColumnComments(column_id: number): Promise<Comment[]> {
   return rows.map(({ c, handle, avatar_url }) => toComment(c, column_id, handle, avatar_url));
 }
 
+export const NO_PROFILE_COMMENT_ERROR = "Finish setting up your profile before commenting.";
+
+// The handle and avatar a comment by `userId` shows, from the owner row they
+// get at onboarding. Someone signed in who hasn't onboarded has none, and is
+// refused here, before anything is written: every comment read joins the
+// author's owner row, so a comment saved without one would be invisible, and
+// nobody could find it to delete it.
+export async function commentAuthor(
+  userId: string,
+): Promise<{ handle: string; avatar_url: string | null }> {
+  const [profile] = await db
+    .select({ handle: owner.handle, avatar_url: owner.avatar_url })
+    .from(owner)
+    .where(eq(owner.user_id, userId))
+    .limit(1);
+  if (!profile) throw new Error(NO_PROFILE_COMMENT_ERROR);
+  return profile;
+}
+
 // Post a comment. Returns it with the author's display info resolved. Callers
 // authorize (authenticated + can read the block) first.
 export async function createComment(input: {
@@ -67,12 +86,8 @@ export async function createComment(input: {
   author_id: string;
   body: string;
 }): Promise<Comment> {
+  const profile = await commentAuthor(input.author_id);
   const [row] = await db.insert(comment).values(input).returning();
-  const [profile] = await db
-    .select({ handle: owner.handle, avatar_url: owner.avatar_url })
-    .from(owner)
-    .where(eq(owner.user_id, input.author_id))
-    .limit(1);
   return toComment(row, input.column_id, profile.handle, profile.avatar_url);
 }
 

@@ -65,6 +65,15 @@ export async function addChannelMemberByHandle(
     .values({ channel_id, user_id: profile.user_id })
     .onConflictDoNothing()
     .returning();
+  // An open canvas of theirs on this channel, read-only until now, is
+  // re-authorized and gets write access.
+  if (row) {
+    publishRealtime({
+      type: "user.access-changed",
+      userId: profile.user_id,
+      channelId: channel_id,
+    });
+  }
   return {
     user_id: profile.user_id,
     handle: profile.handle,

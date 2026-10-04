@@ -4,7 +4,7 @@ import "server-only";
 // unplaced-blocks sidebar. Callers authorize the channel first, like every
 // other channel-scoped read here (see getChannelColumns).
 
-import { and, desc, eq, inArray, lt, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { channelCanvas, column } from "@/lib/db/schema";
@@ -39,8 +39,13 @@ export async function showsCanvasButton(
   return canContribute || channelCanvasHasElements(channelId);
 }
 
+// Positive integer ids, once each. Anything else can't be a column id.
+function validIds(ids: readonly number[]): number[] {
+  return [...new Set(ids.filter((id) => Number.isSafeInteger(id) && id > 0))];
+}
+
 function cleanIds(ids: readonly number[]): number[] {
-  return [...new Set(ids.filter((id) => Number.isSafeInteger(id) && id > 0))].slice(0, MAX_IDS);
+  return validIds(ids).slice(0, MAX_IDS);
 }
 
 // The blocks with these ids that are in this channel. A canvas element can name
@@ -67,7 +72,8 @@ export async function getChannelColumnsByIds(
 }
 
 export type UnplacedQuery = {
-  // Column ids already on the canvas.
+  // Column ids already on the canvas, every one of them: there is no cap, since
+  // a block left out would be listed as unplaced.
   placed: readonly number[];
   search?: string;
   // The id of the last block on the previous page.
@@ -75,10 +81,15 @@ export type UnplacedQuery = {
   limit?: number;
 };
 
+// The placed ids go to Postgres as one array parameter rather than one
+// parameter each (drizzle's notInArray), so any number of them fits in a query.
+// They're validated integers, so the array literal is safe to build.
 function unplacedFilters(channelId: number, query: UnplacedQuery) {
-  const placed = cleanIds(query.placed);
+  const placed = Array.isArray(query.placed) ? validIds(query.placed) : [];
   const filters = columnFilters(channelId, { search: query.search });
-  if (placed.length > 0) filters.push(notInArray(column.id, placed));
+  if (placed.length > 0) {
+    filters.push(sql`${column.id} <> all(${`{${placed.join(",")}}`}::bigint[])`);
+  }
   return filters;
 }
 

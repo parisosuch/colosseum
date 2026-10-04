@@ -209,3 +209,20 @@ test("restore rewrites the stored canvas and keeps what it replaced", async () =
   expect(idsOf(Buffer.from(preview.doc, "base64"))).toEqual(["after"]);
   expect(preview.version.id).toBe(backup.id);
 });
+
+test("a malformed page cursor is refused with a plain error", async () => {
+  const ch = await channelOf(USERS.alice.ownerId);
+  const list = (page: unknown) =>
+    listCanvasVersionsFor(USERS.alice.id, ch.id, page as { before?: number; limit?: number }).then(
+      () => "ok",
+      (err: Error) => err.message,
+    );
+  expect(await list({ before: Number.NaN })).toBe("Invalid page.");
+  expect(await list({ before: "12" })).toBe("Invalid page.");
+  expect(await list({ before: 1.5 })).toBe("Invalid page.");
+  expect(await list({ limit: Number.NaN })).toBe("Invalid page.");
+  expect(await list({ limit: "5" })).toBe("Invalid page.");
+  // Absent and null both mean the first page.
+  expect(await list({ before: null })).toBe("ok");
+  expect(await list(null)).toBe("ok");
+});

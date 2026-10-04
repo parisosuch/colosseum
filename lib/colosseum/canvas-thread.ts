@@ -6,8 +6,9 @@
 // Who may do what:
 // - read a channel's threads: anyone who can read the channel, signed out
 //   included, same as the canvas itself;
-// - start a thread or reply: anyone signed in who can read the channel, so a
-//   read-only viewer of the canvas can comment;
+// - start a thread or reply: anyone signed in, with a profile, who can read the
+//   channel, so a read-only viewer of the canvas can comment. Starting threads
+//   is rate limited per person (checkThreadStartRate, at the server action);
 // - delete a comment: its author, or anyone who manages the channel. Deleting
 //   a thread's first comment deletes the thread and its replies.
 //
@@ -15,7 +16,7 @@
 // everyone viewing the channel's canvas. Pinning and freeing threads as their
 // elements come and go is the canvas server's (lib/realtime/canvas-threads.ts).
 
-import { asc, count, eq, inArray } from "drizzle-orm";
+import { and, asc, count, eq, gt, inArray } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { canvasThread, channelMember, comment, groupMember, owner } from "@/lib/db/schema";
@@ -29,9 +30,10 @@ import {
   resolveChannelViewer,
   type Channel,
 } from "./channel";
-import { mentionedUsers, validateCommentBody } from "./comment";
+import { commentAuthor, mentionedUsers, validateCommentBody } from "./comment";
 import { createNotification } from "./notification";
 import { ownerRecipients } from "./owner";
+import { createRateLimiter, type RateLimitConfig } from "./rate-limit";
 
 export type { CanvasThread, ThreadComment };
 
@@ -52,6 +54,37 @@ const MAX_ELEMENT_ID_LENGTH = 128;
 const MAX_COORDINATE = 1e9;
 
 const NOT_FOUND = "Not found.";
+
+// Shown for a comment whose author has no owner row. commentAuthor refuses
+// such an author before writing, but rows saved before it did can still exist,
+// and they have to list so they can be deleted. Not a valid handle, so it can
+// never name somebody else.
+export const MISSING_AUTHOR_HANDLE = "[unknown]";
+
+// The most threads one listChannelThreads call returns, and its default. The
+// canvas loads a channel's threads in one call, so the default is the whole
+// list for any canvas people actually use; `after` pages past it.
+export const THREAD_PAGE = 500;
+
+// How many threads one person may start in a window. Each new thread notifies
+// every member of the channel, so this bounds the in-app rows a burst can
+// create. Replies notify only the thread's participants and aren't limited.
+export const THREAD_START_LIMIT: RateLimitConfig = { limit: 20, windowMs: 10 * 60_000 };
+
+const threadStarts = createRateLimiter(() => THREAD_START_LIMIT);
+
+// Throws once `userId` has started THREAD_START_LIMIT threads inside the
+// window. The server action calls it before startCanvasThread, at the request
+// boundary like the REST API's limiter, so the data layer itself stays
+// unlimited for tests and scripts.
+export function checkThreadStartRate(userId: string, now: number = Date.now()): void {
+  const result = threadStarts.check(userId, now);
+  if (!result.ok) {
+    throw new Error(
+      `You're starting threads too quickly. Try again in ${result.retryAfterSec} seconds.`,
+    );
+  }
+}
 
 function coordinate(value: unknown): number {
   if (typeof value !== "number" || !Number.isFinite(value) || Math.abs(value) > MAX_COORDINATE) {
@@ -95,7 +128,7 @@ type CommentRow = typeof comment.$inferSelect;
 function toThreadComment(
   row: CommentRow,
   thread_id: number,
-  handle: string,
+  handle: string | null,
   avatar_url: string | null,
 ): ThreadComment {
   return {
@@ -104,7 +137,7 @@ function toThreadComment(
     thread_id,
     author_id: row.author_id,
     body: row.body,
-    author_handle: handle,
+    author_handle: handle ?? MISSING_AUTHOR_HANDLE,
     author_avatar_url: avatar_url ?? undefined,
   };
 }
@@ -130,39 +163,20 @@ function toThread(
   };
 }
 
-// Comments of the given threads, oldest first, with author display info.
+// Comments of the given threads, oldest first, with author display info. A
+// left join, so a comment whose author has no owner row still lists (under
+// MISSING_AUTHOR_HANDLE) and can be deleted.
 async function threadComments(threadIds: number[]): Promise<ThreadComment[]> {
   if (threadIds.length === 0) return [];
   const rows = await db
     .select({ c: comment, handle: owner.handle, avatar_url: owner.avatar_url })
     .from(comment)
-    .innerJoin(owner, eq(owner.user_id, comment.author_id))
+    .leftJoin(owner, eq(owner.user_id, comment.author_id))
     .where(inArray(comment.thread_id, threadIds))
     .orderBy(asc(comment.created_at), asc(comment.id));
   return rows.map(({ c, handle, avatar_url }) =>
     toThreadComment(c, c.thread_id!, handle, avatar_url),
   );
-}
-
-async function insertThreadComment(input: {
-  threadId: number;
-  authorId: string;
-  body: string;
-}): Promise<ThreadComment> {
-  const [row] = await db
-    .insert(comment)
-    .values({ thread_id: input.threadId, author_id: input.authorId, body: input.body })
-    .returning();
-  return withAuthor(row, input.threadId);
-}
-
-async function withAuthor(row: CommentRow, threadId: number): Promise<ThreadComment> {
-  const [profile] = await db
-    .select({ handle: owner.handle, avatar_url: owner.avatar_url })
-    .from(owner)
-    .where(eq(owner.user_id, row.author_id))
-    .limit(1);
-  return toThreadComment(row, threadId, profile.handle, profile.avatar_url);
 }
 
 async function getThreadRow(threadId: number): Promise<ThreadRow | null> {
@@ -171,19 +185,39 @@ async function getThreadRow(threadId: number): Promise<ThreadRow | null> {
   return row ?? null;
 }
 
+export type ThreadPage = {
+  // The id of the last thread on the previous page.
+  after?: number;
+  limit?: number;
+};
+
 // A channel's threads, oldest first, each with its reply count and starter.
+// Paged by id, which increases with creation: pass the last id of a page as
+// `after` for the next one. A page shorter than `limit` is the last.
 export async function listChannelThreads(
   channelId: number,
   userId: string | null,
+  page: ThreadPage = {},
 ): Promise<CanvasThread[]> {
   await readableChannel(channelId, userId);
+  const after = page?.after ?? undefined;
+  if (after !== undefined && !Number.isSafeInteger(after)) throw new Error("Invalid page.");
+  const want = page?.limit ?? THREAD_PAGE;
+  if (!Number.isSafeInteger(want)) throw new Error("Invalid page.");
+  const limit = Math.min(Math.max(1, want), THREAD_PAGE);
   const rows = await db
     .select({ t: canvasThread, n: count(comment.id) })
     .from(canvasThread)
     .leftJoin(comment, eq(comment.thread_id, canvasThread.id))
-    .where(eq(canvasThread.channel_id, channelId))
+    .where(
+      and(
+        eq(canvasThread.channel_id, channelId),
+        after !== undefined ? gt(canvasThread.id, after) : undefined,
+      ),
+    )
     .groupBy(canvasThread.id)
-    .orderBy(asc(canvasThread.created_at), asc(canvasThread.id));
+    .orderBy(asc(canvasThread.id))
+    .limit(limit);
   if (rows.length === 0) return [];
 
   const starters = new Map<number, ThreadComment>();
@@ -194,7 +228,7 @@ export async function listChannelThreads(
       avatar_url: owner.avatar_url,
     })
     .from(comment)
-    .innerJoin(owner, eq(owner.user_id, comment.author_id))
+    .leftJoin(owner, eq(owner.user_id, comment.author_id))
     .where(
       inArray(
         comment.thread_id,
@@ -233,6 +267,7 @@ export async function startCanvasThread(input: {
   const channel = await readableChannel(input.channelId, input.userId);
   const body = validateCommentBody(input.body);
   const values = anchorValues(input.anchor);
+  const author = await commentAuthor(input.userId);
 
   const { thread, first } = await db.transaction(async (tx) => {
     const [row] = await tx
@@ -245,7 +280,7 @@ export async function startCanvasThread(input: {
       .returning();
     return { thread: row, first: firstRow };
   });
-  const starter = await withAuthor(first, thread.id);
+  const starter = toThreadComment(first, thread.id, author.handle, author.avatar_url);
   const created = toThread(thread, 1, starter);
 
   publishRealtime({ type: "thread.created", channelId: channel.id, thread: created });
@@ -263,10 +298,15 @@ export async function replyToCanvasThread(input: {
   if (!thread) throw new Error(NOT_FOUND);
   const channel = await readableChannel(thread.channel_id, input.userId);
   const body = validateCommentBody(input.body);
+  const author = await commentAuthor(input.userId);
 
   let created: ThreadComment;
   try {
-    created = await insertThreadComment({ threadId: thread.id, authorId: input.userId, body });
+    const [row] = await db
+      .insert(comment)
+      .values({ thread_id: thread.id, author_id: input.userId, body })
+      .returning();
+    created = toThreadComment(row, thread.id, author.handle, author.avatar_url);
   } catch (e) {
     // The thread's starter was deleted, and the thread with it, between the
     // lookup above and this insert.
@@ -348,6 +388,11 @@ export async function deleteCanvasThreadComment(input: {
 //
 // The notifications carry the channel, the thread (where the link lands) and
 // the comment, and no block.
+//
+// Email follows the notifications' quiet period, which is per thread. Every
+// new thread is a new subject, so for the `comment` notices a new thread sends
+// the quiet period is per thread starter instead: one email per person
+// starting threads in the channel per window, however many they start.
 async function sendThreadNotices(input: {
   channel: Channel;
   threadId: number;
@@ -380,6 +425,7 @@ async function sendThreadNotices(input: {
       channel_id: channel.id,
       thread_id: input.threadId,
       comment_id: created.id,
+      emailQuietPerActor: input.isNew && type === "comment",
     });
   await Promise.all([
     ...[...owed].filter((id) => readers.has(id)).map((id) => notice(id, "comment")),

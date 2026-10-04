@@ -8,6 +8,7 @@
 
 import { getSessionUser } from "@/lib/auth";
 import {
+  checkThreadStartRate,
   deleteCanvasThreadComment,
   getCanvasThread,
   listChannelThreads,
@@ -17,6 +18,7 @@ import {
   type CanvasThreadWithComments,
   type ThreadAnchor,
   type ThreadComment,
+  type ThreadPage,
 } from "./canvas-thread";
 
 async function currentUserId(): Promise<string | null> {
@@ -30,8 +32,11 @@ async function requireUserId(): Promise<string> {
   return userId;
 }
 
-export async function listCanvasThreadsAction(channelId: number): Promise<CanvasThread[]> {
-  return listChannelThreads(channelId, await currentUserId());
+export async function listCanvasThreadsAction(
+  channelId: number,
+  page?: ThreadPage,
+): Promise<CanvasThread[]> {
+  return listChannelThreads(channelId, await currentUserId(), page);
 }
 
 export async function getCanvasThreadAction(threadId: number): Promise<CanvasThreadWithComments> {
@@ -44,6 +49,7 @@ export async function startCanvasThreadAction(
   body: string,
 ): Promise<CanvasThread> {
   const userId = await requireUserId();
+  checkThreadStartRate(userId);
   return startCanvasThread({ channelId, userId, anchor, body });
 }
 

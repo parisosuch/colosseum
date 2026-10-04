@@ -220,6 +220,9 @@ export async function addGroupMemberByHandle(
     .values({ group_id, user_id: person.user_id, role })
     .onConflictDoNothing()
     .returning();
+  // Their open canvases on the group's channels, read-only until now, get
+  // whatever the new role allows.
+  if (row) publishRealtime({ type: "user.access-changed", userId: person.user_id });
   return {
     user_id: person.user_id,
     handle: person.handle,

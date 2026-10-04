@@ -52,7 +52,23 @@ export type ChannelEvent =
   // Canvas comment threads (canvas-threads.ts).
   | ThreadChannelEvent;
 
-export function encodeChannelEvent(event: ChannelEvent): Uint8Array {
+// The server refused an edit from this client and is closing its socket with
+// CLOSE_EDIT_REFUSED. The doc in the tab now holds a change the server will
+// never take, and every later edit builds on it, so the tab has to reload to
+// carry on. `reason`:
+//   - `too-large`: one message was over the per-message limit (a paste of a
+//     few hundred strokes or more).
+//   - `doc-full`: the canvas is at its size ceiling. Deleting still works.
+//   - `invalid`: the edit wrote outside the doc's shape (canvas-doc.ts).
+//
+// Kept out of ChannelEvent until the client handles it: a type 100 event the
+// client doesn't know reaches its thread reducer.
+export type EditRefusedEvent = {
+  type: "edit.refused";
+  reason: "too-large" | "doc-full" | "invalid";
+};
+
+export function encodeChannelEvent(event: ChannelEvent | EditRefusedEvent): Uint8Array {
   const encoder = encoding.createEncoder();
   encoding.writeVarUint(encoder, MESSAGE_CHANNEL_EVENT);
   encoding.writeVarString(encoder, JSON.stringify(event));
@@ -63,7 +79,7 @@ export function encodeChannelEvent(event: ChannelEvent): Uint8Array {
 export const CANVAS_PATH = "/realtime/canvas/";
 
 // Close codes in the 4000-4999 application range. y-websocket's default
-// `shouldReconnect` gives up on 4400-4499, so both of these are final.
+// `shouldReconnect` gives up on 4400-4499, so all three are final.
 //
 // The channel was deleted, directly or with the group that owned it.
 export const CLOSE_CHANNEL_GONE = 4404;
@@ -72,3 +88,6 @@ export const CLOSE_CHANNEL_GONE = 4404;
 // handshake, so a tab whose access was revoked while it was offline stops
 // retrying instead of polling the server forever.
 export const CLOSE_ACCESS_REVOKED = 4403;
+// The server refused one of this client's edits (EditRefusedEvent above says
+// why). Reconnecting would send the same edit again, so it's final.
+export const CLOSE_EDIT_REFUSED = 4413;

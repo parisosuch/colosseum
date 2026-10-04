@@ -4,6 +4,8 @@ import { paintOrder } from "./elements";
 import { docWith, ORIGIN, state } from "./test-doc";
 import {
   groupElements,
+  childIds,
+  rowWindow,
   layerRows,
   moveTo,
   reorder,
@@ -130,7 +132,7 @@ describe("layer order", () => {
       k1: { type: "rect", w: 1, h: 1, parentId: "f" },
       k2: { type: "rect", w: 1, h: 1, parentId: "f" },
     });
-    expect(layerRows(state(doc).all).map((r) => `${r.depth}${r.el.id}`)).toEqual([
+    expect(layerRows(childIds(state(doc).all)).map((r) => `${r.depth}${r.id}`)).toEqual([
       "0f",
       "1k2",
       "1k1",
@@ -148,6 +150,15 @@ describe("layer order", () => {
     moveTo(doc, ["a"], "f", ORIGIN, { id: "k1", where: "above" });
     const { all } = state(doc);
     expect(all.get("a")).toMatchObject({ parentId: "f", x: -95, y: -95 });
-    expect(layerRows(all).map((r) => r.el.id)).toEqual(["f", "k2", "a", "k1"]);
+    expect(layerRows(childIds(all)).map((r) => r.id)).toEqual(["f", "k2", "a", "k1"]);
+  });
+});
+
+describe("rowWindow", () => {
+  test("renders the rows in view plus the overscan, clamped to the list", () => {
+    expect(rowWindow(0, 280, 5000, 28, 8)).toEqual({ first: 0, last: 18 });
+    expect(rowWindow(28 * 1000, 280, 5000, 28, 8)).toEqual({ first: 992, last: 1018 });
+    expect(rowWindow(28 * 4995, 280, 5000, 28, 8)).toEqual({ first: 4987, last: 5000 });
+    expect(rowWindow(0, 280, 0, 28)).toEqual({ first: 0, last: 0 });
   });
 });

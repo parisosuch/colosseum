@@ -61,13 +61,18 @@ export function wheelPixels(delta: number, deltaMode: number): number {
   return delta;
 }
 
-// How much one wheel step zooms. Trackpad pinches arrive as ctrl+wheel with
-// small deltas (a few px a frame); a mouse wheel notch is ~100px. The exponent
-// makes both feel proportional, and the clamp keeps one notch from jumping
-// more than about 2x.
+// How much one wheel event zooms. Trackpad pinches arrive as ctrl+wheel with
+// small deltas (a few px a frame) and zoom in proportion to them. A mouse
+// wheel notch is ~100px, which at the same rate is a 2x jump, so a single
+// event is capped at WHEEL_ZOOM_MAX: about 24px of delta, past what a pinch
+// sends in one frame.
+const WHEEL_ZOOM_RATE = 0.0075;
+export const WHEEL_ZOOM_MAX = 1.2;
+const WHEEL_ZOOM_CAP = Math.log(WHEEL_ZOOM_MAX) / WHEEL_ZOOM_RATE;
+
 export function wheelZoomFactor(deltaPixels: number): number {
-  const d = Math.max(-100, Math.min(100, deltaPixels));
-  return Math.exp(-d * 0.0075);
+  const d = Math.max(-WHEEL_ZOOM_CAP, Math.min(WHEEL_ZOOM_CAP, deltaPixels));
+  return Math.exp(-d * WHEEL_ZOOM_RATE);
 }
 
 // The +/- keys and the zoom buttons step by powers of two around 100%, so

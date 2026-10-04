@@ -21,6 +21,7 @@ import {
   cullBoxes,
   expandRect,
   hitHandle,
+  intersects,
   needsRecull,
   nudgeDelta,
   pastThreshold,
@@ -62,6 +63,7 @@ import {
   type Gesture,
   type GestureContext,
 } from "./gestures";
+import { keysReachBoard } from "./focus";
 import { carriesOutsideContent, handleCopy, handleDrop, handlePaste } from "./paste";
 import { PastePlaceholders } from "./paste-placeholders";
 import { TextEditor } from "./text-editor";
@@ -171,6 +173,8 @@ export function CanvasViewport({
   });
 
   const [visible, setVisible] = useState<ReadonlySet<string>>(() => new Set());
+  // Drops a drag, resize or drawing under way; set by the input effect below.
+  const cancelGesture = useRef<() => void>(() => {});
   const [cursor, setCursor] = useState<string>("default");
   const [spaceHeld, setSpaceHeld] = useState(false);
   const [dropping, setDropping] = useState(false);
@@ -217,7 +221,28 @@ export function CanvasViewport({
     world.style.transform = cameraTransform(store.camera);
     recull(true);
     const offCamera = store.subscribe("camera", applyCamera);
-    const offDoc = store.subscribe("doc", () => recull(true));
+    // After an edit only the elements it touched can have come into view or
+    // left it; anything that changed paint order culls everything again.
+    const offDoc = store.subscribe("doc", () => {
+      const changed = store.docState.changed;
+      const area = culledFor;
+      if (!changed || changed.order || !area) return recull(true);
+      setVisible((prev) => {
+        let next: Set<string> | null = null;
+        for (const id of changed.ids) {
+          const box = store.docState.boxById.get(id);
+          const shown =
+            !!box &&
+            store.docState.elements.get(id)?.type !== "group" &&
+            intersects(box.rect, area);
+          if (shown === prev.has(id)) continue;
+          next ??= new Set(prev);
+          if (shown) next.add(id);
+          else next.delete(id);
+        }
+        return next ?? prev;
+      });
+    });
     const viewport = viewportRef.current!;
     const ro = new ResizeObserver(() => {
       store.viewport = { w: viewport.clientWidth, h: viewport.clientHeight };
@@ -232,6 +257,12 @@ export function CanvasViewport({
       if (idle) clearTimeout(idle);
     };
   }, [store]);
+
+  useEffect(() => {
+    if (editing) return;
+    cancelGesture.current();
+    store.setEditing(null);
+  }, [editing, store]);
 
   // --- pointer, wheel, gesture, keyboard and clipboard input ---
   useEffect(() => {
@@ -391,6 +422,21 @@ export function CanvasViewport({
       store.setInteraction({ guides: [], preview: null, erasing: new Set(), bindHover: null });
     };
 
+    // Editing went away mid-gesture (the session dropped to read-only): stop
+    // where it is, without the write the pointer coming up would make.
+    cancelGesture.current = () => {
+      const a = active;
+      if (!a || a.g.kind === "pan") return;
+      active = null;
+      if (frame) cancelAnimationFrame(frame);
+      frame = 0;
+      pendingMove = null;
+      if (el.hasPointerCapture(a.pointerId)) el.releasePointerCapture(a.pointerId);
+      store.setMarquee(null);
+      store.setInteraction({ guides: [], preview: null, erasing: new Set(), bindHover: null });
+      setCursor("default");
+    };
+
     const onPointerLeave = () => {
       if (!active) {
         store.setCursor(null);
@@ -497,25 +543,19 @@ export function CanvasViewport({
     };
 
     // ----- keyboard -----
-    const isTyping = (target: EventTarget | null) => {
-      const t = target as HTMLElement | null;
-      if (!t) return false;
-      return (
-        t.isContentEditable ||
-        t.tagName === "INPUT" ||
-        t.tagName === "TEXTAREA" ||
-        t.tagName === "SELECT"
-      );
-    };
+    // Board shortcuts never fire while focus is in a text field, a canvas
+    // popover (a comment thread), or any dialog or menu.
+    const boardKeys = (target: EventTarget | null) => keysReachBoard(target as Element | null);
     // A dialog or menu that takes the keyboard. A comment thread's popover
-    // doesn't: tool keys still work with one open, and it handles Escape.
+    // doesn't while focus is on the board: tool keys still work with one open,
+    // and it handles Escape.
     const dialogOpen = () =>
       [...document.querySelectorAll('[role="dialog"], [role="alertdialog"], [role="menu"]')].some(
         (d) => !d.closest("[data-canvas-ui]"),
       );
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || isTyping(e.target) || dialogOpen()) return;
+      if (e.defaultPrevented || !boardKeys(e.target) || dialogOpen()) return;
       // Escape closes an open thread first (ThreadLayer).
       if (e.key === "Escape" && document.querySelector("[data-canvas-ui]")) return;
       const onControl = (e.target as HTMLElement | null)?.closest?.(
@@ -686,7 +726,11 @@ export function CanvasViewport({
 
     // ----- clipboard -----
     const clipboardTarget = (e: Event) =>
-      !isTyping(e.target) && !dialogOpen() && !props.current.touchOnly && !store.editing;
+      boardKeys(e.target) &&
+      boardKeys(document.activeElement) &&
+      !dialogOpen() &&
+      !props.current.touchOnly &&
+      !store.editing;
     const onCopy = (e: ClipboardEvent) => {
       if (clipboardTarget(e)) handleCopy(store, e, false);
     };
@@ -698,9 +742,21 @@ export function CanvasViewport({
     };
 
     // ----- drop from the sidebar, or from outside the page -----
+    // A drag that started on this page (a Layers row, text selected in a
+    // comment) isn't outside content, whatever it carries; only the Blocks
+    // panel's own drags place anything.
+    let pageDrag = false;
+    const onPageDragStart = () => {
+      pageDrag = true;
+    };
+    // A source row that scrolled out of the Layers list mid-drag is gone from
+    // the page and its dragend never arrives, so the next press clears it too.
+    const onPageDragEnd = () => {
+      pageDrag = false;
+    };
     const carriesBlock = (e: DragEvent) => e.dataTransfer?.types.includes(BLOCK_DRAG_TYPE) ?? false;
     const carriesOutside = (e: DragEvent) =>
-      !carriesBlock(e) && carriesOutsideContent(e.dataTransfer?.types ?? []);
+      !carriesBlock(e) && carriesOutsideContent(e.dataTransfer?.types ?? [], pageDrag);
     const onDragOver = (e: DragEvent) => {
       if (!props.current.editing || !(carriesBlock(e) || carriesOutside(e))) return;
       e.preventDefault();
@@ -712,6 +768,11 @@ export function CanvasViewport({
     };
     const onDrop = (e: DragEvent) => {
       setDropping(false);
+      if (pageDrag && !carriesBlock(e)) {
+        // Nothing to take, and the browser mustn't navigate to it either.
+        e.preventDefault();
+        return;
+      }
       if (!props.current.editing) return;
       if (carriesOutside(e)) {
         // Taken even when there's nothing to add, or the browser opens the file.
@@ -737,6 +798,10 @@ export function CanvasViewport({
     el.addEventListener("dragover", onDragOver);
     el.addEventListener("dragleave", onDragLeave);
     el.addEventListener("drop", onDrop);
+    document.addEventListener("dragstart", onPageDragStart, true);
+    document.addEventListener("dragend", onPageDragEnd, true);
+    document.addEventListener("drop", onPageDragEnd);
+    document.addEventListener("pointerdown", onPageDragEnd, true);
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("keyup", onKeyUp);
     document.addEventListener("copy", onCopy);
@@ -757,6 +822,10 @@ export function CanvasViewport({
       el.removeEventListener("dragover", onDragOver);
       el.removeEventListener("dragleave", onDragLeave);
       el.removeEventListener("drop", onDrop);
+      document.removeEventListener("dragstart", onPageDragStart, true);
+      document.removeEventListener("dragend", onPageDragEnd, true);
+      document.removeEventListener("drop", onPageDragEnd);
+      document.removeEventListener("pointerdown", onPageDragEnd, true);
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("keyup", onKeyUp);
       document.removeEventListener("copy", onCopy);

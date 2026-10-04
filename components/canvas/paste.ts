@@ -55,6 +55,7 @@ export function handlePaste(store: CanvasStore, e: ClipboardEvent): boolean {
         createdBy: store.userId,
         placed: store.docState.placed,
         at: pasteTarget(store),
+        known: store.docState,
       },
       store.origin,
     );
@@ -64,9 +65,16 @@ export function handlePaste(store: CanvasStore, e: ClipboardEvent): boolean {
   return ingestTransfer(store, e.clipboardData, pasteTarget(store), () => e.preventDefault());
 }
 
+// What a dragged Layers row carries: private to the panel, so a row dropped
+// anywhere else hands over nothing, not its name as text.
+export const LAYER_DRAG_TYPE = "application/x-colosseum-layer";
+
 // A drag from outside the page (files from the desktop, a link or text from
-// another tab) that the board would take.
-export function carriesOutsideContent(types: readonly string[]): boolean {
+// another tab) that the board would take. Nothing that started on this page
+// counts: a Layers row or text selected in a comment would otherwise land as a
+// text element, or as a link block when it reads like a URL.
+export function carriesOutsideContent(types: readonly string[], fromPage = false): boolean {
+  if (fromPage || types.includes(LAYER_DRAG_TYPE)) return false;
   return types.includes("Files") || types.includes("text/uri-list") || types.includes("text/plain");
 }
 

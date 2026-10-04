@@ -98,6 +98,9 @@ export type ThreadsState = {
   // server's event for it arrives too.
   seen: ReadonlySet<number>;
   gone: ReadonlySet<number>;
+  // Threads this client has seen deleted. Ids aren't reused, so a response
+  // that was already on its way when the delete landed can't bring one back.
+  deleted: ReadonlySet<number>;
 };
 
 export const EMPTY_THREADS: ThreadsState = {
@@ -105,29 +108,104 @@ export const EMPTY_THREADS: ThreadsState = {
   comments: new Map(),
   seen: new Set(),
   gone: new Set(),
+  deleted: new Set(),
 };
 
-// A fresh list from the server. Comments already loaded are kept for threads
-// that are still there.
-export function loadThreads(state: ThreadsState, list: readonly CanvasThread[]): ThreadsState {
-  const threads = new Map(list.map((t) => [t.id, t]));
-  const comments = new Map([...state.comments].filter(([id]) => threads.has(id)));
-  return { ...state, threads, comments };
+// A fresh list from the server, after (re)connecting, and the live events that
+// arrived while it was on its way, in order. The list replaces the threads; the
+// events are applied on top, since the list may have been read before them.
+// Loaded comments are dropped: after a reconnect they may be missing whatever
+// was said while the socket was down, so the open thread is fetched again.
+//
+// A reply count can't be settled that way: an event for a comment says
+// nothing about whether the list already counted it. Those threads are
+// fetched whole (countsInDoubt).
+export function loadThreads(
+  state: ThreadsState,
+  list: readonly CanvasThread[],
+  during: readonly ThreadChannelEvent[] = [],
+): ThreadsState {
+  const threads = new Map(list.filter((t) => !state.deleted.has(t.id)).map((t) => [t.id, t]));
+  let next: ThreadsState = { ...state, threads, comments: new Map() };
+  for (const event of during) {
+    if (event.type !== "thread.comment.added" && event.type !== "thread.comment.deleted") {
+      next = applyThreadEvent(next, event);
+    }
+  }
+  return next;
 }
 
-// One thread with all its comments, from getCanvasThreadAction.
+// The threads whose reply counts a reload with these events in its window
+// can't vouch for.
+export function countsInDoubt(during: readonly ThreadChannelEvent[]): number[] {
+  const ids = new Set<number>();
+  for (const event of during) {
+    if (event.type === "thread.comment.added") ids.add(event.comment.thread_id);
+    else if (event.type === "thread.comment.deleted") ids.add(event.threadId);
+  }
+  return [...ids];
+}
+
+// One thread with all its comments, from getCanvasThreadAction, and the live
+// events that arrived while it was on its way. Those events were applied as
+// they came, to the state this response replaces, so they're replayed against
+// the response itself: a comment it already has isn't added again, and one it
+// no longer has isn't taken off the count again.
 export function loadThread(
   state: ThreadsState,
   thread: CanvasThread & { comments: readonly ThreadComment[] },
+  during: readonly ThreadChannelEvent[] = [],
 ): ThreadsState {
-  const { comments: list, ...rest } = thread;
-  const threads = new Map(state.threads);
-  threads.set(rest.id, rest);
-  const comments = new Map(state.comments);
-  comments.set(rest.id, list);
+  if (state.deleted.has(thread.id)) return state;
+  const { comments: loaded, ...rest } = thread;
+  let replies = rest.reply_count;
+  const list = [...loaded];
   const seen = new Set(state.seen);
+  const gone = new Set(state.gone);
+  let next: ThreadsState = state;
+  for (const event of during) {
+    if (event.type === "thread.comment.added") {
+      const c = event.comment;
+      if (c.thread_id !== rest.id || list.some((x) => x.id === c.id) || gone.has(c.id)) continue;
+      list.push(c);
+      replies++;
+    } else if (event.type === "thread.comment.deleted") {
+      if (event.threadId !== rest.id) continue;
+      gone.add(event.commentId);
+      const i = list.findIndex((x) => x.id === event.commentId);
+      if (i < 0) continue;
+      list.splice(i, 1);
+      replies = Math.max(0, replies - 1);
+    } else if (event.type === "thread.deleted" && event.threadId === rest.id) {
+      return applyThreadEvent(state, event);
+    }
+  }
   for (const c of list) seen.add(c.id);
-  return { ...state, threads, comments, seen };
+  const threads = new Map(next.threads);
+  threads.set(rest.id, { ...rest, reply_count: replies });
+  const comments = new Map(next.comments);
+  comments.set(rest.id, list);
+  next = { ...next, threads, comments, seen, gone };
+  // Pinning changes in the window, on the thread as it now stands.
+  for (const event of during) {
+    if (
+      (event.type === "thread.detached" || event.type === "thread.attached") &&
+      event.threadId === rest.id
+    ) {
+      next = applyThreadEvent(next, event);
+    }
+  }
+  return next;
+}
+
+// A delete this client made that the server refused: the comment is back
+// (the caller fetches the thread again), and a later delete of it, this
+// client's or anyone's, has to count.
+export function forgetGone(state: ThreadsState, commentId: number): ThreadsState {
+  if (!state.gone.has(commentId)) return state;
+  const gone = new Set(state.gone);
+  gone.delete(commentId);
+  return { ...state, gone };
 }
 
 function withThread(
@@ -142,12 +220,27 @@ function withThread(
   return { ...state, threads };
 }
 
+const THREAD_EVENTS: ReadonlySet<string> = new Set<ThreadChannelEvent["type"]>([
+  "thread.created",
+  "thread.comment.added",
+  "thread.comment.deleted",
+  "thread.deleted",
+  "thread.detached",
+  "thread.attached",
+]);
+
+// Whether a channel event is one of the thread events this client knows. The
+// server adds event types over time, and an older tab must ignore them.
+export function isKnownThreadEvent(event: { type: string }): event is ThreadChannelEvent {
+  return THREAD_EVENTS.has(event.type);
+}
+
 // A live event, or this client's own write fed through the same path.
 export function applyThreadEvent(state: ThreadsState, event: ThreadChannelEvent): ThreadsState {
   switch (event.type) {
     case "thread.created": {
       const { thread } = event;
-      if (state.threads.has(thread.id)) return state;
+      if (state.threads.has(thread.id) || state.deleted.has(thread.id)) return state;
       const threads = new Map(state.threads);
       threads.set(thread.id, thread);
       const seen = new Set(state.seen);
@@ -177,6 +270,9 @@ export function applyThreadEvent(state: ThreadsState, event: ThreadChannelEvent)
       const loaded = comments.get(event.threadId);
       if (loaded) {
         const kept = loaded.filter((c) => c.id !== event.commentId);
+        // Not in the loaded comments: they were read after it went, and the
+        // count that came with them doesn't include it.
+        if (kept.length === loaded.length) return { ...state, gone };
         comments = new Map(comments).set(event.threadId, kept);
       }
       return withThread({ ...state, gone, comments }, event.threadId, (t) => ({
@@ -185,12 +281,13 @@ export function applyThreadEvent(state: ThreadsState, event: ThreadChannelEvent)
       }));
     }
     case "thread.deleted": {
-      if (!state.threads.has(event.threadId)) return state;
+      const deleted = new Set(state.deleted).add(event.threadId);
+      if (!state.threads.has(event.threadId)) return { ...state, deleted };
       const threads = new Map(state.threads);
       threads.delete(event.threadId);
       const comments = new Map(state.comments);
       comments.delete(event.threadId);
-      return { ...state, threads, comments };
+      return { ...state, threads, comments, deleted };
     }
     case "thread.detached":
       return withThread(state, event.threadId, (t) => ({
@@ -206,6 +303,8 @@ export function applyThreadEvent(state: ThreadsState, event: ThreadChannelEvent)
         element_id: event.elementId,
         last_element_id: null,
       }));
+    default:
+      return state;
   }
 }
 

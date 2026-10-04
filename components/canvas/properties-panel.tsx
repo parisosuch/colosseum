@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlignCenter,
   AlignCenterHorizontal,
@@ -32,7 +32,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { childrenByParent, defaultName, type ElementSnapshot } from "@/lib/canvas/elements";
+import { defaultName, type ElementSnapshot } from "@/lib/canvas/elements";
 import {
   FILLS,
   FONT_SIZES,
@@ -135,11 +135,15 @@ export function PropertiesPanel({ store }: { store: CanvasStore }) {
   if (picked.length === 0) return null;
 
   // Groups are styled through what's in them.
-  const byParent = childrenByParent(doc.elements);
   const leaves: ElementSnapshot[] = [];
   const add = (el: ElementSnapshot) => {
-    if (el.type === "group") for (const k of byParent.get(el.id) ?? []) add(k);
-    else leaves.push(el);
+    if (el.type !== "group") leaves.push(el);
+    else {
+      for (const id of doc.children.get(el.id) ?? []) {
+        const k = doc.elements.get(id);
+        if (k) add(k);
+      }
+    }
   };
   picked.forEach(add);
 
@@ -452,7 +456,14 @@ function OpacityInput({
   const shown = value === null ? "" : `${Math.round(value * 100)}%`;
   const [draft, setDraft] = useState(shown);
   useEffect(() => setDraft(shown), [shown]);
+  // Escape blurs the field to cancel, and the blur that follows must not
+  // apply what was typed.
+  const cancelled = useRef(false);
   const commit = () => {
+    if (cancelled.current) {
+      cancelled.current = false;
+      return;
+    }
     const n = Number.parseFloat(draft.replace("%", ""));
     if (Number.isFinite(n)) onChange(Math.min(100, Math.max(0, n)) / 100);
     else setDraft(shown);
@@ -471,6 +482,7 @@ function OpacityInput({
           (e.target as HTMLInputElement).blur();
         }
         if (e.key === "Escape") {
+          cancelled.current = true;
           setDraft(shown);
           (e.target as HTMLInputElement).blur();
         }

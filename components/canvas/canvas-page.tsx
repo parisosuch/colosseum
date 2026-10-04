@@ -40,6 +40,7 @@ import { EndIsland, StartIsland, Toolbar, ZoomIsland, type ViewerProfile } from 
 import { CanvasStore } from "./canvas-store";
 import { CanvasViewport } from "./canvas-viewport";
 import { CommentsButton, CommentsPanel } from "./comments-panel";
+import { Segmented } from "./controls";
 import { HistoryButton, HistoryLayer } from "./history-panel";
 import { useCanvasHistory } from "./history-state";
 import { LayersPanel, layerName } from "./layers-panel";
@@ -74,6 +75,11 @@ function useMediaQuery(query: string): boolean {
 const PANEL_WIDTH = 288;
 const EDGE = 16;
 const ISLAND = 50;
+
+const PANEL_TABS = [
+  { value: "blocks", label: "Blocks" },
+  { value: "layers", label: "Layers" },
+] as const;
 
 // Next runs a page's server actions one at a time, so a big canvas loads in as
 // few round trips as the action allows (MAX_IDS in canvas-blocks.ts).
@@ -135,10 +141,11 @@ export default function CanvasPage({
   const [tool, setToolState] = useState<Tool>("select");
   const [signInToComment, setSignInToComment] = useState(false);
   // Picking a tool. A signed-out viewer who picks comment is asked to sign in
-  // instead; a read-only viewer can't pick a drawing tool.
+  // instead, and one with no profile yet to set one up; a read-only viewer
+  // can't pick a drawing tool.
   const setTool = useCallback(
     (next: Tool) => {
-      if (next === "comment" && !viewerId) {
+      if (next === "comment" && (!viewerId || !viewer)) {
         setSignInToComment(true);
         return;
       }
@@ -146,7 +153,7 @@ export default function CanvasPage({
       store.setEditing(null);
       setToolState(next);
     },
-    [store, viewerId],
+    [store, viewerId, viewer],
   );
   // --- comment threads ---
   // Everyone who can see the canvas reads them; anyone signed in writes,
@@ -155,6 +162,7 @@ export default function CanvasPage({
     store,
     channelId: channel.id,
     viewerId,
+    hasProfile: !!viewer,
     canManage: isOwner,
   });
   const [commentsOpen, setCommentsOpen] = useState(false);
@@ -291,11 +299,11 @@ export default function CanvasPage({
   // Picking a thread in the panel glides the board to its pin and opens it.
   const { open: openThread } = threads;
   const jumpToThread = useCallback(
-    (threadId: number, animate = true) => {
+    (threadId: number, opener: HTMLElement | null = null) => {
       const t = threads.state.threads.get(threadId);
       if (!t) return false;
-      centreOn(store, pinPosition(elementsOf(store.doc), t), { animate });
-      openThread(threadId);
+      centreOn(store, pinPosition(elementsOf(store.doc), t), { animate: true });
+      openThread(threadId, opener);
       return true;
     },
     [store, threads.state, openThread],
@@ -348,7 +356,7 @@ export default function CanvasPage({
     (columnId: number, at: Point) => {
       if (!store.canEdit) return;
       const createdBy = store.connection.self?.id ?? viewerId ?? "";
-      const id = placeBlock(store.doc, { columnId, at, createdBy }, store.origin);
+      const id = placeBlock(store.doc, { columnId, at, createdBy }, store.origin, store.docState);
       store.setSelection([id]);
     },
     [store, viewerId],
@@ -390,11 +398,17 @@ export default function CanvasPage({
   }, [channelPath]);
 
   // --- add a block from the island ---
+  const previewingRef = useRef(previewing);
+  useEffect(() => {
+    previewingRef.current = previewing;
+  }, [previewing]);
   const flow = useAddBlockFlow(channels, {
     channelId: channel.id,
     onAdded: (column) => {
       addColumns([column]);
-      if (store.canEdit) placeAt(column.id, viewCenter(store.camera, store.viewport, store.insets));
+      if (store.canEdit && !previewingRef.current) {
+        placeAt(column.id, viewCenter(store.camera, store.viewport, store.insets));
+      }
     },
   });
 
@@ -461,7 +475,23 @@ export default function CanvasPage({
         </div>
       ) : null}
 
-      {connection.closed ? (
+      {connection.closed === "edit-refused" ? (
+        // Stays up: the board can still be looked at, but nothing typed or
+        // drawn here reaches anyone until the page reloads.
+        <div
+          role="alert"
+          className="absolute left-1/2 top-20 z-20 flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 items-center gap-3 rounded-lg border bg-background p-3 shadow-md"
+        >
+          <p className="min-w-0 flex-1 text-sm">
+            {connection.refused === "invalid"
+              ? "Your last change couldn't be saved, so nothing after it is being saved either."
+              : "This canvas is too large to edit. Changes aren't being saved."}
+          </p>
+          <Button size="sm" onClick={() => window.location.reload()}>
+            Reload
+          </Button>
+        </div>
+      ) : connection.closed ? (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/80 p-6">
           <EmptyState
             icon={Shapes}
@@ -473,7 +503,9 @@ export default function CanvasPage({
             className="w-full max-w-md bg-background"
           />
         </div>
-      ) : connection.status === "disconnected" && connection.synced ? (
+      ) : connection.status !== "connected" && connection.synced ? (
+        // Also while y-websocket retries: after a drop, and after the server
+        // closes a socket that sent too much too fast (1013).
         <div
           className="absolute left-1/2 top-4 z-10 -translate-x-1/2 rounded-full border bg-background px-3 py-1 text-caption shadow-sm"
           role="status"
@@ -493,7 +525,11 @@ export default function CanvasPage({
               ? { open: panelOpen, onToggle: () => setPanelOpen((o) => !o) }
               : null
           }
-          onAdd={canContribute && !viewOnlyDevice ? () => flow.onOpenChange(true) : null}
+          onAdd={
+            // A version preview hides the live board, so nothing is added
+            // while one is up: a new block would land where no one can see it.
+            canContribute && !viewOnlyDevice && !previewing ? () => flow.onOpenChange(true) : null
+          }
           showSearch={!!viewer && !viewOnlyDevice}
         />
       </div>
@@ -518,20 +554,13 @@ export default function CanvasPage({
           aria-label="Blocks"
           className="absolute bottom-4 left-4 top-20 z-10 flex w-72 flex-col gap-3 rounded-lg border bg-background p-4 shadow-md"
         >
-          <div role="tablist" aria-label="Panel" className="flex w-fit rounded-lg border p-0.5">
-            {(["blocks", "layers"] as const).map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                role="tab"
-                aria-selected={panelTab === tab}
-                onClick={() => setPanelTab(tab)}
-                className={`focus-ring h-7 rounded-md px-3 text-sm transition-colors duration-micro ${panelTab === tab ? "bg-secondary font-medium" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                {tab === "blocks" ? "Blocks" : "Layers"}
-              </button>
-            ))}
-          </div>
+          <Segmented
+            tabs
+            label="Panel"
+            options={PANEL_TABS}
+            value={panelTab}
+            onChange={setPanelTab}
+          />
           {/* The Blocks tab stays mounted, so its list and scroll survive a
               trip to Layers. */}
           <div className={panelTab === "blocks" ? "contents" : "hidden"}>
@@ -571,7 +600,7 @@ export default function CanvasPage({
               <CommentsPanel
                 threads={threads}
                 nameOf={nameOf}
-                onPick={(id) => void jumpToThread(id)}
+                onPick={(id, row) => void jumpToThread(id, row)}
               />
             </div>
           ) : editing && selection.size > 0 ? (
@@ -598,11 +627,15 @@ export default function CanvasPage({
         onPlaceBlock={(columnId, at) => placeAt(columnId, at)}
         onComment={threads.startDraft}
         onBoardPress={() => {
-          if (threads.openId !== null || threads.draft !== null) threads.close();
+          if (threads.openId !== null || threads.draft !== null) {
+            threads.close({ returnFocus: false });
+          }
         }}
         ready={boardReady}
       >
-        {boardReady && !previewing && connection.closed === null ? (
+        {boardReady &&
+        !previewing &&
+        (connection.closed === null || connection.closed === "edit-refused") ? (
           <ThreadLayer
             store={store}
             threads={threads}
@@ -621,20 +654,33 @@ export default function CanvasPage({
 
       <Dialog open={signInToComment} onOpenChange={setSignInToComment}>
         <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Sign in to comment</DialogTitle>
-            <DialogDescription>
-              Anyone who can see this canvas can comment on it once they&apos;re signed in.
-            </DialogDescription>
-          </DialogHeader>
+          {viewerId ? (
+            <DialogHeader>
+              <DialogTitle>Set up your profile to comment</DialogTitle>
+              <DialogDescription>
+                Comments show your handle and picture, so pick those first.
+              </DialogDescription>
+            </DialogHeader>
+          ) : (
+            <DialogHeader>
+              <DialogTitle>Sign in to comment</DialogTitle>
+              <DialogDescription>
+                Anyone who can see this canvas can comment on it once they&apos;re signed in.
+              </DialogDescription>
+            </DialogHeader>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setSignInToComment(false)}>
               Not now
             </Button>
             <Button asChild>
-              <Link href={`/auth/login?next=${encodeURIComponent(`${channelPath}/canvas`)}`}>
-                Log in
-              </Link>
+              {viewerId ? (
+                <Link href="/auth/onboarding">Set up profile</Link>
+              ) : (
+                <Link href={`/auth/login?next=${encodeURIComponent(`${channelPath}/canvas`)}`}>
+                  Log in
+                </Link>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

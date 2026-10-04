@@ -32,7 +32,6 @@ import {
   CONNECTOR_TYPES,
   createElement,
   parentOrigin,
-  readElements,
   removeElements,
   setProps,
   snapshotOf,
@@ -85,6 +84,7 @@ export type Gesture =
       startAll: All;
       startBounds: Rect | null;
       collapseTo: string | null;
+      // Everything that moves: the ids and what's inside them.
       exclude: Set<string>;
     }
   | { kind: "marquee"; start: Point; startWorld: Point; active: boolean; base: Set<string> }
@@ -95,6 +95,7 @@ export type Gesture =
       bounds: Rect;
       ids: string[];
       startAll: All;
+      startChildren: ReadonlyMap<string | null, readonly string[]>;
       exclude: Set<string>;
     }
   | { kind: "endpoint"; id: string; side: "start" | "end"; moved: boolean }
@@ -386,7 +387,8 @@ function beginSelect(ctx: GestureContext, e: PointerEvent, p: Point, w: Point): 
         bounds,
         ids,
         startAll: all,
-        exclude: withDescendants(ids, all),
+        startChildren: store.docState.children,
+        exclude: withDescendants(ids, all, store.docState.children),
       };
     }
   }
@@ -402,7 +404,7 @@ function beginSelect(ctx: GestureContext, e: PointerEvent, p: Point, w: Point): 
       startAll: all,
       startBounds: selectionBounds(store),
       collapseTo,
-      exclude: withDescendants(ids, all),
+      exclude: withDescendants(ids, all, store.docState.children),
     };
   };
 
@@ -457,7 +459,11 @@ export function moveGesture(ctx: GestureContext, g: Gesture, e: PointerEvent, p:
       }
       const layout = store.docState.layout;
       ctx.schedule(() => {
-        setProps(store.doc, moveUpdates(g.startAll, g.ids, dx, dy, layout), store.origin);
+        setProps(
+          store.doc,
+          moveUpdates(g.startAll, g.ids, dx, dy, layout, g.exclude),
+          store.origin,
+        );
         store.setInteraction({ guides });
       });
       return;
@@ -491,7 +497,7 @@ export function moveGesture(ctx: GestureContext, g: Gesture, e: PointerEvent, p:
       const next = resizeRect(g.bounds, g.handle, dx, dy, { keepAspect: e.shiftKey, min });
       const layout = store.docState.layout;
       ctx.schedule(() => {
-        const updates = resizeUpdates(g.startAll, g.ids, layout, g.bounds, next);
+        const updates = resizeUpdates(g.startAll, g.ids, layout, g.bounds, next, g.startChildren);
         store.doc.transact(() => {
           setProps(store.doc, updates, store.origin);
           const texts = updates
@@ -510,7 +516,7 @@ export function moveGesture(ctx: GestureContext, g: Gesture, e: PointerEvent, p:
       const { end, target } = endAt(
         store,
         w,
-        withDescendants([g.id], store.docState.elements),
+        withDescendants([g.id], store.docState.elements, store.docState.children),
         noSnap ? null : grid(store),
       );
       const o = parentOrigin(el, store.docState.elements) ?? { x: 0, y: 0 };
@@ -639,7 +645,7 @@ export function endGesture(ctx: GestureContext, g: Gesture, e: PointerEvent, p: 
         g.rect && (g.rect.w >= MIN_DRAG || g.rect.h >= MIN_DRAG)
           ? g.rect
           : clickBox(store, g.tool, g.startWorld, e.metaKey || e.ctrlKey);
-      const all = readElements(store.doc);
+      const all = store.docState.elements;
       const id = createElement(
         store.doc,
         {
@@ -647,6 +653,7 @@ export function endGesture(ctx: GestureContext, g: Gesture, e: PointerEvent, p: 
           parentId: g.parentId && all.has(g.parentId) ? g.parentId : null,
         },
         store.origin,
+        store.docState,
       );
       if (g.tool === "frame") adoptInto(store, id, rect);
       store.setSelection([id]);
@@ -665,6 +672,7 @@ export function endGesture(ctx: GestureContext, g: Gesture, e: PointerEvent, p: 
           createdBy: store.userId,
         }),
         store.origin,
+        store.docState,
       );
       syncConnectorBoxes(store);
       store.setSelection([id]);
@@ -675,7 +683,7 @@ export function endGesture(ctx: GestureContext, g: Gesture, e: PointerEvent, p: 
       store.setInteraction({ preview: null });
       const s = strokeFromInput(g.points);
       if (!s) return;
-      const all = readElements(store.doc);
+      const all = store.docState.elements;
       createElement(
         store.doc,
         newStroke(s.box, s.points, g.tool, store.toolStyle, {
@@ -684,6 +692,7 @@ export function endGesture(ctx: GestureContext, g: Gesture, e: PointerEvent, p: 
           createdBy: store.userId,
         }),
         store.origin,
+        store.docState,
       );
       store.undo.stopCapturing();
       return;
@@ -691,7 +700,7 @@ export function endGesture(ctx: GestureContext, g: Gesture, e: PointerEvent, p: 
     case "erase": {
       store.setInteraction({ erasing: new Set(), preview: null });
       if (g.hits.size) {
-        removeElements(store.doc, g.hits, store.origin, store.docState.layout.ends);
+        removeElements(store.doc, g.hits, store.origin, store.docState.layout.ends, store.docState);
         store.setSelection([...store.selection].filter((id) => store.docState.elements.has(id)));
       }
       store.undo.stopCapturing();

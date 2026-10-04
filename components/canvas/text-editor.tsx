@@ -100,7 +100,7 @@ export function TextEditor({ store }: { store: CanvasStore }) {
     if (!cur) return;
     const snap = store.docState.elements.get(cur);
     if (snap?.type === "text" && !(snap.text ?? "").trim()) {
-      removeElements(store.doc, [cur], store.origin);
+      removeElements(store.doc, [cur], store.origin, undefined, store.docState);
       store.setSelection([]);
     } else {
       store.setSelection([cur]);
@@ -123,6 +123,7 @@ export function TextEditor({ store }: { store: CanvasStore }) {
           createdBy: store.userId,
         }),
         store.origin,
+        store.docState,
       );
       idRef.current = created;
       const t = ytext()!;

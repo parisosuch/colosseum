@@ -144,12 +144,19 @@ export function ThreadLayer({
             at={s}
             thread={t}
             active={t.id === threads.openId}
-            onClick={() => (t.id === threads.openId ? threads.close() : threads.open(t.id))}
+            onClick={(e) =>
+              t.id === threads.openId ? threads.close() : threads.open(t.id, e.currentTarget)
+            }
           />
         );
       })}
       {draftAt && viewer ? (
-        <Pin at={worldToScreen(camera, draftAt)} active draftOf={viewer} onClick={threads.close} />
+        <Pin
+          at={worldToScreen(camera, draftAt)}
+          active
+          draftOf={viewer}
+          onClick={() => threads.close()}
+        />
       ) : null}
 
       {open && openAt ? (
@@ -191,7 +198,7 @@ function Pin({
   // A pin being placed: the viewer's avatar and no count yet.
   draftOf?: { handle: string; avatarUrl: string | null };
   active: boolean;
-  onClick: () => void;
+  onClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
   const handle = thread?.starter?.author_handle ?? draftOf?.handle ?? "";
   const avatarUrl = thread?.starter?.author_avatar_url ?? draftOf?.avatarUrl;
@@ -202,6 +209,7 @@ function Pin({
     <button
       type="button"
       data-canvas-pin
+      data-thread={thread?.id}
       aria-label={label}
       aria-expanded={active}
       onClick={onClick}
@@ -259,7 +267,7 @@ function Popover({
       <div
         ref={ref}
         data-canvas-ui
-        className="pointer-events-auto absolute inset-x-2 bottom-2 flex max-h-[60%] flex-col rounded-lg border bg-background p-3 shadow-md animate-in fade-in-0 slide-in-from-bottom-2 ![animation-duration:var(--duration-panel)] [animation-timing-function:var(--ease-out)]"
+        className="pointer-events-auto absolute inset-x-2 bottom-2 flex select-text max-h-[60%] flex-col rounded-lg border bg-background p-3 shadow-md animate-in fade-in-0 slide-in-from-bottom-2 ![animation-duration:var(--duration-panel)] [animation-timing-function:var(--ease-out)]"
       >
         {children}
       </div>
@@ -271,7 +279,7 @@ function Popover({
       ref={ref}
       data-canvas-ui
       style={{ left, top, maxHeight: Math.max(160, area.h) }}
-      className="pointer-events-auto absolute flex w-[22rem] max-w-[calc(100%-1rem)] flex-col rounded-lg border bg-background p-3 shadow-md animate-in fade-in-0 zoom-in-95 ![animation-duration:var(--duration-ui)] [animation-timing-function:var(--ease-out)]"
+      className="pointer-events-auto absolute flex select-text w-[22rem] max-w-[calc(100%-1rem)] flex-col rounded-lg border bg-background p-3 shadow-md animate-in fade-in-0 zoom-in-95 ![animation-duration:var(--duration-ui)] [animation-timing-function:var(--ease-out)]"
     >
       {children}
     </div>
@@ -419,6 +427,13 @@ function ThreadPopover({
 
       {readOnly ? (
         <p className="text-caption">Reply from a computer.</p>
+      ) : threads.needsProfile ? (
+        <p className="text-sm text-muted-foreground">
+          <Link href="/auth/onboarding" className="underline underline-offset-4">
+            Set up your profile
+          </Link>{" "}
+          to reply.
+        </p>
       ) : threads.canComment ? (
         <CommentComposer
           className="shrink-0"

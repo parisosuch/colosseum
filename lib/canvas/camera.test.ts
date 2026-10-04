@@ -14,6 +14,7 @@ import {
   visibleWorldRect,
   wheelPixels,
   wheelZoomFactor,
+  WHEEL_ZOOM_MAX,
   worldRectToScreen,
   worldToScreen,
   zoomAt,
@@ -88,6 +89,15 @@ describe("camera math", () => {
     expect(wheelZoomFactor(-10)).toBeGreaterThan(1);
     expect(wheelZoomFactor(10)).toBeLessThan(1);
     expect(wheelZoomFactor(5000)).toBe(wheelZoomFactor(100));
+  });
+
+  test("a mouse wheel notch zooms at most 1.2x; a trackpad pinch keeps its rate", () => {
+    // A notch: ~100px in Chrome, 3 lines in Firefox.
+    close(wheelZoomFactor(-100), WHEEL_ZOOM_MAX);
+    close(wheelZoomFactor(100), 1 / WHEEL_ZOOM_MAX);
+    close(wheelZoomFactor(wheelPixels(-3, 1)), WHEEL_ZOOM_MAX);
+    // A pinch frame of a few px zooms exactly as it did before the cap.
+    for (const d of [-12, -4, 1, 6, 15]) close(wheelZoomFactor(d), Math.exp(-d * 0.0075));
   });
 
   test("fit centres the bounds in the open area and respects the cap", () => {

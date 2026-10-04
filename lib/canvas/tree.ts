@@ -354,24 +354,50 @@ export function reparentAfterMove(
   return true;
 }
 
-export type LayerRow = { el: ElementSnapshot; depth: number };
+export type LayerRow = { id: string; depth: number };
+
+// Each parent's children by id, bottom first, the shape DocState.children
+// keeps up to date.
+export function childIds(all: All): Map<string | null, string[]> {
+  const out = new Map<string | null, string[]>();
+  for (const [parent, list] of childrenByParent(all))
+    out.set(
+      parent,
+      list.map((e) => e.id),
+    );
+  return out;
+}
 
 // The Layers panel: frames, groups and elements, top of the stack first, each
-// container's children right under it.
-export function layerRows(all: All): LayerRow[] {
-  const children = childrenByParent(all);
+// container's children right under it. Built from the child lists alone, so
+// it's recomputed only when the tree changes, not on every move.
+export function layerRows(children: ReadonlyMap<string | null, readonly string[]>): LayerRow[] {
   const rows: LayerRow[] = [];
   const seen = new Set<string>();
   const walk = (parent: string | null, depth: number) => {
     const list = children.get(parent) ?? [];
     for (let i = list.length - 1; i >= 0; i--) {
-      const el = list[i];
-      if (seen.has(el.id)) continue;
-      seen.add(el.id);
-      rows.push({ el, depth });
-      walk(el.id, depth + 1);
+      const id = list[i];
+      if (seen.has(id)) continue;
+      seen.add(id);
+      rows.push({ id, depth });
+      walk(id, depth + 1);
     }
   };
   walk(null, 0);
   return rows;
+}
+
+// The rows of a fixed-height list worth rendering for a scroll position: the
+// ones in view plus `overscan` either side. `last` is exclusive.
+export function rowWindow(
+  scrollTop: number,
+  height: number,
+  count: number,
+  rowHeight: number,
+  overscan = 8,
+): { first: number; last: number } {
+  const first = Math.max(0, Math.floor(scrollTop / rowHeight) - overscan);
+  const last = Math.min(count, Math.ceil((scrollTop + height) / rowHeight) + overscan);
+  return { first, last: Math.max(first, last) };
 }

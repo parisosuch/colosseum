@@ -25,6 +25,7 @@ import {
   withDescendants,
   zBetween,
   type ElementSnapshot,
+  type KnownDoc,
 } from "./elements";
 import { unionRects } from "./geometry";
 import type { Layout } from "./layout";
@@ -45,14 +46,14 @@ export type CanvasClipboard = {
 };
 
 // Fields that travel. Anything else on an element (or in a hostile payload)
-// stays behind.
+// stays behind. Rotation stays behind too: nothing draws, hits or lays out a
+// rotated element yet, and only comment pins would turn with it.
 const FIELDS = new Set([
   "type",
   "x",
   "y",
   "w",
   "h",
-  "rotation",
   "z",
   "name",
   "locked",
@@ -98,14 +99,15 @@ export function copySelection(
   ids: Iterable<string>,
   layout: Layout,
   channelId: number,
+  known: KnownDoc = { elements: readElements(doc) },
 ): CanvasClipboard | null {
-  const all = readElements(doc);
+  const all = known.elements;
   const roots = topmostOnly(ids, all);
   if (roots.length === 0) return null;
   const rootSet = new Set(roots);
   const elements = elementsOf(doc);
   const out: ClipElement[] = [];
-  for (const id of withDescendants(roots, all)) {
+  for (const id of withDescendants(roots, all, known.children)) {
     const m = elements.get(id);
     const el = all.get(id);
     if (!m || !el) continue;
@@ -196,6 +198,8 @@ export type PasteOptions = {
   // Where the middle of the pasted elements lands, in world space; without it
   // they land PASTE_OFFSET right and down of where they were copied from.
   at?: Point | null;
+  // The doc as the caller already has it (see KnownDoc).
+  known?: KnownDoc;
 };
 
 // Paste a payload. Returns the new ids of the top pasted elements, for the
@@ -247,13 +251,14 @@ export function pasteClipboard(
   }
 
   const idMap = new Map(kept.map((e) => [e.id, newElementId()]));
-  const all = readElements(doc);
+  const all = opts.known?.elements ?? readElements(doc);
+  const children = opts.known?.children;
   const elements = elementsOf(doc);
   // Top elements go on top of the canvas, in their copied order.
   const sortedRoots = [...roots].sort((a, b) => (String(a.fields.z) < String(b.fields.z) ? -1 : 1));
   const rootZ = new Map<string, string>();
   let prev: string | null = null;
-  const top = topZ(all, null);
+  const top = topZ(all, null, children);
   for (const r of sortedRoots) {
     prev = prev === null ? top : zBetween(prev, null);
     rootZ.set(r.id, prev);
@@ -277,33 +282,86 @@ export function pasteClipboard(
     return end;
   };
 
-  doc.transact(() => {
-    for (const e of kept) {
-      const isRoot = e.parentId === null;
-      const f = { ...e.fields };
-      if (isRoot) {
-        f.x = (f.x as number) + dx;
-        f.y = (f.y as number) + dy;
-      }
-      if (CONNECTOR_TYPES.has(f.type as ElementType)) {
-        f.start = fixEnd(f.start, isRoot);
-        f.end = fixEnd(f.end, isRoot);
-      }
-      const z = isRoot ? rootZ.get(e.id)! : typeof f.z === "string" ? f.z : undefined;
-      delete f.z;
-      const m = elementMap(
-        {
-          ...(f as { type: ElementType; x: number; y: number; w: number; h: number }),
-          parentId: isRoot ? null : idMap.get(e.parentId!)!,
-          z,
-          createdBy: opts.createdBy,
-        },
-        all,
-      );
-      elements.set(idMap.get(e.id)!, m);
-    }
-  }, origin);
+  // Each transaction goes to the server as one message, and the server refuses
+  // a writer's message over 2 MiB and drops the tab's connection for good. A
+  // paste of a few hundred strokes is more than that, so a big paste goes in
+  // several transactions, parents before what's inside them. They share an
+  // origin and land together, so undo still takes them back in one step.
+  for (const batch of pasteBatches(kept)) {
+    doc.transact(() => {
+      for (const e of batch) writeOne(e);
+    }, origin);
+  }
   return sortedRoots.map((r) => idMap.get(r.id)!);
+
+  function writeOne(e: ClipElement) {
+    const isRoot = e.parentId === null;
+    const f = { ...e.fields };
+    if (isRoot) {
+      f.x = (f.x as number) + dx;
+      f.y = (f.y as number) + dy;
+    }
+    if (CONNECTOR_TYPES.has(f.type as ElementType)) {
+      f.start = fixEnd(f.start, isRoot);
+      f.end = fixEnd(f.end, isRoot);
+    }
+    const z = isRoot ? rootZ.get(e.id)! : typeof f.z === "string" ? f.z : undefined;
+    delete f.z;
+    const m = elementMap(
+      {
+        ...(f as { type: ElementType; x: number; y: number; w: number; h: number }),
+        parentId: isRoot ? null : idMap.get(e.parentId!)!,
+        z,
+        createdBy: opts.createdBy,
+      },
+      all,
+      children,
+    );
+    elements.set(idMap.get(e.id)!, m);
+  }
+}
+
+// What one transaction of a paste may hold, by the estimate below: a quarter
+// of the server's 2 MiB per message, since the estimate is rough.
+export const PASTE_BATCH_BYTES = 512 * 1024;
+
+// About what an element costs in a Yjs update: its JSON, doubled, because
+// Yjs writes a non-integer number (every pen point) in 9 bytes where JSON
+// spends 4 to 6 characters.
+function roughBytes(e: ClipElement): number {
+  return 2 * JSON.stringify(e.fields).length + 64;
+}
+
+// The paste in order, cut into runs under PASTE_BATCH_BYTES. Children follow
+// their parents, so each run's elements have their parents in it or before it.
+export function pasteBatches(elements: readonly ClipElement[]): ClipElement[][] {
+  const depth = new Map<string, number>();
+  const byId = new Map(elements.map((e) => [e.id, e]));
+  const depthOf = (e: ClipElement): number => {
+    const known = depth.get(e.id);
+    if (known !== undefined) return known;
+    depth.set(e.id, 0);
+    const parent = e.parentId ? byId.get(e.parentId) : undefined;
+    const d = parent ? depthOf(parent) + 1 : 0;
+    depth.set(e.id, d);
+    return d;
+  };
+  const ordered = [...elements].sort((a, b) => depthOf(a) - depthOf(b));
+  const batches: ClipElement[][] = [];
+  let batch: ClipElement[] = [];
+  let bytes = 0;
+  for (const e of ordered) {
+    const size = roughBytes(e);
+    if (batch.length && bytes + size > PASTE_BATCH_BYTES) {
+      batches.push(batch);
+      batch = [];
+      bytes = 0;
+    }
+    batch.push(e);
+    bytes += size;
+  }
+  if (batch.length) batches.push(batch);
+  return batches;
 }
 
 function shiftEndXY(e: Record<string, unknown>, dx: number, dy: number): Record<string, unknown> {
@@ -319,7 +377,7 @@ export function duplicateSelection(
   opts: Omit<PasteOptions, "at">,
   origin: unknown,
 ): string[] {
-  const clip = copySelection(doc, ids, layout, opts.channelId);
+  const clip = copySelection(doc, ids, layout, opts.channelId, opts.known);
   if (!clip) return [];
   return pasteClipboard(doc, clip, opts, origin);
 }

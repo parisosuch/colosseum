@@ -137,6 +137,27 @@ describe("pinPosition", () => {
     expect(at.y).toBeCloseTo(155, 9);
   });
 
+  test("a pin in a rotated frame turns with the frame and its own element", () => {
+    const doc = scene();
+    const els = elementsOf(doc);
+    // inner (300 square, at (100, 100) in outer) turns a half turn about its
+    // centre (150, 150); nested (100 square) turns a quarter turn.
+    els.get("inner")!.set("rotation", 180);
+    els.get("nested")!.set("rotation", 90);
+    // nested's top-left (offset 0, 0) is (-50, -50) from its centre (100, 100)
+    // in inner; the quarter turn makes it (50, -50): (150, 50) in inner. The
+    // half turn takes (0, -100) from inner's centre to (0, 100): (150, 250),
+    // so (250, 350) in outer and (1250, 350) in the world.
+    const at = pinPosition(els, { ...pinned, offset_x: 0, offset_y: 0 });
+    expect(at.x).toBeCloseTo(1250, 9);
+    expect(at.y).toBeCloseTo(350, 9);
+    // An anchor taken at that point pins straight back to it.
+    const anchor = threadAnchorAt(els, ctx(doc), at, 1);
+    const back = currentAnchor(els, anchor);
+    expect(back.x).toBeCloseTo(1250, 9);
+    expect(back.y).toBeCloseTo(350, 9);
+  });
+
   test("a free pin stays at its own position", () => {
     const els = elementsOf(scene());
     expect(pinPosition(els, { ...pinned, element_id: null, x: 40, y: 50 })).toEqual({

@@ -298,6 +298,45 @@ test("a pinned thread turns with its element, and frees where the turned pin was
   expect(row).toMatchObject({ offset_x: 0, offset_y: 0, last_element_id: "card" });
 });
 
+test("a thread in a rotated frame frees where the frame and the element turned it", async () => {
+  const editor = connect("write");
+  await synced(editor.provider);
+  addElement(editor.doc, "frame", {
+    type: "frame",
+    x: 100,
+    y: 200,
+    w: 400,
+    h: 400,
+    rotation: 90,
+    parentId: null,
+  });
+  addElement(editor.doc, "card", {
+    type: "rect",
+    x: 10,
+    y: 20,
+    w: 40,
+    h: 40,
+    rotation: -90,
+    parentId: "frame",
+  });
+  const thread = await startCanvasThread({
+    channelId,
+    userId: USERS.alice.id,
+    anchor: { elementId: "card", offsetX: 40, offsetY: 0, x: 480, y: 210 },
+    body: "Turned twice.",
+  });
+  await waitFor(() => editor.events.some((e) => e.type === "thread.created"), "thread.created");
+
+  // The card's top-right corner, turned back by the card and forward by the
+  // frame, sits at (480, 210). Moving the frame carries it along.
+  elementsOf(editor.doc).get("frame")!.set("x", 300);
+  elementsOf(editor.doc).delete("card");
+  await waitFor(async () => (await threadRow(thread.id)).element_id === null, "the thread freed");
+  const row = await threadRow(thread.id);
+  expect(row.x).toBeCloseTo(680, 6);
+  expect(row.y).toBeCloseTo(210, 6);
+});
+
 test("elementWorldPosition sums the parent chain and survives a loop", () => {
   const doc = new Y.Doc();
   addElement(doc, "outer", { x: 1, y: 2, parentId: null });

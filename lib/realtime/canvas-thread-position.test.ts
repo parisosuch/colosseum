@@ -50,18 +50,42 @@ describe("threadPosition", () => {
     expect(threadPosition(els, "card", { offset_x: 3, offset_y: 4 })).toEqual({ x: 103, y: 104 });
   });
 
-  test("an element in nested frames sums the chain, then turns by its own rotation", () => {
+  test("a rotated frame holding a rotated element turns the pin by both", () => {
     const els = docOf({
       outer: { type: "frame", x: 1000, y: 0, w: 800, h: 800, parentId: null },
-      inner: { type: "frame", x: 100, y: 200, w: 400, h: 400, parentId: "outer", rotation: 45 },
+      inner: { type: "frame", x: 100, y: 200, w: 400, h: 400, parentId: "outer", rotation: 90 },
       card: { type: "rect", x: 10, y: 20, w: 40, h: 40, parentId: "inner", rotation: -90 },
     });
-    // World top-left (1110, 220), centre (1130, 240). A quarter turn
-    // anticlockwise takes the top-right corner (+20, -20) to (-20, -20).
-    close(threadPosition(els, "card", { offset_x: 40, offset_y: 0 }), 1110, 220);
+    // The card's quarter turn back takes its top-right corner (+20, -20 from
+    // its centre) to (-20, -20): (10, 20) in the inner frame. The frame's
+    // quarter turn about its centre (200, 200) takes (-190, -180) to
+    // (180, -190): (480, 210) in the outer frame, (1480, 210) in the world.
+    close(threadPosition(els, "card", { offset_x: 40, offset_y: 0 }), 1480, 210);
     // Moving the outer frame moves the pin with it.
     els.get("outer")!.set("x", 0);
+    close(threadPosition(els, "card", { offset_x: 40, offset_y: 0 }), 480, 210);
+    // Turning the inner frame back leaves only the card's own turn.
+    els.get("inner")!.set("rotation", 0);
     close(threadPosition(els, "card", { offset_x: 40, offset_y: 0 }), 110, 220);
+  });
+
+  test("a rotated frame turns an unrotated child with it", () => {
+    const els = docOf({
+      frame: { type: "frame", x: 100, y: 200, w: 400, h: 400, rotation: 90 },
+      card: { type: "rect", x: 10, y: 20, w: 40, h: 40, parentId: "frame" },
+    });
+    // The card's bottom-right corner is (50, 60) in the frame, (-150, -140)
+    // from its centre, which a quarter turn takes to (140, -150).
+    close(threadPosition(els, "card", { offset_x: 40, offset_y: 40 }), 440, 250);
+  });
+
+  test("a rotated group turns its children about its own box", () => {
+    // A group with no stored size turns about its origin.
+    const els = docOf({
+      g: { type: "group", x: 0, y: 0, w: 0, h: 0, rotation: 180 },
+      dot: { type: "rect", x: 10, y: 10, w: 10, h: 10, parentId: "g" },
+    });
+    close(threadPosition(els, "dot", { offset_x: 0, offset_y: 0 }), -10, -10);
   });
 
   test("an element that's gone, or has no position, has no thread position", () => {
@@ -78,8 +102,9 @@ describe("threadOffset", () => {
       flat: { x: 10, y: 20, w: 100, h: 50, parentId: "frame" },
       turned: { x: 10, y: 20, w: 100, h: 50, rotation: 33, parentId: "frame" },
       odd: { x: 0, y: 0, w: 7, h: 300, rotation: -200 },
+      deep: { x: 3, y: -9, w: 20, h: 10, rotation: 71, parentId: "turned" },
     });
-    for (const id of ["flat", "turned", "odd"]) {
+    for (const id of ["flat", "turned", "odd", "deep"]) {
       for (const at of [
         { x: -280, y: 70 },
         { x: 0, y: 0 },

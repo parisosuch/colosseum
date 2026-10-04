@@ -36,14 +36,17 @@ export type BaseElement = {
   // Position relative to the parent frame or group (`parentId`), so moving a
   // frame writes one position and its children follow. A top-level element
   // (parentId null) is in world space, and an element's world position is the
-  // sum along its parent chain (elementWorldPosition in canvas-threads.ts).
+  // sum along its parent chain (elementWorldPosition in canvas-threads.ts)
+  // while nothing on it is rotated; threadPosition there handles rotation.
   x: number;
   y: number;
   w: number;
   h: number;
-  // Degrees clockwise about the centre of the (x, y, w, h) box, which is the
-  // box before rotation. Nothing draws or edits it yet; canvas threads already
-  // turn with it (threadPosition in canvas-threads.ts).
+  // Degrees, clockwise, about the centre of the (x, y, w, h) box, which is the
+  // box before rotation: CSS `rotate()` with its default transform origin, as
+  // the renderer will apply it. A frame or group turns its children with it,
+  // since their x/y are in its space. Nothing draws or edits rotation yet;
+  // canvas threads already follow it (threadPosition in canvas-threads.ts).
   rotation: number;
   // The frame or group this element sits in; null at the top level. Parent
   // links are what make the layer tree.

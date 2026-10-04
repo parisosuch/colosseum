@@ -94,7 +94,8 @@ export function toThreadChannelEvent(event: ThreadRealtimeEvent): ThreadChannelE
 const MAX_DEPTH = 64;
 
 // An element's position in world space: its own x/y plus every ancestor's,
-// since x/y are relative to the parent frame or group. Null when the element
+// since x/y are relative to the parent frame or group. Ignores rotation; a
+// thread's pin goes through threadPosition, which doesn't. Null when the element
 // or an ancestor has no usable position, or the parent links loop. A parent
 // that's missing from the doc ends the chain, as if the element were top-level.
 export function elementWorldPosition(
@@ -122,8 +123,7 @@ export function elementWorldPosition(
   return { x, y };
 }
 
-// An element's rotation, in degrees clockwise about the centre of its box, as
-// CSS `rotate()` turns a box with its default transform origin. 0 when unset.
+// An element's rotation (see `rotation` in canvas-doc.ts). 0 when unset.
 function rotationOf(el: Y.Map<unknown>): number {
   const r = el.get("rotation");
   return typeof r === "number" && Number.isFinite(r) ? r : 0;
@@ -145,31 +145,73 @@ function rotate(x: number, y: number, degrees: number): { x: number; y: number }
   return { x: x * cos - y * sin, y: x * sin + y * cos };
 }
 
+type Node = { x: number; y: number; w: number; h: number; rotation: number };
+
+// The element and its ancestors, innermost first, with what positions them:
+// x/y in the parent's space, the box size and the rotation. Null on the same
+// terms as elementWorldPosition: the element missing or without a usable
+// position, or the parent links looping. A missing parent ends the chain.
+function chainOf(elements: Y.Map<Y.Map<unknown>>, elementId: string): Node[] | null {
+  const chain: Node[] = [];
+  let id: unknown = elementId;
+  for (let depth = 0; typeof id === "string"; depth++) {
+    const el = elements.get(id);
+    if (!el) {
+      if (depth === 0) return null;
+      break;
+    }
+    if (depth >= MAX_DEPTH) return null;
+    const x = el.get("x");
+    const y = el.get("y");
+    if (typeof x !== "number" || typeof y !== "number") return null;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    chain.push({ x, y, ...sizeOf(el), rotation: rotationOf(el) });
+    id = el.get("parentId");
+  }
+  return chain;
+}
+
+// A point in a node's own unrotated box → the same point in its parent's
+// space: turned about the box centre, then moved to the node's x/y.
+function toParent(n: Node, p: { x: number; y: number }): { x: number; y: number } {
+  if (n.rotation % 360 === 0) return { x: n.x + p.x, y: n.y + p.y };
+  const cx = n.w / 2;
+  const cy = n.h / 2;
+  const t = rotate(p.x - cx, p.y - cy, n.rotation);
+  return { x: n.x + cx + t.x, y: n.y + cy + t.y };
+}
+
+// The inverse: a point in the parent's space → the node's unrotated box.
+function fromParent(n: Node, p: { x: number; y: number }): { x: number; y: number } {
+  if (n.rotation % 360 === 0) return { x: p.x - n.x, y: p.y - n.y };
+  const cx = n.w / 2;
+  const cy = n.h / 2;
+  const t = rotate(p.x - n.x - cx, p.y - n.y - cy, -n.rotation);
+  return { x: cx + t.x, y: cy + t.y };
+}
+
 // Where a thread pinned to `elementId` sits in world space, or null when the
 // element has no usable position. Clients and the server both go through this,
 // so the free pin lands exactly where the pinned one was drawn.
 //
 // The offset is in the element's own unrotated box: (0, 0) is its top-left
-// corner before rotation. A rotated element turns the offset with it about the
-// box's centre, so a pin on a corner stays on that corner. Only the element's
-// own rotation counts. A parent's x/y moves its children (elementWorldPosition),
-// but nothing in the doc turns children with a rotated parent, so neither does
-// this.
+// corner before rotation. Each element turns its box about the box's centre
+// (see `rotation` in canvas-doc.ts), and its children turn with it, so the
+// offset is carried out through every frame and group above: turned by the
+// element, placed at its x/y in the parent, turned by the parent, and so on to
+// world space. A pin on a corner stays on that corner however the element or
+// anything around it is turned. With no rotation anywhere this is the
+// element's world position (elementWorldPosition) plus the offset.
 export function threadPosition(
   elements: Y.Map<Y.Map<unknown>>,
   elementId: string,
   offset: { offset_x: number | null; offset_y: number | null },
 ): { x: number; y: number } | null {
-  const at = elementWorldPosition(elements, elementId);
-  if (!at) return null;
-  const ox = offset.offset_x ?? 0;
-  const oy = offset.offset_y ?? 0;
-  const el = elements.get(elementId)!;
-  const degrees = rotationOf(el);
-  if (degrees % 360 === 0) return { x: at.x + ox, y: at.y + oy };
-  const { w, h } = sizeOf(el);
-  const turned = rotate(ox - w / 2, oy - h / 2, degrees);
-  return { x: at.x + w / 2 + turned.x, y: at.y + h / 2 + turned.y };
+  const chain = chainOf(elements, elementId);
+  if (!chain) return null;
+  let p = { x: offset.offset_x ?? 0, y: offset.offset_y ?? 0 };
+  for (const n of chain) p = toParent(n, p);
+  return p;
 }
 
 // The offset that pins a thread on `elementId` at the world point `at`: the
@@ -180,14 +222,11 @@ export function threadOffset(
   elementId: string,
   at: { x: number; y: number },
 ): { offset_x: number; offset_y: number } | null {
-  const origin = elementWorldPosition(elements, elementId);
-  if (!origin) return null;
-  const el = elements.get(elementId)!;
-  const degrees = rotationOf(el);
-  if (degrees % 360 === 0) return { offset_x: at.x - origin.x, offset_y: at.y - origin.y };
-  const { w, h } = sizeOf(el);
-  const local = rotate(at.x - origin.x - w / 2, at.y - origin.y - h / 2, -degrees);
-  return { offset_x: local.x + w / 2, offset_y: local.y + h / 2 };
+  const chain = chainOf(elements, elementId);
+  if (!chain) return null;
+  let p = { x: at.x, y: at.y };
+  for (let i = chain.length - 1; i >= 0; i--) p = fromParent(chain[i], p);
+  return { offset_x: p.x, offset_y: p.y };
 }
 
 // A thread the store says is pinned to an element, or is a free pin that was

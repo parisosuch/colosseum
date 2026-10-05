@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import { parseOgMeta } from "./og-meta";
+import { fetchOgFallback, parseOgMeta } from "./og-meta";
 
 test("prefers og:image and resolves a relative URL against the base", () => {
   const html = `
@@ -43,4 +43,9 @@ test("decodes numeric entities, which is how some sites spell every emoji", () =
   // "&#39;" in the source is written &amp;#39; and has to stay as it was.
   const html = `<meta property="og:title" content="&#064;jane &#x1f525; caf&#233; &amp;#39;">`;
   expect(parseOgMeta(html, "https://example.com").title).toBe("@jane 🔥 café &#39;");
+});
+
+test("fetchOgFallback refuses a private address instead of fetching it", async () => {
+  expect(await fetchOgFallback("http://169.254.169.254/latest/meta-data/", 1_000)).toBeNull();
+  expect(await fetchOgFallback("http://127.0.0.1:5432/", 1_000)).toBeNull();
 });

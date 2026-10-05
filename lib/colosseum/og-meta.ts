@@ -5,6 +5,8 @@
 //
 // Deliberately free of DB / server-only imports so the parser stays unit-testable.
 
+import { guardedFetch, type GuardedResponse } from "./guarded-fetch";
+
 // A current desktop Chrome UA, shared with the headless launch so both the
 // render and this fallback look like the same ordinary browser.
 export const DESKTOP_UA =
@@ -92,11 +94,24 @@ export function parseOgMeta(html: string, baseUrl: string): OgMeta {
   return { imageUrl, title: title.slice(0, 200), description: description.slice(0, 500) };
 }
 
-async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response | null> {
-  return fetch(url, {
+// Caps on what a user-supplied URL can make the server download. A page only
+// needs its <head>, but YouTube and Instagram serve a megabyte or two of
+// inline script before the body, so the page cap has headroom. The image cap
+// matches the upload limit in ./blob.
+export const MAX_PAGE_BYTES = 5 * 1024 * 1024;
+const MAX_OG_IMAGE_BYTES = 10 * 1024 * 1024;
+
+// Through the SSRF guard: these URLs come from users (the page) or from the
+// page itself (its og:image), and either can point at a private address.
+async function fetchWithTimeout(
+  url: string,
+  timeoutMs: number,
+  maxBytes: number,
+): Promise<GuardedResponse | null> {
+  return guardedFetch(url, {
     headers: { "User-Agent": DESKTOP_UA, Accept: "text/html,image/*" },
-    redirect: "follow",
-    signal: AbortSignal.timeout(timeoutMs),
+    timeoutMs,
+    maxBytes,
   }).catch(() => null);
 }
 
@@ -107,17 +122,16 @@ export async function fetchOgFallback(
   url: string,
   timeoutMs: number,
 ): Promise<{ image: Buffer; title: string; description: string } | null> {
-  const res = await fetchWithTimeout(url, timeoutMs);
+  const res = await fetchWithTimeout(url, timeoutMs, MAX_PAGE_BYTES);
   if (!res || !res.ok) return null;
 
-  const html = await res.text().catch(() => "");
-  const meta = parseOgMeta(html, res.url || url);
+  const meta = parseOgMeta(res.text(), res.url);
   if (!meta.imageUrl) return null;
 
-  const imgRes = await fetchWithTimeout(meta.imageUrl, timeoutMs);
+  const imgRes = await fetchWithTimeout(meta.imageUrl, timeoutMs, MAX_OG_IMAGE_BYTES);
   if (!imgRes || !imgRes.ok) return null;
 
-  const image = Buffer.from(await imgRes.arrayBuffer());
+  const image = imgRes.body;
   if (image.length === 0) return null;
 
   return { image, title: meta.title, description: meta.description };

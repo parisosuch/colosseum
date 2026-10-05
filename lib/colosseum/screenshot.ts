@@ -4,6 +4,8 @@ import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import sharp from "sharp";
 
 import { createMedia, putBlob } from "./blob";
+import { assertPublicUrl } from "./guarded-fetch";
+import { startGuardedProxy } from "./guarded-proxy";
 import { DESKTOP_UA, fetchOgFallback } from "./og-meta";
 import { getScreenshot, upsertScreenshot, ScreenshotRow } from "./screenshot-data";
 import { logError, logInfo } from "@/lib/log";
@@ -58,14 +60,30 @@ async function toSquarePng(buffer: Buffer, position: "top" | "centre"): Promise<
 export async function captureWebsiteScreenshot(
   url: string,
 ): Promise<{ image: Buffer; title: string; description: string }> {
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-blink-features=AutomationControlled",
-    ],
-  });
+  // Every request the page makes goes through the guarded proxy, which refuses
+  // private and local addresses and pins each connection to the address it
+  // checked. See ./guarded-proxy for why checking the URL up front isn't enough.
+  const proxy = await startGuardedProxy();
+  let browser;
+  try {
+    browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-blink-features=AutomationControlled",
+        `--proxy-server=${proxy.url}`,
+        // Chromium skips the proxy for localhost and loopback addresses unless
+        // told otherwise, which would let a page reach them directly.
+        "--proxy-bypass-list=<-loopback>",
+        // WebRTC's UDP doesn't go through an HTTP proxy at all.
+        "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
+      ],
+    });
+  } catch (e) {
+    await proxy.close();
+    throw e;
+  }
 
   try {
     const page = await browser.newPage();
@@ -126,6 +144,7 @@ export async function captureWebsiteScreenshot(
     return { image, title, description };
   } finally {
     await browser.close();
+    await proxy.close();
   }
 }
 
@@ -137,6 +156,11 @@ export async function captureAndCacheScreenshot(
   url: string,
   ownerId: string,
 ): Promise<{ image_url: string; title: string; description: string }> {
+  // Refuse a private or local URL before launching anything. The proxy and the
+  // og:image fetch would each refuse it too, but this fails fast with a clear
+  // error instead of a blank render and a fallback attempt.
+  await assertPublicUrl(url);
+
   let image: Buffer;
   let title: string;
   let description: string;

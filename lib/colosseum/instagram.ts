@@ -18,7 +18,8 @@
 
 import { instagramRef } from "@/lib/utils";
 import { logError } from "@/lib/log";
-import { metaContent, parseOgMeta } from "./og-meta";
+import { guardedFetch } from "./guarded-fetch";
+import { MAX_PAGE_BYTES, metaContent, parseOgMeta } from "./og-meta";
 
 export type InstagramMeta = {
   // Which card to draw. Read from Instagram's own og:type rather than from the
@@ -102,10 +103,12 @@ const FETCH_TIMEOUT_MS = 10_000;
 export async function fetchInstagramMeta(
   url: string,
 ): Promise<(InstagramMeta & { imageUrl: string }) | null> {
-  const res = await fetch(url, {
+  // Guarded even though ingest rebuilds the URL on instagram.com: redirects go
+  // wherever the response says, and the guard costs one DNS lookup.
+  const res = await guardedFetch(url, {
     headers: { "User-Agent": CRAWLER_UA, "Accept-Language": "en-US,en;q=0.9" },
-    redirect: "follow",
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    timeoutMs: FETCH_TIMEOUT_MS,
+    maxBytes: MAX_PAGE_BYTES,
   }).catch(() => null);
   // Logged, not swallowed: every failure here lands the user a plain link block
   // instead of the card they asked for, and Instagram rate-limits a server's IP
@@ -120,7 +123,7 @@ export async function fetchInstagramMeta(
     return null;
   }
 
-  const meta = parseInstagramMeta(await res.text(), res.url || url);
+  const meta = parseInstagramMeta(res.text(), res.url);
   // The picture is the whole block for a post and the subject of an account
   // card, so a page without one is worse than the link block we'd fall back to.
   if (!meta?.imageUrl) {

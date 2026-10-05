@@ -19,6 +19,7 @@ import { db } from "@/lib/db";
 import { blobs, media } from "@/lib/db/schema";
 import { logError } from "@/lib/log";
 import { THUMB_MAX_WIDTH } from "@/lib/utils";
+import { BlockedUrlError, guardedFetch, ResponseTooLargeError } from "./guarded-fetch";
 import { DESKTOP_UA } from "./og-meta";
 import { deleteObject, getBytes, objectExists, putObject } from "./storage";
 import { extractVideoFrame, ffmpegAvailable } from "./video-frame";
@@ -183,8 +184,13 @@ export async function putImageBlob(
 // flow and the API's image-block create — is ingested and thumbnailed instead of
 // persisting a third-party URL that skips compression and pins us to their host.
 // Throws on a bad/unreachable/oversized/non-image URL; putImageBlob re-validates
-// type and size. ponytail: no SSRF allowlist, matching the screenshot capture's
-// existing posture — tighten both together if the threat model changes.
+// type and size.
+//
+// The fetch goes through ./guarded-fetch, which refuses private, loopback and
+// link-local addresses on every hop. The URL can come from a clipboard the user
+// never looked at, so without that a signed-in user could read internal
+// services back as an image block.
+//
 // Matches the screenshot capture's navigation timeout, so a slow host costs the
 // same either way.
 const IMAGE_FETCH_TIMEOUT_MS = 15_000;
@@ -208,21 +214,29 @@ export async function putImageBlobFromUrl(
   }
   // Bounded: a host that accepts the connection and then stalls would otherwise
   // hold the request open forever, and this now runs on the add-a-block path.
-  const res = await fetch(url, {
+  const res = await guardedFetch(url, {
     headers: { "User-Agent": DESKTOP_UA, Accept: "image/*" },
-    signal: AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS),
-  }).catch(() => {
-    throw new Error("Couldn't fetch that image.");
+    timeoutMs: IMAGE_FETCH_TIMEOUT_MS,
+    maxBytes: MAX_IMAGE_BYTES,
+  }).catch((e) => {
+    throw remoteFetchError(e, "image", MAX_IMAGE_BYTES);
   });
   if (!res.ok) {
     throw new Error("Couldn't fetch that image.");
   }
-  if (Number(res.headers.get("content-length")) > MAX_IMAGE_BYTES) {
-    throw new Error("That image is too large (max 10MB).");
-  }
   const type = (res.headers.get("content-type") ?? "").split(";")[0].trim();
-  const file = new File([await res.arrayBuffer()], "remote-image", { type });
+  const file = new File([res.body], "remote-image", { type });
   return putImageBlob(file, createdBy, visibility);
+}
+
+// The error a user sees when fetching their URL failed. A refused address says
+// so, since "couldn't fetch" would read as a flaky host worth retrying.
+function remoteFetchError(e: unknown, kind: string, max: number): Error {
+  if (e instanceof BlockedUrlError) return e;
+  if (e instanceof ResponseTooLargeError) {
+    return new Error(`That ${kind} is too large (max ${Math.round(max / 1024 / 1024)}MB).`);
+  }
+  return new Error(`Couldn't fetch that ${kind}.`);
 }
 
 // PDFs are heavier than images and aren't downsized, so a roomier cap.
@@ -350,10 +364,10 @@ export async function setMediaVisibilityByUrls(
 // URL the server fetches sidesteps both, and matches how an image block is
 // already added over the API.
 //
-// The size is checked twice on purpose: once against the declared
-// content-length to hang up on an obviously oversized file before reading it,
-// and again inside put{Pdf,Video}Blob against the bytes that actually arrived,
-// since a content-length can lie or be absent.
+// The size is checked twice on purpose: guardedFetch hangs up on a declared
+// content-length over the cap before reading, and cuts the body off once it
+// passes the cap (a content-length can lie or be absent); put{Pdf,Video}Blob
+// checks the bytes that arrived again.
 export async function putFileBlobFromUrl(
   fileUrl: string,
   kind: "pdf" | "video",
@@ -373,19 +387,19 @@ export async function putFileBlobFromUrl(
   const max = kind === "pdf" ? MAX_PDF_BYTES : MAX_VIDEO_BYTES;
   const accept = kind === "pdf" ? "application/pdf" : "video/*";
 
-  const res = await fetch(url, {
+  // Guarded like putImageBlobFromUrl: the API and MCP take this URL from any
+  // token holder.
+  const res = await guardedFetch(url, {
     headers: { "User-Agent": DESKTOP_UA, Accept: accept },
-    signal: AbortSignal.timeout(FILE_FETCH_TIMEOUT_MS),
-  }).catch(() => {
-    throw new Error(`Couldn't fetch that ${kind}.`);
+    timeoutMs: FILE_FETCH_TIMEOUT_MS,
+    maxBytes: max,
+  }).catch((e) => {
+    throw remoteFetchError(e, kind, max);
   });
   if (!res.ok) throw new Error(`Couldn't fetch that ${kind}.`);
-  if (Number(res.headers.get("content-length")) > max) {
-    throw new Error(`That ${kind} is too large (max ${Math.round(max / 1024 / 1024)}MB).`);
-  }
 
   const type = (res.headers.get("content-type") ?? "").split(";")[0].trim();
-  const file = new File([await res.arrayBuffer()], `remote-${kind}`, { type });
+  const file = new File([res.body], `remote-${kind}`, { type });
   return kind === "pdf"
     ? putPdfBlob(file, createdBy, visibility)
     : putVideoBlob(file, createdBy, visibility);

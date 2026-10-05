@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
 import { deleteMediaByUrl } from "@/lib/colosseum/blob";
+import { BlockedUrlError } from "@/lib/colosseum/guarded-fetch";
 import { captureAndCacheScreenshot } from "@/lib/colosseum/screenshot";
 import { getScreenshot, upsertScreenshot } from "@/lib/colosseum/screenshot-data";
 import { logError, logInfo } from "@/lib/log";
@@ -90,6 +91,11 @@ export async function POST(req: NextRequest) {
           upsertError,
         );
       }
+    }
+    // A refused address is the caller's input, not a server fault, and its
+    // message says why.
+    if (error instanceof BlockedUrlError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
     }
     return NextResponse.json({ error: error }, { status: 500 });
   }

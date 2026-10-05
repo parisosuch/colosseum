@@ -8,7 +8,8 @@
 // Deliberately free of DB / server-only imports so the parser stays
 // unit-testable, like og-meta.ts.
 
-import { DESKTOP_UA, parseOgMeta } from "./og-meta";
+import { guardedFetch } from "./guarded-fetch";
+import { DESKTOP_UA, MAX_PAGE_BYTES, parseOgMeta } from "./og-meta";
 
 export type YouTubeChannelMeta = {
   // The channel's display name, e.g. "Syntax".
@@ -60,14 +61,16 @@ const FETCH_TIMEOUT_MS = 10_000;
 // shape) — the caller falls back to a plain link block rather than failing the
 // add.
 export async function fetchYouTubeChannelMeta(url: string): Promise<YouTubeChannelMeta | null> {
-  const res = await fetch(url, {
+  // Guarded even though ingest rebuilds the URL on youtube.com: redirects go
+  // wherever the response says, and the guard costs one DNS lookup.
+  const res = await guardedFetch(url, {
     headers: { "User-Agent": DESKTOP_UA, "Accept-Language": "en-US,en;q=0.9" },
-    redirect: "follow",
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    timeoutMs: FETCH_TIMEOUT_MS,
+    maxBytes: MAX_PAGE_BYTES,
   }).catch(() => null);
   if (!res || !res.ok) return null;
 
-  const meta = parseYouTubeChannelMeta(await res.text(), url);
+  const meta = parseYouTubeChannelMeta(res.text(), url);
   // No name means we didn't get a channel page — a card with a blank heading is
   // worse than the link block the caller falls back to.
   return meta.title ? meta : null;

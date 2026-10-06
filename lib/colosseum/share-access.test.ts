@@ -11,6 +11,9 @@ import {
   getColumnNeighboursAction,
 } from "./actions";
 import { mediaIdFromUrl, putImageBlob } from "./blob";
+import { getCanvasBlocksAction, getUnplacedBlocksAction } from "./canvas-actions";
+import { startCanvasThread } from "./canvas-thread";
+import { getCanvasThreadAction, listCanvasThreadsAction } from "./canvas-thread-actions";
 import { createChannel } from "./channel";
 import { addChannelColumn, uploadImageColumn, uploadTextColumn } from "./column";
 import { createComment } from "./comment";
@@ -157,4 +160,68 @@ test("the share media route serves covered media, and 404s everything else", asy
 
   const other = await privateChannel("Elsewhere");
   expect((await get(await link(other.id))).status).toBe(404);
+});
+
+test("a channel link reads the canvas's blocks and threads, and no other channel's", async () => {
+  const ch = await privateChannel("Canvas shelf");
+  const other = await privateChannel("Canvas elsewhere");
+  const mine = await textBlock(ch.id, "mine");
+  const theirs = await textBlock(other.id, "theirs");
+  const thread = await startCanvasThread({
+    channelId: ch.id,
+    userId: USERS.alice.id,
+    anchor: { x: 1, y: 2 },
+    body: "look here",
+  });
+  const elsewhere = await startCanvasThread({
+    channelId: other.id,
+    userId: USERS.alice.id,
+    anchor: { x: 1, y: 2 },
+    body: "private",
+  });
+  const token = await link(ch.id);
+
+  const blocks = await getCanvasBlocksAction(ch.id, [mine.id, theirs.id], token);
+  expect(blocks.map((b) => b.id)).toEqual([mine.id]);
+  const { columns, count } = await getUnplacedBlocksAction(ch.id, { placed: [] }, token);
+  expect(columns.map((b) => b.id)).toEqual([mine.id]);
+  expect(count).toBe(1);
+
+  expect((await listCanvasThreadsAction(ch.id, undefined, token)).map((t) => t.id)).toEqual([
+    thread.id,
+  ]);
+  const read = await getCanvasThreadAction(thread.id, { token, channelId: ch.id });
+  expect(read.comments.map((c) => c.body)).toEqual(["look here"]);
+
+  await expect(getCanvasBlocksAction(other.id, [theirs.id], token)).rejects.toThrow("Not found.");
+  await expect(getUnplacedBlocksAction(other.id, { placed: [] }, token)).rejects.toThrow(
+    "Not found.",
+  );
+  await expect(listCanvasThreadsAction(other.id, undefined, token)).rejects.toThrow("Not found.");
+  await expect(getCanvasThreadAction(elsewhere.id, { token, channelId: ch.id })).rejects.toThrow(
+    "Not found.",
+  );
+  await expect(getCanvasThreadAction(elsewhere.id, { token, channelId: other.id })).rejects.toThrow(
+    "Not found.",
+  );
+});
+
+test("a block link, a made-up token and a revoked link read nothing off the canvas", async () => {
+  const ch = await privateChannel("Canvas shut");
+  const shared = await textBlock(ch.id, "shared");
+  const blockToken = await link(ch.id, shared.id);
+  await expect(getCanvasBlocksAction(ch.id, [shared.id], blockToken)).rejects.toThrow("Not found.");
+  await expect(listCanvasThreadsAction(ch.id, undefined, blockToken)).rejects.toThrow("Not found.");
+  await expect(getCanvasBlocksAction(ch.id, [shared.id], "x".repeat(43))).rejects.toThrow(
+    "Not found.",
+  );
+
+  const { link: row, token } = await createShareLink({
+    channelId: ch.id,
+    expiresAt: null,
+    createdBy: USERS.alice.id,
+  });
+  expect((await getCanvasBlocksAction(ch.id, [shared.id], token)).length).toBe(1);
+  await revokeShareLink(row.id, ch.id);
+  await expect(getCanvasBlocksAction(ch.id, [shared.id], token)).rejects.toThrow("Not found.");
 });

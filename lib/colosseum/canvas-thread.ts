@@ -114,8 +114,16 @@ function anchorValues(anchor: ThreadAnchor) {
 
 // The channel, if `userId` (null when signed out) may read it. Throws the
 // same "Not found." for a missing channel and an unreadable one.
-async function readableChannel(channelId: number, userId: string | null): Promise<Channel> {
+//
+// `sharedChannelId` is the channel a verified share link opens (the action
+// resolved the token); a link holder reads that channel whoever they are.
+async function readableChannel(
+  channelId: number,
+  userId: string | null,
+  sharedChannelId?: number,
+): Promise<Channel> {
   const channel = Number.isSafeInteger(channelId) ? await getChannel(channelId) : null;
+  if (channel && sharedChannelId === channel.id) return channel;
   if (!channel || !canReadChannel(channel, await resolveChannelViewer(channel, userId))) {
     throw new Error(NOT_FOUND);
   }
@@ -198,8 +206,9 @@ export async function listChannelThreads(
   channelId: number,
   userId: string | null,
   page: ThreadPage = {},
+  sharedChannelId?: number,
 ): Promise<CanvasThread[]> {
-  await readableChannel(channelId, userId);
+  await readableChannel(channelId, userId, sharedChannelId);
   const after = page?.after ?? undefined;
   if (after !== undefined && !Number.isSafeInteger(after)) throw new Error("Invalid page.");
   const want = page?.limit ?? THREAD_PAGE;
@@ -248,10 +257,11 @@ export async function listChannelThreads(
 export async function getCanvasThread(
   threadId: number,
   userId: string | null,
+  sharedChannelId?: number,
 ): Promise<CanvasThreadWithComments> {
   const row = await getThreadRow(threadId);
   if (!row) throw new Error(NOT_FOUND);
-  await readableChannel(row.channel_id, userId);
+  await readableChannel(row.channel_id, userId, sharedChannelId);
   const comments = await threadComments([row.id]);
   return { ...toThread(row, comments.length, comments[0] ?? null), comments };
 }

@@ -70,8 +70,12 @@ function sameOrigin(req: IncomingMessage): boolean {
 // the viewer's cookie rather than duplicating it here.
 async function authorize(req: IncomingMessage, channelId: number): Promise<Authorization | null> {
   if (!sameOrigin(req)) return null;
-  const res = await fetch(`http://127.0.0.1:${port}/api/realtime/authorize?channel=${channelId}`, {
-    headers: { cookie: req.headers.cookie ?? "" },
+  // A share-link socket names its token in the query string; the app decides
+  // what it grants and the cookie plays no part.
+  const share = new URL(req.url ?? "", "http://localhost").searchParams.get("share");
+  const query = `channel=${channelId}${share ? `&share=${encodeURIComponent(share)}` : ""}`;
+  const res = await fetch(`http://127.0.0.1:${port}/api/realtime/authorize?${query}`, {
+    headers: { cookie: share ? "" : (req.headers.cookie ?? "") },
   });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`authorize returned ${res.status}`);

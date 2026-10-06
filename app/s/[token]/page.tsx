@@ -4,6 +4,7 @@ import BlockDetail from "@/components/block-detail";
 import ChannelBoard from "@/components/channel-board";
 import { ShareProvider } from "@/components/share-context";
 import ShareUnavailable from "@/components/share-unavailable";
+import { channelCanvasHasElements } from "@/lib/colosseum/canvas-blocks";
 import { blockLabel, blockPreviewMeta } from "@/lib/colosseum/block-meta";
 import { channelPreviewMeta } from "@/lib/colosseum/channel-meta";
 import { getColumn } from "@/lib/colosseum/column";
@@ -108,10 +109,13 @@ export default async function SharePage({ params, searchParams }: SharePageParam
   // signed-out visitor would see it (a nested private channel stays a stub)
   // and with media through the share.
   const sp = await searchParams;
-  const [board, members, ownerProfile] = await Promise.all([
+  const [board, members, ownerProfile, hasCanvas] = await Promise.all([
     shareBoardFirstPage(share, sp),
     channel.access !== "open" ? listChannelMembers(channel.id) : Promise.resolve([]),
     getOwnerByHandle(handle),
+    // The canvas button shows once there is something on the canvas, as it does
+    // for any reader.
+    channelCanvasHasElements(channel.id),
   ]);
   const { initialColumns } = board;
   const initialScreenshots = [
@@ -163,6 +167,7 @@ export default async function SharePage({ params, searchParams }: SharePageParam
         initialBlockScreenshot={initialBlockScreenshot}
         initialQuery={board.query}
         initialFilteredCount={board.filteredCount}
+        showCanvasButton={hasCanvas}
       />
     </ShareProvider>
   );

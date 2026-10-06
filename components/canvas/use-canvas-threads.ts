@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { useShare } from "@/components/share-context";
+
 import type { Point } from "@/lib/canvas/camera";
 import {
   applyThreadEvent,
@@ -91,6 +93,8 @@ export function useCanvasThreads({
   // Threads this viewer is deleting.
   const deleting = useRef(new Set<number>());
   const status = useCanvas(store, "connection", (s) => s.connection.status);
+  // Under /s/<token>/canvas the reads go through the link.
+  const shareToken = useShare()?.token;
   const canComment = !!viewerId && hasProfile;
 
   // Live events that arrive while a request is on its way, so its response
@@ -117,7 +121,7 @@ export function useCanvasThreads({
   const fetchThread = useCallback(
     (id: number, quiet = false) => {
       const start = beginWindow();
-      getCanvasThreadAction(id)
+      getCanvasThreadAction(id, shareToken ? { token: shareToken, channelId } : undefined)
         .then((thread) => {
           const during = endWindow(start);
           setState((s) => loadThread(s, thread, during));
@@ -130,7 +134,7 @@ export function useCanvasThreads({
           toast.error("Couldn't open that thread. It may have been deleted.");
         });
     },
-    [beginWindow, endWindow],
+    [beginWindow, endWindow, shareToken, channelId],
   );
 
   // The list, on the first connection and again after every reconnect, since
@@ -142,7 +146,7 @@ export function useCanvasThreads({
     if (status !== "connected") return;
     const id = ++loads.current;
     const start = beginWindow();
-    listCanvasThreadsAction(channelId)
+    listCanvasThreadsAction(channelId, undefined, shareToken)
       .then((list) => {
         const during = endWindow(start);
         if (loads.current !== id) return;
@@ -157,7 +161,7 @@ export function useCanvasThreads({
         console.error(err);
         if (loads.current === id) setLoaded(true);
       });
-  }, [status, channelId, beginWindow, endWindow, fetchThread]);
+  }, [status, channelId, shareToken, beginWindow, endWindow, fetchThread]);
 
   // Live events from the canvas socket.
   useEffect(

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
-import { canvasAuthorization } from "@/lib/colosseum/canvas-access";
+import { canvasAuthorization, shareCanvasAuthorization } from "@/lib/colosseum/canvas-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,6 +13,8 @@ export const dynamic = "force-dynamic";
 // channel page's: contributors write, other readers get a read-only socket. A
 // missing channel and an unreadable one both 404, so nothing leaks which.
 //
+// `&share=<token>` asks what a channel share link grants instead.
+//
 // It only ever describes the caller's own access and their own public profile,
 // which the channel page already reveals, so it needs no protection beyond the
 // session itself.
@@ -20,8 +22,12 @@ export async function GET(req: Request) {
   const id = Number(new URL(req.url).searchParams.get("channel"));
   if (!Number.isSafeInteger(id) || id <= 0) return notFound();
 
-  const user = await getSessionUser();
-  const auth = await canvasAuthorization(id, user?.id ?? null);
+  // A share-link socket carries its token and nothing else counts: the link
+  // holder is a read-only visitor whoever they're signed in as.
+  const share = new URL(req.url).searchParams.get("share");
+  const auth = share
+    ? await shareCanvasAuthorization(id, share)
+    : await canvasAuthorization(id, (await getSessionUser())?.id ?? null);
   if (!auth) return notFound();
 
   return NextResponse.json(auth, { headers: { "Cache-Control": "no-store" } });

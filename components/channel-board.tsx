@@ -175,8 +175,8 @@ type ChannelBoardProps = {
   // and `initialFilteredCount` its match count when it filters anything.
   initialQuery?: ChannelQuery;
   initialFilteredCount?: number | null;
-  // Show the canvas button: on the channel page (not a share link), to anyone
-  // who can contribute, and to everyone else once the canvas exists.
+  // Show the canvas button: to anyone who can contribute, and to everyone else
+  // (a channel link's holder included) once the canvas exists.
   showCanvasButton?: boolean;
 };
 
@@ -813,7 +813,8 @@ export default function ChannelBoard({
     window.history.replaceState(null, "", channelHref(base, query, { block }));
   }, [query, handle, channel.id, share?.base]);
 
-  const channelPath = `/${handle}/${channel.id}`;
+  // Where this board lives, and so where Back from the canvas returns to.
+  const channelPath = share?.base ?? `/${handle}/${channel.id}`;
 
   // Back from the canvas: put the scroll where it was, after loading as many
   // blocks as were loaded then, and tell the close transition where the board
@@ -925,7 +926,7 @@ export default function ChannelBoard({
           />
         ) : null}
         <ViewToggle view={view} onChange={setView} />
-        {showCanvasButton && !share ? (
+        {showCanvasButton ? (
           <CanvasButton
             channelPath={channelPath}
             channelHref={channelHref(channelPath, query)}

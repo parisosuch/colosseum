@@ -15,7 +15,7 @@ import * as decoding from "lib0/decoding";
 import { WebsocketProvider } from "y-websocket";
 import * as Y from "yjs";
 
-import { canvasAuthorization } from "@/lib/colosseum/canvas-access";
+import { canvasAuthorization, shareCanvasAuthorization } from "@/lib/colosseum/canvas-access";
 import { db } from "@/lib/db";
 import { user } from "@/lib/db/schema";
 import { createCanvasServer, type Authorization, type CanvasServer } from "./canvas-server";
@@ -42,7 +42,7 @@ async function sessionUserId(id: string | null): Promise<string | null> {
   return row && !row.banned ? id : null;
 }
 
-export async function startHarness(): Promise<Harness> {
+export async function startHarness(options: { pingIntervalMs?: number } = {}): Promise<Harness> {
   const store = createPgCanvasStore(process.env.DATABASE_URL!);
   const harness = {
     authorizations: [],
@@ -53,7 +53,15 @@ export async function startHarness(): Promise<Harness> {
     store,
     authorize: async (req, channelId): Promise<Authorization | null> => {
       if (harness.failAuthorize) throw new Error("authorize is down");
-      const asked = new URL(req.url!, "http://x").searchParams.get("user") || null;
+      const params = new URL(req.url!, "http://x").searchParams;
+      // A share socket names its token and nothing else counts, as in the
+      // authorize route.
+      const share = params.get("share");
+      if (share) {
+        harness.authorizations.push({ channelId, userId: null });
+        return shareCanvasAuthorization(channelId, share);
+      }
+      const asked = params.get("user") || null;
       const userId = await sessionUserId(asked);
       harness.authorizations.push({ channelId, userId: asked });
       const auth = await canvasAuthorization(channelId, userId);
@@ -64,6 +72,7 @@ export async function startHarness(): Promise<Harness> {
     },
     debounceMs: 20,
     maxWaitMs: 100,
+    ...options,
   });
   const server: Server = createServer();
   server.on("upgrade", (req, socket, head) => {
@@ -106,6 +115,25 @@ export function connectAs(
     WebSocketPolyfill: WebSocket as unknown as typeof globalThis.WebSocket,
     // Providers in one process would otherwise sync over BroadcastChannel and
     // skip the server entirely.
+    disableBc: true,
+  });
+  const client: Client = { doc, provider, events: [], closes: [] };
+  provider.messageHandlers[MESSAGE_CHANNEL_EVENT] = (_encoder, decoder) => {
+    client.events.push(JSON.parse(decoding.readVarString(decoder)) as ChannelEvent);
+  };
+  provider.on("connection-close", (event) => {
+    if (event) client.closes.push(event.code);
+  });
+  clients.push(client);
+  return client;
+}
+
+// A y-websocket client opened through a channel share link.
+export function connectWithShare(harness: Harness, channelId: number, token: string): Client {
+  const doc = new Y.Doc();
+  const provider = new WebsocketProvider(harness.url, String(channelId), doc, {
+    params: { share: token },
+    WebSocketPolyfill: WebSocket as unknown as typeof globalThis.WebSocket,
     disableBc: true,
   });
   const client: Client = { doc, provider, events: [], closes: [] };

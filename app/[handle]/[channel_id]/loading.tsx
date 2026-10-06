@@ -17,9 +17,15 @@ import { SKELETON_COUNT } from "@/lib/pagination";
 export default function Loading() {
   return (
     <div className="w-full p-6 sm:p-12 space-y-8">
-      {/* PageHeader breadcrumb (h1.text-display: text-2xl → sm:text-4xl). */}
-      <div className="flex h-8 items-center sm:h-10">
-        <Skeleton className="h-7 w-64" />
+      {/* PageHeader: the parent trail (text-sm, 44px on touch) over the title
+          (h1.text-display: text-2xl → sm:text-4xl). */}
+      <div className="flex flex-col gap-2 coarse:gap-0">
+        <div className="flex h-5 items-center coarse:h-11">
+          <Skeleton className="h-3.5 w-24" />
+        </div>
+        <div className="flex h-8 items-center sm:h-10">
+          <Skeleton className="h-7 w-64" />
+        </div>
       </div>
 
       {/* Action row: export (h-9 icon) + the view toggle (two 36px segments

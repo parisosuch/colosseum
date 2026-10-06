@@ -107,9 +107,6 @@ export function StartIsland({
 }: {
   handle: string;
   channelTitle: string;
-  // Not rendered: the title is the current page, so it doesn't link, and the
-  // back button already leads to the board.
-  channelHref?: string;
   onBack: () => void;
   // The blocks-panel toggle, for editors on a desktop.
   panel: { open: boolean; onToggle: () => void } | null;

@@ -4,24 +4,27 @@ import { cn } from "@/lib/utils";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Logo } from "@/components/logo";
 import { Label } from "@/components/ui/label";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { getMyProfileAction } from "@/lib/colosseum/actions";
 import { safeNextPath } from "@/lib/next-path";
+import { signUpHref, type SignupState } from "@/lib/signup-state";
 
 export function LoginForm({
   className,
   invite = "",
   next = "",
   passwordUpdated = false,
+  signupState = "invite",
   ...props
 }: React.ComponentPropsWithoutRef<"div"> & {
   invite?: string;
   next?: string;
   passwordUpdated?: boolean;
+  signupState?: SignupState;
 }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -58,12 +61,13 @@ export function LoginForm({
     }
   };
 
+  const showPasswordLabel = showPassword ? "Hide password" : "Show password";
+
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <div className="flex flex-col gap-2">
-        <Logo className="h-4 w-auto text-muted-foreground opacity-25" />
-        <h1 className="text-title">Login</h1>
-        <p className="text-muted-foreground">Enter your email below to login to your account</p>
+        <h1 className="text-title">Log in</h1>
+        <p className="text-sm text-muted-foreground">Use the email and password for this server.</p>
       </div>
       {passwordUpdated && (
         <p className="rounded-md border bg-muted/50 p-3 text-sm">
@@ -78,8 +82,9 @@ export function LoginForm({
               id="email"
               type="email"
               autoComplete="email"
-              placeholder="m@example.com"
+              placeholder="you@example.com"
               required
+              className="h-11 md:h-9"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
@@ -90,9 +95,9 @@ export function LoginForm({
               <Link
                 href="/auth/forgot-password"
                 tabIndex={-1}
-                className="ml-auto inline-block text-sm underline-offset-4 hover:underline"
+                className="ml-auto inline-block text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
               >
-                Forgot your password?
+                Forgot password?
               </Link>
             </div>
             <div className="relative">
@@ -101,33 +106,46 @@ export function LoginForm({
                 type={showPassword ? "text" : "password"}
                 autoComplete="current-password"
                 required
-                className="pr-10"
+                className="h-11 pr-12 md:h-9 md:pr-10"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
-              <button
-                type="button"
-                onClick={() => setShowPassword((v) => !v)}
-                aria-label={showPassword ? "Hide password" : "Show password"}
-                aria-pressed={showPassword}
-                className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground"
-              >
-                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPasswordLabel}
+                    aria-pressed={showPassword}
+                    className="absolute right-0 top-0 size-11 text-muted-foreground hover:text-foreground md:size-9"
+                  >
+                    {showPassword ? <EyeOff /> : <Eye />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{showPasswordLabel}</TooltipContent>
+              </Tooltip>
             </div>
           </div>
           {error && <p className="text-sm text-destructive-text">{error}</p>}
-          <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? "Logging in..." : "Login"}
+          <Button type="submit" className="h-11 w-full md:h-9" disabled={isLoading}>
+            {isLoading ? "Logging in..." : "Log in"}
           </Button>
           <p className="text-center text-sm text-muted-foreground">
-            Don&apos;t have an account?{" "}
-            <Link
-              href={invite ? `/auth/sign-up?invite=${encodeURIComponent(invite)}` : "/auth/sign-up"}
-              className="underline underline-offset-4"
-            >
-              Create account
-            </Link>
+            {signupState === "closed" ? (
+              "New accounts are closed on this server."
+            ) : (
+              <>
+                {signupState === "first" ? "No accounts here yet." : "Have an invite?"}{" "}
+                <Link
+                  href={signUpHref(invite)}
+                  className="font-medium text-foreground underline underline-offset-4"
+                >
+                  {signupState === "first" ? "Create the first account" : "Create an account"}
+                </Link>
+              </>
+            )}
           </p>
         </div>
       </form>

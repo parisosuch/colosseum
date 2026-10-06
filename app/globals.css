@@ -170,6 +170,12 @@
 
 /* Design system: typographic scale + shared text affordances. See DESIGN.md. */
 @layer components {
+  /* The signed-out landing headline, the one line bigger than a page title:
+     36px on phones, 56px from lg. */
+  .text-hero {
+    @apply font-serif text-4xl font-semibold leading-[1.1] tracking-tight lg:text-[3.5rem] lg:leading-[1.08];
+    font-optical-sizing: auto;
+  }
   /* Page title / breadcrumb header. */
   .text-display {
     @apply text-balance font-serif text-2xl font-semibold tracking-tight sm:text-4xl;

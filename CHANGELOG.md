@@ -4,6 +4,29 @@ All notable changes to Colosseum are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0] - 2026-10-06
+
+### Added
+
+- A new landing page and login. The signed-out home page now opens with a short
+  explanation of what Colosseum is for, next to the animated Braille Colosseum
+  mark, and login sits on the same panel in the same place. It adapts to the
+  instance: the first account on a fresh server, invite-only, or closed to new
+  accounts. The password field's show and hide control is now an icon button
+  with a tooltip.
+- An Explore link in the top navigation. Signed-out visitors and people who
+  haven't finished onboarding get it on phones too, since they have no bottom
+  bar.
+
+### Changed
+
+- Page headers show where you are as a trail of parent links above the page
+  title, with chevrons between them, in place of the single line with slashes.
+  The current page is the title and isn't a link. Long trails truncate, long
+  titles wrap, and links are 44px tall on touch screens. The canvas uses the
+  same trail, so its title is no longer a link that did what the back button
+  already does.
+
 ## [1.14.2] - 2026-10-06
 
 ### Changed

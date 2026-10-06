@@ -8,18 +8,34 @@ import { Button } from "./ui/button";
 import { AddBlockModal } from "./add-block-modal";
 import CommandPalette from "./command-palette";
 import { Logo } from "./logo";
+import { NavLink } from "./nav-link";
 import SearchBar from "./search-bar";
 import { ThemeSwitcher } from "./theme-switcher";
 import { UserMenu } from "./user-menu";
+
+// The logo, then a text link to Explore. The logo goes to `/`, which signed-in
+// users are redirected away from, so this link is the nav's visible way into
+// the feed. On a phone the bottom bar's Home tab carries it instead, so it's
+// shown there only when there is no bottom bar: signed out, or not onboarded.
+function NavStart({ exploreOnMobile = true }: { exploreOnMobile?: boolean }) {
+  return (
+    <div className="flex items-center gap-2">
+      <Link href="/">
+        <Logo className="h-6 w-auto" />
+      </Link>
+      <NavLink href="/explore" className={exploreOnMobile ? undefined : "hidden sm:flex"}>
+        Explore
+      </NavLink>
+    </div>
+  );
+}
 
 export default async function NavBar() {
   const user = await getSessionUser();
   if (!user) {
     return (
       <nav data-vt="nav" className="chrome sticky top-0 z-40 w-full flex justify-between p-4">
-        <Link href="/">
-          <Logo className="h-6 w-auto" />
-        </Link>
+        <NavStart />
         {/* Login is the app's only conversion action, so it's the same filled
             button the landing page uses, far enough from the theme control
             that the two error zones don't touch. */}
@@ -56,9 +72,7 @@ export default async function NavBar() {
 
   return (
     <nav data-vt="nav" className="chrome sticky top-0 z-40 w-full flex justify-between p-4">
-      <Link href="/">
-        <Logo className="h-6 w-auto" />
-      </Link>
+      <NavStart exploreOnMobile={!userProfile} />
       {userProfile ? (
         <>
           <div className="hidden sm:flex flex-1 max-w-md items-center gap-2">

@@ -4,6 +4,13 @@ All notable changes to Colosseum are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.2] - 2026-10-06
+
+### Changed
+
+- The changelog entries for 1.14.0 and 1.14.1 no longer carry pull request
+  numbers. Those live on each version's GitHub release.
+
 ## [1.14.1] - 2026-10-06
 
 ### Fixed
@@ -13,7 +20,6 @@ All notable changes to Colosseum are recorded here. The format follows
   /s/<token>/canvas, read-only: link holders see the blocks and the comment
   threads, and can't edit, comment or open version history. Revoking the link,
   banning whoever made it, or letting it expire closes the canvas it has open.
-  (#649)
 
 ## [1.14.0] - 2026-10-04
 
@@ -27,36 +33,36 @@ All notable changes to Colosseum are recorded here. The format follows
   revoked on its own. Links expire after 30 days unless set to never, which warns
   first. A link stops working while its creator or the channel's owner is
   banned. Pasted into chat, a link unfurls with the channel's or block's title
-  and image, and share pages are kept out of search engines. (#619)
+  and image, and share pages are kept out of search engines.
 - Share links over the API and MCP: `create_share_link`, `list_share_links` and
   `revoke_share_link`, or `GET`/`POST /api/v1/channels/:id/share-links` and
-  `DELETE /api/v1/share-links/:id`. (#619)
+  `DELETE /api/v1/share-links/:id`.
 - Canvases. Every channel has one, at /{handle}/{channel}/canvas, opened from the
   canvas button beside the channel's other actions. Blocks are placed from a
   sidebar and arranged freely. Everyone who can add to the channel edits the
   canvas together, live, each with their own cursor colour; anyone who can read
   the channel can look at it. Readers only see the button once the canvas has
-  something on it. (#615, #623, #624, #628)
+  something on it.
 - Drawing on a canvas: shapes, frames, sticky notes, text, lines and arrows that
   stay attached to what they connect, a pen and a highlighter, and an eraser.
   The properties panel sets stroke, fill, width, opacity, text and arrowheads.
   The Layers panel reorders, renames, groups, hides and locks. Moves snap to
   other elements' edges, centres and spacing. Undo and redo cover your own edits
-  and leave other people's alone. (#629)
+  and leave other people's alone.
 - Pasting or dropping onto a canvas. Files, images and links become blocks in
   the channel, detected the same way as a link added to the board, and land
-  where they were dropped. Copied canvas elements paste as elements. (#630)
+  where they were dropped. Copied canvas elements paste as elements.
 - A grid on the canvas, as dots or lines, that elements snap to. Hold cmd or
-  ctrl to place something off the grid. (#643)
+  ctrl to place something off the grid.
 - Comments on a canvas. A thread is pinned to an element, or to a spot when
   there's nothing under it, and moves with the element. Replies and @mentions
   work as they do on blocks, and a notification opens the canvas at the
-  thread. (#621, #632)
+  thread.
 - Version history for a canvas, for the channel's managers. A version is saved
   after each burst of editing, with who took part; any version can be previewed
   and restored, and a restore saves the canvas as it was first. Named restore
   points are kept forever. Automatic versions thin to one a day after a week and
-  go after 90 days. (#622, #631)
+  go after 90 days.
 
 ### Changed
 
@@ -64,11 +70,11 @@ All notable changes to Colosseum are recorded here. The format follows
   canvas WebSockets on one port. A self-hosted proxy has to pass WebSocket
   upgrades on `/realtime/`: Caddy, Traefik and Coolify do by default, and nginx
   needs the lines in the README. Migrations `0024` to `0029` run on boot.
-  Canvas rooms live in the app process, so run one instance. (#615, #633)
+  Canvas rooms live in the app process, so run one instance.
 - A channel's sort, type filter, search and view are kept in its URL, so a
-  reload or a shared link opens the board the way it was left. (#624)
+  reload or a shared link opens the board the way it was left.
 - Adding a file refuses SVG and HEIC before it uploads, rather than after, and a
-  failed upload says why when the server gives a reason. (#630)
+  failed upload says why when the server gives a reason.
 
 ## [1.13.0] - 2026-09-16
 

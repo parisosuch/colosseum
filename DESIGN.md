@@ -41,6 +41,7 @@ Semantic classes live in `@layer components` (`globals.css`) — don't hand-roll
 
 | Class           | Scale                                      | Use for                        |
 | --------------- | ------------------------------------------ | ------------------------------ |
+| `.text-hero`    | `font-serif text-4xl lg:3.5rem semibold`   | Signed-out landing headline    |
 | `.text-display` | `font-serif text-2xl sm:text-4xl semibold` | Page title / breadcrumb header |
 | `.text-title`   | `font-serif text-2xl semibold`             | Section title within a page    |
 | `.text-heading` | `font-serif text-lg medium`                | Card / sub-section heading     |

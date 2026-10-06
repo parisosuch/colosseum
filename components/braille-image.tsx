@@ -74,6 +74,10 @@ export default function BrailleImage() {
   const [metrics, setMetrics] = useState<{ charW: number; lineH: number } | null>(null);
   const [grid, setGrid] = useState<{ rows: number; cols: number; lines: string[] } | null>(null);
 
+  // How far the mark is shrunk to fit its box (1 = natural size).
+  const [scale, setScale] = useState(1);
+
+  const boxRef = useRef<HTMLDivElement>(null);
   const probeRef = useRef<HTMLSpanElement>(null);
   const fieldRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<Map<number, number>>(new Map()); // cellIndex -> hover intensity
@@ -215,21 +219,39 @@ export default function BrailleImage() {
     return () => cancelAnimationFrame(rafRef.current);
   }, [grid, stepColor]);
 
-  // Register hover cells (the loop above consumes them).
+  // Scale the mark down to fit its box, never up past its natural size. The
+  // box takes its size from the parent, and the field is absolutely placed in
+  // it, so the mark's natural ~620px never props the parent open.
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    if (!box || !grid || !metrics) return;
+    const naturalW = grid.cols * metrics.charW;
+    const naturalH = grid.rows * metrics.lineH;
+    const fit = () => {
+      const s = Math.min(1, box.clientWidth / naturalW, box.clientHeight / naturalH);
+      setScale(s > 0 ? s : 1);
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, [grid, metrics]);
+
+  // Register hover cells (the loop above consumes them). The cell size comes
+  // from the field's on-screen rect, so it holds at any scale.
   useEffect(() => {
     const field = fieldRef.current;
-    if (!field || !grid || !metrics) return;
-    const { charW, lineH } = metrics;
+    if (!field || !grid) return;
     const onMove = (e: MouseEvent) => {
       const rect = field.getBoundingClientRect();
-      const col = Math.floor((e.clientX - rect.left) / charW);
-      const row = Math.floor((e.clientY - rect.top) / lineH);
+      const col = Math.floor(((e.clientX - rect.left) / rect.width) * grid.cols);
+      const row = Math.floor(((e.clientY - rect.top) / rect.height) * grid.rows);
       if (col < 0 || col >= grid.cols || row < 0 || row >= grid.rows) return;
       activeRef.current.set(row * grid.cols + col, 1);
     };
     field.addEventListener("mousemove", onMove);
     return () => field.removeEventListener("mousemove", onMove);
-  }, [grid, metrics]);
+  }, [grid]);
 
   // Re-baseline cell colors when the theme flips (untouched cells inherit the
   // container color; touched ones keep an inline color, so clear those).
@@ -245,7 +267,7 @@ export default function BrailleImage() {
   }, [palette, grid]);
 
   return (
-    <div className="relative select-none" aria-hidden>
+    <div ref={boxRef} className="relative size-full select-none" aria-hidden>
       {/* hidden probe for measuring char width / line height */}
       <span
         ref={probeRef}
@@ -271,6 +293,13 @@ export default function BrailleImage() {
           whiteSpace: "pre",
           fontFamily: MONO,
           color: rgb(palette.base),
+          position: "absolute",
+          left: "50%",
+          top: "50%",
+          transform: `translate(-50%, -50%) scale(${scale})`,
+          // Its own layer, so the scaled glyphs get grayscale antialiasing.
+          // Without it, a scaled-down mark picks up subpixel colour fringes.
+          willChange: "transform",
         }}
       >
         {grid?.lines.map((line, r) => (

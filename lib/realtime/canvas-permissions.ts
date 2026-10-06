@@ -23,8 +23,19 @@ export function isAccessEvent(event: RealtimeEvent): event is AccessEvent {
 // A user event matches on the user the socket was authorized as. A banned
 // user's socket was authorized as them before the ban, so the ban reaches it;
 // a signed-out socket has no user and only channel-wide events reach it.
-export function affects(event: AccessEvent, channelId: number, userId: string | null): boolean {
+//
+// A socket opened through a share link has no user, but the link stops working
+// while its creator or the channel's owner is banned. A user event for no
+// particular channel (a ban, or a group change) therefore reaches every share
+// socket, and the re-check says whether its link still resolves.
+export function affects(
+  event: AccessEvent,
+  channelId: number,
+  userId: string | null,
+  viaShare = false,
+): boolean {
   if (event.type === "channel.access-changed") return event.channelId === channelId;
   if (event.channelId !== undefined && event.channelId !== channelId) return false;
+  if (viaShare && event.channelId === undefined) return true;
   return userId === event.userId;
 }

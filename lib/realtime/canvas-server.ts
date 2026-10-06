@@ -59,6 +59,10 @@ export type Authorization = {
   userId: string | null;
   handle?: string | null;
   avatarUrl?: string | null;
+  // A socket opened through a channel share link (always read-only). It is
+  // re-checked on every ban, since the link dies with its creator's, and
+  // closed once `expiresAt` (epoch ms; null when the link never expires) passes.
+  share?: { expiresAt: number | null };
 };
 
 export interface CanvasStore {
@@ -181,6 +185,8 @@ class Bucket {
 type Conn = {
   access: CanvasAccess;
   userId: string | null;
+  // Set for a socket opened through a share link; see `Authorization.share`.
+  share: { expiresAt: number | null } | null;
   // Awareness client ids this socket announced, cleared when it leaves so its
   // cursor doesn't linger for everyone else.
   clientIds: Set<number>;
@@ -714,6 +720,7 @@ export function createCanvasServer(options: CanvasServerOptions) {
     const conn: Conn = {
       access: auth.access,
       userId: auth.userId,
+      share: auth.share ?? null,
       clientIds: new Set(),
       alive: true,
       req,
@@ -853,6 +860,7 @@ export function createCanvasServer(options: CanvasServerOptions) {
     const was = conn.access;
     conn.access = next.access;
     conn.userId = next.userId;
+    conn.share = next.share ?? null;
     conn.user = presenceFor(next);
     if (was === "write" && next.access === "read") {
       // From here the read-only filters drop its updates and awareness. Take
@@ -876,6 +884,10 @@ export function createCanvasServer(options: CanvasServerOptions) {
         }
         conn.alive = false;
         ws.ping();
+        // A link that ran out while the socket was open: the check closes it.
+        if (conn.share?.expiresAt != null && conn.share.expiresAt <= Date.now()) {
+          void reauthorize(room, ws, conn);
+        }
       }
     }
   }, pingIntervalMs);
@@ -924,7 +936,8 @@ export function createCanvasServer(options: CanvasServerOptions) {
         for (const room of rooms.values()) {
           if (room.closed) continue;
           for (const [ws, conn] of room.conns) {
-            if (affects(event, room.channelId, conn.userId)) void reauthorize(room, ws, conn);
+            if (affects(event, room.channelId, conn.userId, conn.share !== null))
+              void reauthorize(room, ws, conn);
           }
         }
         return;

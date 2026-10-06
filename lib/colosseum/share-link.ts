@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 
 import { db } from "@/lib/db";
+import { publishRealtime } from "@/lib/realtime/events";
 import { column, owner, shareLink, user } from "@/lib/db/schema";
 import { mediaUrl } from "./blob";
 import { blockLabel } from "./block-meta";
@@ -212,7 +213,10 @@ export async function revokeShareLink(id: string, channelId: number): Promise<bo
       and(eq(shareLink.id, id), eq(shareLink.channel_id, channelId), isNull(shareLink.revoked_at)),
     )
     .returning({ id: shareLink.id });
-  return rows.length > 0;
+  if (rows.length === 0) return false;
+  // Open canvas sockets opened through the link are re-checked, and close.
+  publishRealtime({ type: "channel.access-changed", channelId });
+  return true;
 }
 
 // Whether a ban stands behind a link: its creator is banned, or the channel

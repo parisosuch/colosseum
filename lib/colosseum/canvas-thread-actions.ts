@@ -7,6 +7,7 @@
 // all land in one file.
 
 import { getSessionUser } from "@/lib/auth";
+import { resolveShareToken, shareCoversChannel } from "./share-link";
 import {
   checkThreadStartRate,
   deleteCanvasThreadComment,
@@ -32,14 +33,39 @@ async function requireUserId(): Promise<string> {
   return userId;
 }
 
+// A channel share-link token (/s/<token>/canvas) reads threads in place of a
+// session. The channel id it opens, or "Not found." for a link that doesn't
+// cover the channel.
+async function sharedChannel(channelId: number, token: string): Promise<number> {
+  const share = await resolveShareToken(token);
+  if (!share || !shareCoversChannel(share, channelId)) throw new Error("Not found.");
+  return share.channel.id;
+}
+
 export async function listCanvasThreadsAction(
   channelId: number,
   page?: ThreadPage,
+  share?: string,
 ): Promise<CanvasThread[]> {
+  if (share)
+    return listChannelThreads(channelId, null, page, await sharedChannel(channelId, share));
   return listChannelThreads(channelId, await currentUserId(), page);
 }
 
-export async function getCanvasThreadAction(threadId: number): Promise<CanvasThreadWithComments> {
+export async function getCanvasThreadAction(
+  threadId: number,
+  share?: { token: string; channelId: number },
+): Promise<CanvasThreadWithComments> {
+  if (share) {
+    const thread = await getCanvasThread(
+      threadId,
+      null,
+      await sharedChannel(share.channelId, share.token),
+    );
+    // The thread has to be on the channel the link covers, not just any channel.
+    if (thread.channel_id !== share.channelId) throw new Error("Not found.");
+    return thread;
+  }
   return getCanvasThread(threadId, await currentUserId());
 }
 

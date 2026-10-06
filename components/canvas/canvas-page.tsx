@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { AddBlockBody, useAddBlockFlow, type PickableChannel } from "@/components/add-block-flow";
 import BlockModal from "@/components/block-modal";
 import CommandPalette from "@/components/command-palette";
+import { useShare } from "@/components/share-context";
 import { GradientSpin } from "@/components/gradient-spin";
 import { Button } from "@/components/ui/button";
 import {
@@ -116,8 +117,16 @@ export default function CanvasPage({
   initialThreadId = null,
 }: CanvasPageProps) {
   const router = useRouter();
+  // Set under /s/<token>/canvas, where the token stands in for a session.
+  const shareToken = useShare()?.token ?? null;
   const [store] = useState(
-    () => new CanvasStore(channel.id, canContribute && viewerId ? "write" : "read", viewerId),
+    () =>
+      new CanvasStore(
+        channel.id,
+        canContribute && viewerId ? "write" : "read",
+        viewerId,
+        shareToken,
+      ),
   );
   const connection = useCanvas(store, "connection", (s) => s.connection);
   const doc = useCanvas(store, "doc", (s) => s.docState);
@@ -246,7 +255,7 @@ export default function CanvasPage({
       for (let i = 0; i < missing.length; i += FETCH_BATCH) {
         const batch = missing.slice(i, i + FETCH_BATCH);
         try {
-          const got = await getCanvasBlocksAction(channel.id, batch);
+          const got = await getCanvasBlocksAction(channel.id, batch, shareToken ?? undefined);
           const found = new Set(got.map((c) => c.id));
           setColumns((prev) => {
             const next = new Map(prev);
@@ -261,7 +270,7 @@ export default function CanvasPage({
         }
       }
     })();
-  }, [placed, columns, channel.id]);
+  }, [placed, columns, channel.id, shareToken]);
 
   // A block deleted elsewhere: the server has already taken its element off.
   useEffect(

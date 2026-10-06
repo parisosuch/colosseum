@@ -5,6 +5,7 @@ import { SearchIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { BlockMedia } from "@/components/column";
+import { useShare } from "@/components/share-context";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getCanvasBlocksAction, getUnplacedBlocksAction } from "@/lib/colosseum/canvas-actions";
@@ -56,6 +57,8 @@ export function BlocksPanel({
   // placed blocks the open transition is waiting on.
   start: boolean;
 }) {
+  // Under /s/<token>/canvas the reads go through the link.
+  const shareToken = useShare()?.token;
   const doc = useCanvas(store, "doc", (s) => s.docState);
   const synced = useCanvas(store, "connection", (s) => s.connection.synced);
   const placed = doc.placed;
@@ -89,12 +92,11 @@ export function BlocksPanel({
     try {
       const before = reset ? null : (items.at(-1)?.id ?? null);
       const placedNow = placedRef.current;
-      const res = await getUnplacedBlocksAction(channelId, {
-        placed: [...placedNow],
-        search: query,
-        before,
-        limit: PAGE,
-      });
+      const res = await getUnplacedBlocksAction(
+        channelId,
+        { placed: [...placedNow], search: query, before, limit: PAGE },
+        shareToken,
+      );
       if (id !== requestId.current) return;
       for (const c of res.columns) seen.current.add(c.id);
       onLoaded(res.columns);
@@ -117,7 +119,7 @@ export function BlocksPanel({
     seen.current = new Set();
     void loadPage(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- loadPage reads the latest state through refs.
-  }, [synced, start, query, channelId]);
+  }, [synced, start, query, channelId, shareToken]);
 
   // A block taken off the canvas comes back into the list, at its place in
   // the order, if it falls inside what's loaded so far.
@@ -155,7 +157,7 @@ export function BlocksPanel({
           }
           seen.current.delete(event.columnId);
         } else if (event.type === "block.added") {
-          void getCanvasBlocksAction(channelId, [event.columnId])
+          void getCanvasBlocksAction(channelId, [event.columnId], shareToken)
             .then(([col]) => {
               if (!col) return;
               onLoaded([col]);
@@ -172,7 +174,7 @@ export function BlocksPanel({
             .catch((e) => console.error(e));
         }
       }),
-    [store, channelId, query, onLoaded],
+    [store, channelId, query, onLoaded, shareToken],
   );
 
   const visible = items.filter((c) => !placed.has(c.id));

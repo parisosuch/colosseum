@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
+import { Breadcrumb } from "@/components/breadcrumb";
 import { openCommandPalette } from "@/components/command-palette";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import { UserMenu } from "@/components/user-menu";
@@ -99,7 +100,6 @@ export type ViewerProfile = {
 export function StartIsland({
   handle,
   channelTitle,
-  channelHref,
   onBack,
   panel,
   onAdd,
@@ -107,7 +107,9 @@ export function StartIsland({
 }: {
   handle: string;
   channelTitle: string;
-  channelHref: string;
+  // Not rendered: the title is the current page, so it doesn't link, and the
+  // back button already leads to the board.
+  channelHref?: string;
   onBack: () => void;
   // The blocks-panel toggle, for editors on a desktop.
   panel: { open: boolean; onToggle: () => void } | null;
@@ -121,31 +123,10 @@ export function StartIsland({
         <ArrowLeft />
       </IconButton>
       <Divider />
-      <nav
-        aria-label="Breadcrumb"
-        className="flex min-w-0 items-center gap-1.5 pr-1 font-serif text-lg leading-7"
-      >
-        <Link href={`/${handle}`} className="link-subtle shrink-0 rounded-sm focus-ring">
-          {handle}
-        </Link>
-        {/* The design sets the slash in the handle's 75% ink, as the page
-            header's links are. */}
-        <span className="link-subtle" aria-hidden>
-          /
-        </span>
-        <Link
-          href={channelHref}
-          onClick={(e) => {
-            if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-            e.preventDefault();
-            onBack();
-          }}
-          aria-current="page"
-          className="max-w-[16rem] truncate rounded-sm focus-ring"
-        >
-          {channelTitle}
-        </Link>
-      </nav>
+      <Breadcrumb
+        compact
+        crumbs={[{ label: handle, href: `/${handle}` }, { label: channelTitle }]}
+      />
       {panel ? (
         <IconButton
           label={panel.open ? "Hide blocks" : "Show blocks"}

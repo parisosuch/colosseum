@@ -127,7 +127,16 @@ animate together, on the same clock.
 - **Empty states:** `components/ui/empty-state.tsx` — dashed border, icon, a
   bold line and an explanatory one. Use it instead of a lone grey sentence, and
   give it an action where there is an obvious next step.
-- **Page header:** `components/page-header.tsx` renders the
-  `Colosseum / handle / channel` breadcrumb. Pass `crumbs`; omit `href` on the
-  current (last) crumb.
+- **Page header:** `components/page-header.tsx` opens every page with a
+  breadcrumb: a small sans trail of parent links (`text-sm font-medium`,
+  `link-subtle`, underlined on hover), each followed by a chevron, over the
+  `text-display` title. Pass `crumbs` in order; the last one is the current
+  page, rendered as the `h1` with `aria-current="page"` and never a link. A
+  parent without an `href` renders as muted text. The trail is a
+  `nav aria-label="Breadcrumb"`; parents truncate at 480px (120px below `sm`)
+  with the full label in a tooltip, take a 44px row on touch screens, and the
+  title wraps, breaking a long URL anywhere, clamped to four lines below `sm`.
+  The canvas island uses the same component (`components/breadcrumb.tsx`,
+  `compact`). The brand lives in the nav: the logo, then a text link to
+  Explore.
 - Prefer the existing `components/ui/*` shadcn primitives over new markup.

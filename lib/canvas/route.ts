@@ -1,6 +1,7 @@
 // The canvas page's URL: /<handle>/<channel>/canvas.
 
-const CANVAS_PATH = /^\/[^/]+\/\d+\/canvas\/?$/;
+// /<handle>/<channel>/canvas, or /s/<token>/canvas under a share link.
+const CANVAS_PATH = /^\/(?:[^/]+\/\d+|s\/[^/]+)\/canvas\/?$/;
 
 export function canvasPath(channelPath: string): string {
   return `${channelPath.replace(/\/$/, "")}/canvas`;

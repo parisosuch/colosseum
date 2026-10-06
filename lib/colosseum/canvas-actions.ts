@@ -13,7 +13,8 @@ import {
 } from "./canvas-blocks";
 import { canReadChannel, getChannel, resolveChannelViewer } from "./channel";
 import type { Column } from "./column";
-import { viewerScope } from "./viewer";
+import { resolveShareToken, shareColumn, shareCoversChannel } from "./share-link";
+import { SIGNED_OUT, viewerScope } from "./viewer";
 
 async function readableViewer(channelId: number) {
   const channel = await getChannel(channelId);
@@ -26,8 +27,27 @@ async function readableViewer(channelId: number) {
   return viewerScope(userId);
 }
 
-// The placed blocks the canvas needs to draw, by column id.
-export async function getCanvasBlocksAction(channelId: number, ids: number[]): Promise<Column[]> {
+// A channel share link stands in for a session on the canvas page it opens
+// (/s/<token>/canvas). It has to resolve to a live link that covers the whole
+// channel. Link holders read as a signed-out visitor, with media through the
+// share route.
+async function requireShare(channelId: number, token: string): Promise<void> {
+  const share = await resolveShareToken(token);
+  if (!share || !shareCoversChannel(share, channelId)) throw new Error("Not found.");
+}
+
+// The placed blocks the canvas needs to draw, by column id. `share` is a
+// channel share-link token, for the link holder's canvas.
+export async function getCanvasBlocksAction(
+  channelId: number,
+  ids: number[],
+  share?: string,
+): Promise<Column[]> {
+  if (share) {
+    await requireShare(channelId, share);
+    const columns = await getChannelColumnsByIds(channelId, ids, SIGNED_OUT);
+    return columns.map((c) => shareColumn(c, share));
+  }
   const viewer = await readableViewer(channelId);
   return getChannelColumnsByIds(channelId, ids, viewer);
 }
@@ -37,13 +57,15 @@ export async function getCanvasBlocksAction(channelId: number, ids: number[]): P
 export async function getUnplacedBlocksAction(
   channelId: number,
   query: UnplacedQuery,
+  share?: string,
 ): Promise<{ columns: Column[]; count: number | null }> {
-  const viewer = await readableViewer(channelId);
+  if (share) await requireShare(channelId, share);
+  const viewer = share ? SIGNED_OUT : await readableViewer(channelId);
   const [columns, count] = await Promise.all([
     getUnplacedColumns(channelId, query, viewer),
     query.before == null
       ? countUnplacedColumns(channelId, { placed: query.placed, search: query.search })
       : Promise.resolve(null),
   ]);
-  return { columns, count };
+  return { columns: share ? columns.map((c) => shareColumn(c, share)) : columns, count };
 }

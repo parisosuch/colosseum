@@ -142,6 +142,9 @@ export class CanvasStore {
     readonly channelId: number,
     access: "read" | "write" | null = null,
     readonly viewerId: string | null = null,
+    // The channel share-link token the canvas was opened through, if any. The
+    // socket sends it, and the server grants read-only access on it alone.
+    readonly share: string | null = null,
   ) {
     this.connection = { ...this.connection, access };
     elementsOf(this.doc).observeDeep((events) => this.refreshDoc(events));
@@ -172,6 +175,7 @@ export class CanvasStore {
       // Tabs of one browser would otherwise also sync over a BroadcastChannel,
       // around the server's read-only filtering.
       disableBc: true,
+      params: this.share ? { share: this.share } : {},
     });
     this.provider = provider;
     provider.messageHandlers[MESSAGE_CHANNEL_EVENT] = (_encoder, decoder) => {

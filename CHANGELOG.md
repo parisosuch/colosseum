@@ -4,6 +4,17 @@ All notable changes to Colosseum are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.1] - 2026-10-06
+
+### Fixed
+
+- A channel share link now opens the channel's canvas. The shared board shows
+  the canvas button once the canvas has something on it, and the canvas opens at
+  /s/<token>/canvas, read-only: link holders see the blocks and the comment
+  threads, and can't edit, comment or open version history. Revoking the link,
+  banning whoever made it, or letting it expire closes the canvas it has open.
+  (#649)
+
 ## [1.14.0] - 2026-10-04
 
 ### Added

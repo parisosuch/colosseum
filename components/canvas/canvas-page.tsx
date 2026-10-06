@@ -527,7 +527,6 @@ export default function CanvasPage({
         <StartIsland
           handle={handle}
           channelTitle={channel.title}
-          channelHref={channelPath}
           onBack={goBack}
           panel={
             canEdit && !viewOnlyDevice
